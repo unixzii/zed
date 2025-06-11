@@ -439,7 +439,6 @@ impl TitleBar {
                         "Remote Project",
                         Some(&OpenRemote {
                             from_existing_connection: false,
-                            create_new_window: false,
                         }),
                         meta.clone(),
                         window,
@@ -450,7 +449,6 @@ impl TitleBar {
                     window.dispatch_action(
                         OpenRemote {
                             from_existing_connection: false,
-                            create_new_window: false,
                         }
                         .boxed_clone(),
                         cx,

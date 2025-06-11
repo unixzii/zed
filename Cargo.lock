@@ -59,7 +59,6 @@ dependencies = [
  "assistant_slash_command",
  "assistant_slash_commands",
  "assistant_tool",
- "assistant_tools",
  "async-watch",
  "audio",
  "buffer_diff",
@@ -148,6 +147,7 @@ dependencies = [
  "deepseek",
  "fs",
  "gpui",
+ "indexmap",
  "language_model",
  "lmstudio",
  "log",
@@ -631,7 +631,6 @@ name = "assistant_tool"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-watch",
  "buffer_diff",
  "clock",
  "collections",
@@ -2987,6 +2986,7 @@ dependencies = [
  "anyhow",
  "assistant_context_editor",
  "assistant_slash_command",
+ "assistant_tool",
  "async-stripe",
  "async-trait",
  "async-tungstenite",
@@ -3166,6 +3166,16 @@ checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes 1.10.1",
  "memchr",
+]
+
+[[package]]
+name = "command-fds"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ec1052629a80c28594777d1252efc8a6b005d13f9edfd8c3fc0f44d5b32489a"
+dependencies = [
+ "nix 0.30.1",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -4233,7 +4243,6 @@ dependencies = [
  "futures 0.3.31",
  "fuzzy",
  "gpui",
- "itertools 0.14.0",
  "language",
  "log",
  "menu",
@@ -4543,8 +4552,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "command_palette",
- "gpui",
  "mdbook",
  "regex",
  "serde",
@@ -4552,7 +4559,6 @@ dependencies = [
  "settings",
  "util",
  "workspace-hack",
- "zed",
 ]
 
 [[package]]
@@ -10139,6 +10145,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+dependencies = [
+ "bitflags 2.9.0",
+ "cfg-if",
+ "cfg_aliases 0.2.1",
+ "libc",
+]
+
+[[package]]
 name = "node_runtime"
 version = "0.1.0"
 dependencies = [
@@ -10205,7 +10223,6 @@ dependencies = [
  "util",
  "workspace",
  "workspace-hack",
- "zed_actions",
 ]
 
 [[package]]
@@ -15733,7 +15750,6 @@ dependencies = [
  "task",
  "theme",
  "thiserror 2.0.12",
- "url",
  "util",
  "windows 0.61.1",
  "workspace-hack",
@@ -17130,6 +17146,7 @@ dependencies = [
  "async-fs",
  "async_zip",
  "collections",
+ "command-fds",
  "dirs 4.0.0",
  "dunce",
  "futures 0.3.31",
@@ -19714,7 +19731,7 @@ dependencies = [
 
 [[package]]
 name = "zed"
-version = "0.191.0"
+version = "0.190.3"
 dependencies = [
  "activity_indicator",
  "agent",

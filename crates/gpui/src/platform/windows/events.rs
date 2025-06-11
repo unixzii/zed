@@ -83,11 +83,11 @@ pub(crate) fn handle_msg(
         WM_XBUTTONUP => handle_xbutton_msg(handle, wparam, lparam, handle_mouse_up_msg, state_ptr),
         WM_MOUSEWHEEL => handle_mouse_wheel_msg(handle, wparam, lparam, state_ptr),
         WM_MOUSEHWHEEL => handle_mouse_horizontal_wheel_msg(handle, wparam, lparam, state_ptr),
-        WM_SYSKEYDOWN => handle_syskeydown_msg(handle, wparam, lparam, state_ptr),
-        WM_SYSKEYUP => handle_syskeyup_msg(handle, wparam, lparam, state_ptr),
+        WM_SYSKEYDOWN => handle_syskeydown_msg(wparam, lparam, state_ptr),
+        WM_SYSKEYUP => handle_syskeyup_msg(wparam, lparam, state_ptr),
         WM_SYSCOMMAND => handle_system_command(wparam, state_ptr),
-        WM_KEYDOWN => handle_keydown_msg(handle, wparam, lparam, state_ptr),
-        WM_KEYUP => handle_keyup_msg(handle, wparam, lparam, state_ptr),
+        WM_KEYDOWN => handle_keydown_msg(wparam, lparam, state_ptr),
+        WM_KEYUP => handle_keyup_msg(wparam, lparam, state_ptr),
         WM_CHAR => handle_char_msg(wparam, state_ptr),
         WM_DEADCHAR => handle_dead_char_msg(wparam, state_ptr),
         WM_IME_STARTCOMPOSITION => handle_ime_position(handle, state_ptr),
@@ -337,13 +337,12 @@ fn handle_mouse_leave_msg(state_ptr: Rc<WindowsWindowStatePtr>) -> Option<isize>
 }
 
 fn handle_syskeydown_msg(
-    handle: HWND,
     wparam: WPARAM,
     lparam: LPARAM,
     state_ptr: Rc<WindowsWindowStatePtr>,
 ) -> Option<isize> {
     let mut lock = state_ptr.state.borrow_mut();
-    let input = handle_key_event(handle, wparam, lparam, &mut lock, |keystroke| {
+    let input = handle_key_event(wparam, lparam, &mut lock, |keystroke| {
         PlatformInput::KeyDown(KeyDownEvent {
             keystroke,
             is_held: lparam.0 & (0x1 << 30) > 0,
@@ -359,6 +358,7 @@ fn handle_syskeydown_msg(
 
     if handled {
         lock.system_key_handled = true;
+        lock.suppress_next_char_msg = true;
         Some(0)
     } else {
         // we need to call `DefWindowProcW`, or we will lose the system-wide `Alt+F4`, `Alt+{other keys}`
@@ -368,13 +368,12 @@ fn handle_syskeydown_msg(
 }
 
 fn handle_syskeyup_msg(
-    handle: HWND,
     wparam: WPARAM,
     lparam: LPARAM,
     state_ptr: Rc<WindowsWindowStatePtr>,
 ) -> Option<isize> {
     let mut lock = state_ptr.state.borrow_mut();
-    let input = handle_key_event(handle, wparam, lparam, &mut lock, |keystroke| {
+    let input = handle_key_event(wparam, lparam, &mut lock, |keystroke| {
         PlatformInput::KeyUp(KeyUpEvent { keystroke })
     })?;
     let mut func = lock.callbacks.input.take()?;
@@ -389,13 +388,12 @@ fn handle_syskeyup_msg(
 // It's a known bug that you can't trigger `ctrl-shift-0`. See:
 // https://superuser.com/questions/1455762/ctrl-shift-number-key-combination-has-stopped-working-for-a-few-numbers
 fn handle_keydown_msg(
-    handle: HWND,
     wparam: WPARAM,
     lparam: LPARAM,
     state_ptr: Rc<WindowsWindowStatePtr>,
 ) -> Option<isize> {
     let mut lock = state_ptr.state.borrow_mut();
-    let Some(input) = handle_key_event(handle, wparam, lparam, &mut lock, |keystroke| {
+    let Some(input) = handle_key_event(wparam, lparam, &mut lock, |keystroke| {
         PlatformInput::KeyDown(KeyDownEvent {
             keystroke,
             is_held: lparam.0 & (0x1 << 30) > 0,
@@ -403,42 +401,32 @@ fn handle_keydown_msg(
     }) else {
         return Some(1);
     };
-    drop(lock);
 
-    let is_composing = with_input_handler(&state_ptr, |input_handler| {
-        input_handler.marked_text_range()
-    })
-    .flatten()
-    .is_some();
-    if is_composing {
-        translate_message(handle, wparam, lparam);
-        return Some(0);
-    }
-
-    let Some(mut func) = state_ptr.state.borrow_mut().callbacks.input.take() else {
+    let Some(mut func) = lock.callbacks.input.take() else {
         return Some(1);
     };
+    drop(lock);
 
     let handled = !func(input).propagate;
 
-    state_ptr.state.borrow_mut().callbacks.input = Some(func);
+    let mut lock = state_ptr.state.borrow_mut();
+    lock.callbacks.input = Some(func);
 
     if handled {
+        lock.suppress_next_char_msg = true;
         Some(0)
     } else {
-        translate_message(handle, wparam, lparam);
         Some(1)
     }
 }
 
 fn handle_keyup_msg(
-    handle: HWND,
     wparam: WPARAM,
     lparam: LPARAM,
     state_ptr: Rc<WindowsWindowStatePtr>,
 ) -> Option<isize> {
     let mut lock = state_ptr.state.borrow_mut();
-    let Some(input) = handle_key_event(handle, wparam, lparam, &mut lock, |keystroke| {
+    let Some(input) = handle_key_event(wparam, lparam, &mut lock, |keystroke| {
         PlatformInput::KeyUp(KeyUpEvent { keystroke })
     }) else {
         return Some(1);
@@ -691,36 +679,34 @@ fn handle_ime_composition_inner(
     lparam: LPARAM,
     state_ptr: Rc<WindowsWindowStatePtr>,
 ) -> Option<isize> {
-    let lparam = lparam.0 as u32;
-    if lparam == 0 {
-        // Japanese IME may send this message with lparam = 0, which indicates that
-        // there is no composition string.
+    let mut ime_input = None;
+    if lparam.0 as u32 & GCS_COMPSTR.0 > 0 {
+        let comp_string = parse_ime_compostion_string(ctx)?;
         with_input_handler(&state_ptr, |input_handler| {
-            input_handler.replace_text_in_range(None, "");
+            input_handler.replace_and_mark_text_in_range(None, &comp_string, None);
         })?;
-        Some(0)
-    } else {
-        if lparam & GCS_COMPSTR.0 > 0 {
-            let comp_string = parse_ime_composition_string(ctx, GCS_COMPSTR)?;
-            let caret_pos = (lparam & GCS_CURSORPOS.0 > 0).then(|| {
-                let pos = retrieve_composition_cursor_position(ctx);
-                pos..pos
-            });
-            with_input_handler(&state_ptr, |input_handler| {
-                input_handler.replace_and_mark_text_in_range(None, &comp_string, caret_pos);
-            })?;
-        }
-        if lparam & GCS_RESULTSTR.0 > 0 {
-            let comp_result = parse_ime_composition_string(ctx, GCS_RESULTSTR)?;
-            with_input_handler(&state_ptr, |input_handler| {
-                input_handler.replace_text_in_range(None, &comp_result);
-            })?;
-            return Some(0);
-        }
-
-        // currently, we don't care other stuff
-        None
+        ime_input = Some(comp_string);
     }
+    if lparam.0 as u32 & GCS_CURSORPOS.0 > 0 {
+        let comp_string = &ime_input?;
+        let caret_pos = retrieve_composition_cursor_position(ctx);
+        with_input_handler(&state_ptr, |input_handler| {
+            input_handler.replace_and_mark_text_in_range(
+                None,
+                comp_string,
+                Some(caret_pos..caret_pos),
+            );
+        })?;
+    }
+    if lparam.0 as u32 & GCS_RESULTSTR.0 > 0 {
+        let comp_result = parse_ime_compostion_result(ctx)?;
+        with_input_handler(&state_ptr, |input_handler| {
+            input_handler.replace_text_in_range(None, &comp_result);
+        })?;
+        return Some(0);
+    }
+    // currently, we don't care other stuff
+    None
 }
 
 /// SEE: https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-nccalcsize
@@ -1219,23 +1205,7 @@ fn handle_input_language_changed(
     Some(0)
 }
 
-#[inline]
-fn translate_message(handle: HWND, wparam: WPARAM, lparam: LPARAM) {
-    let msg = MSG {
-        hwnd: handle,
-        message: WM_KEYDOWN,
-        wParam: wparam,
-        lParam: lparam,
-        // It seems like leaving the following two parameters empty doesn't break key events, they still work as expected.
-        // But if any bugs pop up after this PR, this is probably the place to look first.
-        time: 0,
-        pt: POINT::default(),
-    };
-    unsafe { TranslateMessage(&msg).ok().log_err() };
-}
-
 fn handle_key_event<F>(
-    handle: HWND,
     wparam: WPARAM,
     lparam: LPARAM,
     state: &mut WindowsWindowState,
@@ -1244,10 +1214,15 @@ fn handle_key_event<F>(
 where
     F: FnOnce(Keystroke) -> PlatformInput,
 {
+    state.suppress_next_char_msg = false;
     let virtual_key = VIRTUAL_KEY(wparam.loword());
     let mut modifiers = current_modifiers();
 
     match virtual_key {
+        VK_PROCESSKEY => {
+            // IME composition
+            None
+        }
         VK_SHIFT | VK_CONTROL | VK_MENU | VK_LWIN | VK_RWIN => {
             if state
                 .last_reported_modifiers
@@ -1261,11 +1236,6 @@ where
             }))
         }
         vkey => {
-            let vkey = if vkey == VK_PROCESSKEY {
-                VIRTUAL_KEY(unsafe { ImmGetVirtualKey(handle) } as u16)
-            } else {
-                vkey
-            };
             let keystroke = parse_normal_key(vkey, lparam, modifiers)?;
             Some(f(keystroke))
         }
@@ -1347,14 +1317,14 @@ fn parse_normal_key(
     })
 }
 
-fn parse_ime_composition_string(ctx: HIMC, comp_type: IME_COMPOSITION_STRING) -> Option<String> {
+fn parse_ime_compostion_string(ctx: HIMC) -> Option<String> {
     unsafe {
-        let string_len = ImmGetCompositionStringW(ctx, comp_type, None, 0);
+        let string_len = ImmGetCompositionStringW(ctx, GCS_COMPSTR, None, 0);
         if string_len >= 0 {
             let mut buffer = vec![0u8; string_len as usize + 2];
             ImmGetCompositionStringW(
                 ctx,
-                comp_type,
+                GCS_COMPSTR,
                 Some(buffer.as_mut_ptr() as _),
                 string_len as _,
             );
@@ -1372,6 +1342,29 @@ fn parse_ime_composition_string(ctx: HIMC, comp_type: IME_COMPOSITION_STRING) ->
 #[inline]
 fn retrieve_composition_cursor_position(ctx: HIMC) -> usize {
     unsafe { ImmGetCompositionStringW(ctx, GCS_CURSORPOS, None, 0) as usize }
+}
+
+fn parse_ime_compostion_result(ctx: HIMC) -> Option<String> {
+    unsafe {
+        let string_len = ImmGetCompositionStringW(ctx, GCS_RESULTSTR, None, 0);
+        if string_len >= 0 {
+            let mut buffer = vec![0u8; string_len as usize + 2];
+            ImmGetCompositionStringW(
+                ctx,
+                GCS_RESULTSTR,
+                Some(buffer.as_mut_ptr() as _),
+                string_len as _,
+            );
+            let wstring = std::slice::from_raw_parts::<u16>(
+                buffer.as_mut_ptr().cast::<u16>(),
+                string_len as usize / 2,
+            );
+            let string = String::from_utf16_lossy(wstring);
+            Some(string)
+        } else {
+            None
+        }
+    }
 }
 
 #[inline]
@@ -1490,7 +1483,12 @@ fn with_input_handler<F, R>(state_ptr: &Rc<WindowsWindowStatePtr>, f: F) -> Opti
 where
     F: FnOnce(&mut PlatformInputHandler) -> R,
 {
-    let mut input_handler = state_ptr.state.borrow_mut().input_handler.take()?;
+    let mut lock = state_ptr.state.borrow_mut();
+    if lock.suppress_next_char_msg {
+        return None;
+    }
+    let mut input_handler = lock.input_handler.take()?;
+    drop(lock);
     let result = f(&mut input_handler);
     state_ptr.state.borrow_mut().input_handler = Some(input_handler);
     Some(result)
@@ -1504,6 +1502,9 @@ where
     F: FnOnce(&mut PlatformInputHandler, f32) -> Option<R>,
 {
     let mut lock = state_ptr.state.borrow_mut();
+    if lock.suppress_next_char_msg {
+        return None;
+    }
     let mut input_handler = lock.input_handler.take()?;
     let scale_factor = lock.scale_factor;
     drop(lock);

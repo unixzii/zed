@@ -10,7 +10,9 @@ use parking_lot::Mutex;
 use project::{CompletionIntent, CompletionSource, lsp_store::CompletionDocumentation};
 use rope::Point;
 use std::{
+    cell::RefCell,
     ops::Range,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering::SeqCst},
@@ -238,13 +240,14 @@ impl SlashCommandCompletionProvider {
 
                 Ok(vec![project::CompletionResponse {
                     completions,
-                    is_incomplete: false,
+                    // TODO: Could have slash commands indicate whether their completions are incomplete.
+                    is_incomplete: true,
                 }])
             })
         } else {
             Task::ready(Ok(vec![project::CompletionResponse {
                 completions: Vec::new(),
-                is_incomplete: false,
+                is_incomplete: true,
             }]))
         }
     }
@@ -273,17 +276,17 @@ impl CompletionProvider for SlashCommandCompletionProvider {
                     position.row,
                     call.arguments.last().map_or(call.name.end, |arg| arg.end) as u32,
                 );
-                let command_range = buffer.anchor_after(command_range_start)
+                let command_range = buffer.anchor_before(command_range_start)
                     ..buffer.anchor_after(command_range_end);
 
                 let name = line[call.name.clone()].to_string();
                 let (arguments, last_argument_range) = if let Some(argument) = call.arguments.last()
                 {
                     let last_arg_start =
-                        buffer.anchor_after(Point::new(position.row, argument.start as u32));
+                        buffer.anchor_before(Point::new(position.row, argument.start as u32));
                     let first_arg_start = call.arguments.first().expect("we have the last element");
-                    let first_arg_start =
-                        buffer.anchor_after(Point::new(position.row, first_arg_start.start as u32));
+                    let first_arg_start = buffer
+                        .anchor_before(Point::new(position.row, first_arg_start.start as u32));
                     let arguments = call
                         .arguments
                         .into_iter()
@@ -296,7 +299,7 @@ impl CompletionProvider for SlashCommandCompletionProvider {
                     )
                 } else {
                     let start =
-                        buffer.anchor_after(Point::new(position.row, call.name.start as u32));
+                        buffer.anchor_before(Point::new(position.row, call.name.start as u32));
                     (None, start..buffer_position)
                 };
 
@@ -322,6 +325,16 @@ impl CompletionProvider for SlashCommandCompletionProvider {
         } else {
             self.complete_command_name(&name, command_range, last_argument_range, window, cx)
         }
+    }
+
+    fn resolve_completions(
+        &self,
+        _: Entity<Buffer>,
+        _: Vec<usize>,
+        _: Rc<RefCell<Box<[project::Completion]>>>,
+        _: &mut Context<Editor>,
+    ) -> Task<Result<bool>> {
+        Task::ready(Ok(true))
     }
 
     fn is_completion_trigger(

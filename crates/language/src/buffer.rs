@@ -127,8 +127,6 @@ pub struct Buffer {
     has_unsaved_edits: Cell<(clock::Global, bool)>,
     change_bits: Vec<rc::Weak<Cell<bool>>>,
     _subscriptions: Vec<gpui::Subscription>,
-    /// The result id received last time when pulling diagnostics for this buffer.
-    pull_diagnostics_result_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -231,19 +229,10 @@ pub struct Diagnostic {
     pub is_disk_based: bool,
     /// Whether this diagnostic marks unnecessary code.
     pub is_unnecessary: bool,
-    /// Quick separation of diagnostics groups based by their source.
-    pub source_kind: DiagnosticSourceKind,
     /// Data from language server that produced this diagnostic. Passed back to the LS when we request code actions for this diagnostic.
     pub data: Option<Value>,
     /// Whether to underline the corresponding text range in the editor.
     pub underline: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DiagnosticSourceKind {
-    Pulled,
-    Pushed,
-    Other,
 }
 
 /// An operation used to synchronize this buffer with its other replicas.
@@ -496,8 +485,6 @@ pub struct Chunk<'a> {
     pub is_unnecessary: bool,
     /// Whether this chunk of text was originally a tab character.
     pub is_tab: bool,
-    /// Whether this chunk of text was originally a tab character.
-    pub is_inlay: bool,
     /// Whether to underline the corresponding text range in the editor.
     pub underline: bool,
 }
@@ -957,7 +944,6 @@ impl Buffer {
             completion_triggers_timestamp: Default::default(),
             deferred_ops: OperationQueue::new(),
             has_conflict: false,
-            pull_diagnostics_result_id: None,
             change_bits: Default::default(),
             _subscriptions: Vec::new(),
         }
@@ -1387,30 +1373,9 @@ impl Buffer {
     /// Returns the [`Language`] at the given location.
     pub fn language_at<D: ToOffset>(&self, position: D) -> Option<Arc<Language>> {
         let offset = position.to_offset(self);
-        let mut is_first = true;
-        let start_anchor = self.anchor_before(offset);
-        let end_anchor = self.anchor_after(offset);
         self.syntax_map
             .lock()
             .layers_for_range(offset..offset, &self.text, false)
-            .filter(|layer| {
-                if is_first {
-                    is_first = false;
-                    return true;
-                }
-                let any_sub_ranges_contain_range = layer
-                    .included_sub_ranges
-                    .map(|sub_ranges| {
-                        sub_ranges.iter().any(|sub_range| {
-                            let is_before_start = sub_range.end.cmp(&start_anchor, self).is_lt();
-                            let is_after_end = sub_range.start.cmp(&end_anchor, self).is_gt();
-                            !is_before_start && !is_after_end
-                        })
-                    })
-                    .unwrap_or(true);
-                let result = any_sub_ranges_contain_range;
-                return result;
-            })
             .last()
             .map(|info| info.language.clone())
             .or_else(|| self.language.clone())
@@ -2763,14 +2728,6 @@ impl Buffer {
     /// Whether we should preserve the preview status of a tab containing this buffer.
     pub fn preserve_preview(&self) -> bool {
         !self.has_edits_since(&self.preview_version)
-    }
-
-    pub fn result_id(&self) -> Option<String> {
-        self.pull_diagnostics_result_id.clone()
-    }
-
-    pub fn set_result_id(&mut self, result_id: Option<String>) {
-        self.pull_diagnostics_result_id = result_id;
     }
 }
 
@@ -4677,7 +4634,6 @@ impl Default for Diagnostic {
     fn default() -> Self {
         Self {
             source: Default::default(),
-            source_kind: DiagnosticSourceKind::Other,
             code: None,
             code_description: None,
             severity: DiagnosticSeverity::ERROR,
