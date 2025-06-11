@@ -603,7 +603,7 @@ impl LanguageServer {
         Ok(())
     }
 
-    pub fn default_initialize_params(&self, pull_diagnostics: bool, cx: &App) -> InitializeParams {
+    pub fn default_initialize_params(&self, cx: &App) -> InitializeParams {
         let workspace_folders = self
             .workspace_folders
             .lock()
@@ -643,9 +643,8 @@ impl LanguageServer {
                         refresh_support: Some(true),
                     }),
                     diagnostic: Some(DiagnosticWorkspaceClientCapabilities {
-                        refresh_support: Some(true),
-                    })
-                    .filter(|_| pull_diagnostics),
+                        refresh_support: None,
+                    }),
                     code_lens: Some(CodeLensWorkspaceClientCapabilities {
                         refresh_support: Some(true),
                     }),
@@ -759,12 +758,7 @@ impl LanguageServer {
                     }),
                     publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
                         related_information: Some(true),
-                        version_support: Some(true),
-                        data_support: Some(true),
-                        tag_support: Some(TagSupport {
-                            value_set: vec![DiagnosticTag::UNNECESSARY, DiagnosticTag::DEPRECATED],
-                        }),
-                        code_description_support: Some(true),
+                        ..Default::default()
                     }),
                     formatting: Some(DynamicRegistrationClientCapabilities {
                         dynamic_registration: Some(true),
@@ -799,11 +793,6 @@ impl LanguageServer {
                         hierarchical_document_symbol_support: Some(true),
                         ..DocumentSymbolClientCapabilities::default()
                     }),
-                    diagnostic: Some(DiagnosticClientCapabilities {
-                        dynamic_registration: Some(false),
-                        related_document_support: Some(true),
-                    })
-                    .filter(|_| pull_diagnostics),
                     ..TextDocumentClientCapabilities::default()
                 }),
                 experimental: Some(json!({
@@ -1714,7 +1703,7 @@ mod tests {
 
         let server = cx
             .update(|cx| {
-                let params = server.default_initialize_params(false, cx);
+                let params = server.default_initialize_params(cx);
                 let configuration = DidChangeConfigurationParams {
                     settings: Default::default(),
                 };

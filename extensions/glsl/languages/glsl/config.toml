@@ -10,7 +10,6 @@ path_suffixes = [
     # Other
     "glsl"
     ]
-first_line_pattern = '^#version \d+'
 line_comments = ["// "]
 block_comment = ["/* ", " */"]
 brackets = [

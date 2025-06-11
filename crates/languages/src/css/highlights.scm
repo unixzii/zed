@@ -11,7 +11,6 @@
   ">"
   "+"
   "-"
-  "|"
   "*"
   "/"
   "="
@@ -20,50 +19,35 @@
   "~="
   "$="
   "*="
-] @operator
-
-[
   "and"
   "or"
   "not"
   "only"
-] @keyword.operator
+] @operator
 
-(id_name) @selector.id
-(class_name) @selector.class
-
-(namespace_name) @namespace
-(namespace_selector (tag_name) @namespace "|")
+(attribute_selector (plain_value) @string)
 
 (attribute_name) @attribute
-(pseudo_element_selector "::" (tag_name) @selector.pseudo)
-(pseudo_class_selector ":" (class_name) @selector.pseudo)
+(pseudo_element_selector (tag_name) @attribute)
+(pseudo_class_selector (class_name) @attribute)
 
 [
+  (class_name)
+  (id_name)
+  (namespace_name)
   (feature_name)
-  (property_name)
 ] @property
 
+(property_name) @constant
+
 (function_name) @function
-
-[
-  (plain_value)
-  (keyframes_name)
-  (keyword_query)
-] @constant.builtin
-
-(attribute_selector
-  (plain_value) @string)
-
-(parenthesized_query
-  (keyword_query) @property)
 
 (
   [
     (property_name)
     (plain_value)
-  ] @variable
-  (#match? @variable "^--")
+  ] @variable.special
+  (#match? @variable.special "^--")
 )
 
 [
@@ -77,7 +61,7 @@
   (to)
   (from)
   (important)
-] @keyword
+]  @keyword
 
 (string_value) @string
 (color_value) @string.special
@@ -87,7 +71,7 @@
   (float_value)
 ] @number
 
-(unit) @type.unit
+(unit) @type
 
 [
   ","
@@ -95,9 +79,8 @@
   "."
   "::"
   ";"
+  "#"
 ] @punctuation.delimiter
-
-(id_selector "#" @punctuation.delimiter)
 
 [
   "{"
