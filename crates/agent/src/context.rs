@@ -734,7 +734,6 @@ impl Display for RulesContext {
 #[derive(Debug, Clone)]
 pub struct ImageContext {
     pub project_path: Option<ProjectPath>,
-    pub full_path: Option<Arc<Path>>,
     pub original_image: Arc<gpui::Image>,
     // TODO: handle this elsewhere and remove `ignore-interior-mutability` opt-out in clippy.toml
     // needed due to a false positive of `clippy::mutable_key_type`.
@@ -745,7 +744,6 @@ pub struct ImageContext {
 pub enum ImageStatus {
     Loading,
     Error,
-    Warning,
     Ready,
 }
 
@@ -762,17 +760,11 @@ impl ImageContext {
         self.image_task.clone().now_or_never().flatten()
     }
 
-    pub fn status(&self, model: Option<&Arc<dyn language_model::LanguageModel>>) -> ImageStatus {
+    pub fn status(&self) -> ImageStatus {
         match self.image_task.clone().now_or_never() {
             None => ImageStatus::Loading,
             Some(None) => ImageStatus::Error,
-            Some(Some(_)) => {
-                if model.is_some_and(|model| !model.supports_images()) {
-                    ImageStatus::Warning
-                } else {
-                    ImageStatus::Ready
-                }
-            }
+            Some(Some(_)) => ImageStatus::Ready,
         }
     }
 

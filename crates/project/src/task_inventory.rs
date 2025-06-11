@@ -243,9 +243,6 @@ impl Inventory {
     pub fn list_debug_scenarios(
         &self,
         task_contexts: &TaskContexts,
-        lsp_tasks: Vec<(TaskSourceKind, task::ResolvedTask)>,
-        current_resolved_tasks: Vec<(TaskSourceKind, task::ResolvedTask)>,
-        add_current_language_tasks: bool,
         cx: &mut App,
     ) -> (Vec<DebugScenario>, Vec<(TaskSourceKind, DebugScenario)>) {
         let mut scenarios = Vec::new();
@@ -261,6 +258,7 @@ impl Inventory {
         }
         scenarios.extend(self.global_debug_scenarios_from_settings());
 
+        let (_, new) = self.used_and_current_resolved_tasks(task_contexts, cx);
         if let Some(location) = task_contexts.location() {
             let file = location.buffer.read(cx).file();
             let language = location.buffer.read(cx).language();
@@ -273,14 +271,7 @@ impl Inventory {
                     language.and_then(|l| l.config().debuggers.first().map(SharedString::from))
                 });
             if let Some(adapter) = adapter {
-                for (kind, task) in
-                    lsp_tasks
-                        .into_iter()
-                        .chain(current_resolved_tasks.into_iter().filter(|(kind, _)| {
-                            add_current_language_tasks
-                                || !matches!(kind, TaskSourceKind::Language { .. })
-                        }))
-                {
+                for (kind, task) in new {
                     if let Some(scenario) =
                         DapRegistry::global(cx)
                             .locators()
@@ -601,13 +592,6 @@ impl Inventory {
                     .global
                     .entry(path.to_owned())
                     .insert_entry(new_templates.collect());
-                self.last_scheduled_tasks.retain(|(kind, _)| {
-                    if let TaskSourceKind::AbsPath { abs_path, .. } = kind {
-                        abs_path != path
-                    } else {
-                        true
-                    }
-                });
             }
             TaskSettingsLocation::Worktree(location) => {
                 let new_templates = new_templates.collect::<Vec<_>>();
@@ -624,18 +608,6 @@ impl Inventory {
                         .or_default()
                         .insert(Arc::from(location.path), new_templates);
                 }
-                self.last_scheduled_tasks.retain(|(kind, _)| {
-                    if let TaskSourceKind::Worktree {
-                        directory_in_worktree,
-                        id,
-                        ..
-                    } = kind
-                    {
-                        *id != location.worktree_id || directory_in_worktree != location.path
-                    } else {
-                        true
-                    }
-                });
             }
         }
 
@@ -790,27 +762,6 @@ mod test_inventory {
         });
     }
 
-    pub(super) fn register_worktree_task_used(
-        inventory: &Entity<Inventory>,
-        worktree_id: WorktreeId,
-        task_name: &str,
-        cx: &mut TestAppContext,
-    ) {
-        inventory.update(cx, |inventory, cx| {
-            let (task_source_kind, task) = inventory
-                .list_tasks(None, None, Some(worktree_id), cx)
-                .into_iter()
-                .find(|(_, task)| task.label == task_name)
-                .unwrap_or_else(|| panic!("Failed to find task with name {task_name}"));
-            let id_base = task_source_kind.to_id_base();
-            inventory.task_scheduled(
-                task_source_kind.clone(),
-                task.resolve_task(&id_base, &TaskContext::default())
-                    .unwrap_or_else(|| panic!("Failed to resolve task with name {task_name}")),
-            );
-        });
-    }
-
     pub(super) async fn list_tasks(
         inventory: &Entity<Inventory>,
         worktree: Option<WorktreeId>,
@@ -903,21 +854,11 @@ impl ContextProvider for BasicContextProvider {
             );
             if let Some(full_path) = current_file.as_ref() {
                 let relative_path = pathdiff::diff_paths(full_path, worktree_path);
-                if let Some(relative_file) = relative_path {
+                if let Some(relative_path) = relative_path {
                     task_variables.insert(
                         VariableName::RelativeFile,
-                        relative_file.to_sanitized_string(),
+                        relative_path.to_sanitized_string(),
                     );
-                    if let Some(relative_dir) = relative_file.parent() {
-                        task_variables.insert(
-                            VariableName::RelativeDir,
-                            if relative_dir.as_os_str().is_empty() {
-                                String::from(".")
-                            } else {
-                                relative_dir.to_sanitized_string()
-                            },
-                        );
-                    }
                 }
             }
         }
@@ -1052,53 +993,6 @@ mod tests {
                 "2_task".to_string(),
                 "1_a_task".to_string(),
             ],
-            "Most recently used task should be at the top"
-        );
-
-        let worktree_id = WorktreeId::from_usize(0);
-        let local_worktree_location = SettingsLocation {
-            worktree_id,
-            path: Path::new("foo"),
-        };
-        inventory.update(cx, |inventory, _| {
-            inventory
-                .update_file_based_tasks(
-                    TaskSettingsLocation::Worktree(local_worktree_location),
-                    Some(&mock_tasks_from_names(["worktree_task_1"])),
-                )
-                .unwrap();
-        });
-        assert_eq!(
-            resolved_task_names(&inventory, None, cx),
-            vec![
-                "3_task".to_string(),
-                "1_task".to_string(),
-                "2_task".to_string(),
-                "1_a_task".to_string(),
-            ],
-            "Most recently used task should be at the top"
-        );
-        assert_eq!(
-            resolved_task_names(&inventory, Some(worktree_id), cx),
-            vec![
-                "3_task".to_string(),
-                "1_task".to_string(),
-                "2_task".to_string(),
-                "worktree_task_1".to_string(),
-                "1_a_task".to_string(),
-            ],
-        );
-        register_worktree_task_used(&inventory, worktree_id, "worktree_task_1", cx);
-        assert_eq!(
-            resolved_task_names(&inventory, Some(worktree_id), cx),
-            vec![
-                "worktree_task_1".to_string(),
-                "3_task".to_string(),
-                "1_task".to_string(),
-                "2_task".to_string(),
-                "1_a_task".to_string(),
-            ],
-            "Most recently used worktree task should be at the top"
         );
 
         inventory.update(cx, |inventory, _| {
@@ -1129,15 +1023,13 @@ mod tests {
         assert_eq!(
             resolved_task_names(&inventory, None, cx),
             vec![
-                "worktree_task_1".to_string(),
-                "1_a_task".to_string(),
+                "3_task".to_string(),
                 "1_task".to_string(),
                 "2_task".to_string(),
-                "3_task".to_string(),
+                "1_a_task".to_string(),
                 "10_hello".to_string(),
                 "11_hello".to_string(),
             ],
-            "After global tasks update, worktree task usage is not erased and it's the first still; global task is back to regular order as its file was updated"
         );
 
         register_task_used(&inventory, "11_hello", cx);
@@ -1149,11 +1041,10 @@ mod tests {
             resolved_task_names(&inventory, None, cx),
             vec![
                 "11_hello".to_string(),
-                "worktree_task_1".to_string(),
-                "1_a_task".to_string(),
+                "3_task".to_string(),
                 "1_task".to_string(),
                 "2_task".to_string(),
-                "3_task".to_string(),
+                "1_a_task".to_string(),
                 "10_hello".to_string(),
             ],
         );
@@ -1332,10 +1223,9 @@ mod tests {
         })
     }
 
-    fn mock_tasks_from_names<'a>(task_names: impl IntoIterator<Item = &'a str> + 'a) -> String {
+    fn mock_tasks_from_names<'a>(task_names: impl Iterator<Item = &'a str> + 'a) -> String {
         serde_json::to_string(&serde_json::Value::Array(
             task_names
-                .into_iter()
                 .map(|task_name| {
                     json!({
                         "label": task_name,

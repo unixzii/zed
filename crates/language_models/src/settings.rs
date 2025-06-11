@@ -20,7 +20,6 @@ use crate::provider::{
     mistral::MistralSettings,
     ollama::OllamaSettings,
     open_ai::OpenAiSettings,
-    open_router::OpenRouterSettings,
 };
 
 /// Initializes the language model settings.
@@ -62,7 +61,6 @@ pub struct AllLanguageModelSettings {
     pub bedrock: AmazonBedrockSettings,
     pub ollama: OllamaSettings,
     pub openai: OpenAiSettings,
-    pub open_router: OpenRouterSettings,
     pub zed_dot_dev: ZedDotDevSettings,
     pub google: GoogleSettings,
     pub copilot_chat: CopilotChatSettings,
@@ -78,7 +76,6 @@ pub struct AllLanguageModelSettingsContent {
     pub ollama: Option<OllamaSettingsContent>,
     pub lmstudio: Option<LmStudioSettingsContent>,
     pub openai: Option<OpenAiSettingsContent>,
-    pub open_router: Option<OpenRouterSettingsContent>,
     #[serde(rename = "zed.dev")]
     pub zed_dot_dev: Option<ZedDotDevSettingsContent>,
     pub google: Option<GoogleSettingsContent>,
@@ -272,17 +269,7 @@ pub struct ZedDotDevSettingsContent {
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
-pub struct CopilotChatSettingsContent {
-    pub api_url: Option<String>,
-    pub auth_url: Option<String>,
-    pub models_url: Option<String>,
-}
-
-#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
-pub struct OpenRouterSettingsContent {
-    pub api_url: Option<String>,
-    pub available_models: Option<Vec<provider::open_router::AvailableModel>>,
-}
+pub struct CopilotChatSettingsContent {}
 
 impl settings::Settings for AllLanguageModelSettings {
     const KEY: Option<&'static str> = Some("language_models");
@@ -421,37 +408,6 @@ impl settings::Settings for AllLanguageModelSettings {
             merge(
                 &mut settings.mistral.available_models,
                 mistral.as_ref().and_then(|s| s.available_models.clone()),
-            );
-
-            // OpenRouter
-            let open_router = value.open_router.clone();
-            merge(
-                &mut settings.open_router.api_url,
-                open_router.as_ref().and_then(|s| s.api_url.clone()),
-            );
-            merge(
-                &mut settings.open_router.available_models,
-                open_router
-                    .as_ref()
-                    .and_then(|s| s.available_models.clone()),
-            );
-
-            // Copilot Chat
-            let copilot_chat = value.copilot_chat.clone().unwrap_or_default();
-
-            settings.copilot_chat.api_url = copilot_chat.api_url.map_or_else(
-                || Arc::from("https://api.githubcopilot.com/chat/completions"),
-                Arc::from,
-            );
-
-            settings.copilot_chat.auth_url = copilot_chat.auth_url.map_or_else(
-                || Arc::from("https://api.github.com/copilot_internal/v2/token"),
-                Arc::from,
-            );
-
-            settings.copilot_chat.models_url = copilot_chat.models_url.map_or_else(
-                || Arc::from("https://api.githubcopilot.com/models"),
-                Arc::from,
             );
         }
 

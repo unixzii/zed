@@ -67,13 +67,12 @@ pub fn app_menus() -> Vec<Menu> {
                 MenuItem::action(
                     "Open Recent...",
                     zed_actions::OpenRecent {
-                        create_new_window: false,
+                        create_new_window: true,
                     },
                 ),
                 MenuItem::action(
                     "Open Remote...",
                     zed_actions::OpenRemote {
-                        create_new_window: false,
                         from_existing_connection: false,
                     },
                 ),
@@ -214,10 +213,6 @@ pub fn app_menus() -> Vec<Menu> {
         Menu {
             name: "Help".into(),
             items: vec![
-                MenuItem::action(
-                    "View Release Notes",
-                    auto_update_ui::ViewReleaseNotesLocally,
-                ),
                 MenuItem::action("View Telemetry", zed_actions::OpenTelemetryLog),
                 MenuItem::action("View Dependency Licenses", zed_actions::OpenLicenses),
                 MenuItem::action("Show Welcome", workspace::Welcome),

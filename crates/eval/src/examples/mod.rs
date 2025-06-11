@@ -16,7 +16,6 @@ mod add_arg_to_trait_method;
 mod code_block_citations;
 mod comment_translation;
 mod file_search;
-mod grep_params_escapement;
 mod overwrite_file;
 mod planets;
 
@@ -28,7 +27,6 @@ pub fn all(examples_dir: &Path) -> Vec<Rc<dyn Example>> {
         Rc::new(planets::Planets),
         Rc::new(comment_translation::CommentTranslation),
         Rc::new(overwrite_file::FileOverwriteExample),
-        Rc::new(grep_params_escapement::GrepParamsEscapementExample),
     ];
 
     for example_path in list_declarative_examples(examples_dir).unwrap() {
@@ -84,7 +82,6 @@ impl DeclarativeExample {
             max_assertions: None,
             profile_id,
             existing_thread_json,
-            max_turns: base.max_turns,
         };
 
         Ok(DeclarativeExample {
@@ -127,8 +124,6 @@ pub struct ExampleToml {
     pub thread_assertions: BTreeMap<String, String>,
     #[serde(default)]
     pub existing_thread_path: Option<String>,
-    #[serde(default)]
-    pub max_turns: Option<u32>,
 }
 
 #[async_trait(?Send)]
@@ -139,8 +134,7 @@ impl Example for DeclarativeExample {
 
     async fn conversation(&self, cx: &mut ExampleContext) -> Result<()> {
         cx.push_user_message(&self.prompt);
-        let max_turns = self.metadata.max_turns.unwrap_or(1000);
-        let _ = cx.run_turns(max_turns).await;
+        let _ = cx.run_to_end().await;
         Ok(())
     }
 

@@ -80,14 +80,7 @@ pub fn init(cx: &mut App) {
                             );
                         }
                     } else {
-                        spawn_task_or_modal(
-                            workspace,
-                            &Spawn::ViaModal {
-                                reveal_target: None,
-                            },
-                            window,
-                            cx,
-                        );
+                        toggle_modal(workspace, None, window, cx).detach();
                     };
                 });
         },
@@ -521,7 +514,6 @@ mod tests {
                     (VariableName::File, path!("/dir/rust/b.rs").into()),
                     (VariableName::Filename, "b.rs".into()),
                     (VariableName::RelativeFile, separator!("rust/b.rs").into()),
-                    (VariableName::RelativeDir, "rust".into()),
                     (VariableName::Dirname, path!("/dir/rust").into()),
                     (VariableName::Stem, "b".into()),
                     (VariableName::WorktreeRoot, path!("/dir").into()),
@@ -553,7 +545,6 @@ mod tests {
                     (VariableName::File, path!("/dir/rust/b.rs").into()),
                     (VariableName::Filename, "b.rs".into()),
                     (VariableName::RelativeFile, separator!("rust/b.rs").into()),
-                    (VariableName::RelativeDir, "rust".into()),
                     (VariableName::Dirname, path!("/dir/rust").into()),
                     (VariableName::Stem, "b".into()),
                     (VariableName::WorktreeRoot, path!("/dir").into()),
@@ -582,7 +573,6 @@ mod tests {
                     (VariableName::File, path!("/dir/a.ts").into()),
                     (VariableName::Filename, "a.ts".into()),
                     (VariableName::RelativeFile, "a.ts".into()),
-                    (VariableName::RelativeDir, ".".into()),
                     (VariableName::Dirname, path!("/dir").into()),
                     (VariableName::Stem, "a".into()),
                     (VariableName::WorktreeRoot, path!("/dir").into()),

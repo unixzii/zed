@@ -11,7 +11,8 @@ use language::{
     DiagnosticSeverity, LanguageServerId, Point, ToOffset as _, ToPoint as _,
 };
 use project::lsp_store::CompletionDocumentation;
-use project::{Completion, CompletionResponse, CompletionSource, Project, ProjectPath};
+use project::{Completion, CompletionSource, Project, ProjectPath};
+use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::ops::Range;
 use std::path::Path;
@@ -640,18 +641,18 @@ impl CompletionProvider for RustStyleCompletionProvider {
         _: editor::CompletionContext,
         _window: &mut Window,
         cx: &mut Context<Editor>,
-    ) -> Task<Result<Vec<CompletionResponse>>> {
+    ) -> Task<Result<Option<Vec<project::Completion>>>> {
         let Some(replace_range) = completion_replace_range(&buffer.read(cx).snapshot(), &position)
         else {
-            return Task::ready(Ok(Vec::new()));
+            return Task::ready(Ok(Some(Vec::new())));
         };
 
         self.div_inspector.update(cx, |div_inspector, _cx| {
             div_inspector.rust_completion_replace_range = Some(replace_range.clone());
         });
 
-        Task::ready(Ok(vec![CompletionResponse {
-            completions: STYLE_METHODS
+        Task::ready(Ok(Some(
+            STYLE_METHODS
                 .iter()
                 .map(|(_, method)| Completion {
                     replace_range: replace_range.clone(),
@@ -666,17 +667,25 @@ impl CompletionProvider for RustStyleCompletionProvider {
                     confirm: None,
                 })
                 .collect(),
-            is_incomplete: false,
-        }]))
+        )))
+    }
+
+    fn resolve_completions(
+        &self,
+        _buffer: Entity<Buffer>,
+        _completion_indices: Vec<usize>,
+        _completions: Rc<RefCell<Box<[Completion]>>>,
+        _cx: &mut Context<Editor>,
+    ) -> Task<Result<bool>> {
+        Task::ready(Ok(true))
     }
 
     fn is_completion_trigger(
         &self,
         buffer: &Entity<language::Buffer>,
         position: language::Anchor,
-        _text: &str,
-        _trigger_in_words: bool,
-        _menu_is_open: bool,
+        _: &str,
+        _: bool,
         cx: &mut Context<Editor>,
     ) -> bool {
         completion_replace_range(&buffer.read(cx).snapshot(), &position).is_some()
@@ -715,7 +724,7 @@ fn completion_replace_range(snapshot: &BufferSnapshot, anchor: &Anchor) -> Optio
 
     if end_in_line > start_in_line {
         let replace_start = snapshot.anchor_before(line_start + start_in_line);
-        let replace_end = snapshot.anchor_after(line_start + end_in_line);
+        let replace_end = snapshot.anchor_before(line_start + end_in_line);
         Some(replace_start..replace_end)
     } else {
         None

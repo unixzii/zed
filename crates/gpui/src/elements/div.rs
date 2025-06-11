@@ -17,12 +17,11 @@
 
 use crate::{
     Action, AnyDrag, AnyElement, AnyTooltip, AnyView, App, Bounds, ClickEvent, DispatchPhase,
-    Element, ElementId, Entity, FocusHandle, Global, GlobalElementId, Hitbox, HitboxBehavior,
-    HitboxId, InspectorElementId, IntoElement, IsZero, KeyContext, KeyDownEvent, KeyUpEvent,
-    LayoutId, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Overflow, ParentElement, Pixels, Point, Render, ScrollWheelEvent, SharedString, Size, Style,
-    StyleRefinement, Styled, Task, TooltipId, Visibility, Window, WindowControlArea, point, px,
-    size,
+    Element, ElementId, Entity, FocusHandle, Global, GlobalElementId, Hitbox, HitboxId,
+    InspectorElementId, IntoElement, IsZero, KeyContext, KeyDownEvent, KeyUpEvent, LayoutId,
+    ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Overflow,
+    ParentElement, Pixels, Point, Render, ScrollWheelEvent, SharedString, Size, Style,
+    StyleRefinement, Styled, Task, TooltipId, Visibility, Window, point, px, size,
 };
 use collections::HashMap;
 use refineable::Refineable;
@@ -314,7 +313,7 @@ impl Interactivity {
     ) {
         self.scroll_wheel_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
-                if phase == DispatchPhase::Bubble && hitbox.should_handle_scroll(window) {
+                if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx);
                 }
             }));
@@ -568,26 +567,19 @@ impl Interactivity {
         });
     }
 
-    /// Block the mouse from all interactions with elements behind this element's hitbox. Typically
-    /// `block_mouse_except_scroll` should be preferred.
-    ///
+    /// Block the mouse from interacting with this element or any of its children
     /// The imperative API equivalent to [`InteractiveElement::occlude`]
     pub fn occlude_mouse(&mut self) {
-        self.hitbox_behavior = HitboxBehavior::BlockMouse;
+        self.occlude_mouse = true;
     }
 
-    /// Set the bounds of this element as a window control area for the platform window.
-    /// The imperative API equivalent to [`InteractiveElement::window_control_area`]
-    pub fn window_control_area(&mut self, area: WindowControlArea) {
-        self.window_control = Some(area);
-    }
-
-    /// Block non-scroll mouse interactions with elements behind this element's hitbox. See
-    /// [`Hitbox::is_hovered`] for details.
-    ///
+    /// Registers event handles that stop propagation of mouse events for non-scroll events.
     /// The imperative API equivalent to [`InteractiveElement::block_mouse_except_scroll`]
-    pub fn block_mouse_except_scroll(&mut self) {
-        self.hitbox_behavior = HitboxBehavior::BlockMouseExceptScroll;
+    pub fn stop_mouse_events_except_scroll(&mut self) {
+        self.on_any_mouse_down(|_, _, cx| cx.stop_propagation());
+        self.on_any_mouse_up(|_, _, cx| cx.stop_propagation());
+        self.on_click(|_, _, cx| cx.stop_propagation());
+        self.on_hover(|_, _, cx| cx.stop_propagation());
     }
 }
 
@@ -957,27 +949,22 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Block the mouse from all interactions with elements behind this element's hitbox. Typically
-    /// `block_mouse_except_scroll` should be preferred.
+    /// Block the mouse from interacting with this element or any of its children
     /// The fluent API equivalent to [`Interactivity::occlude_mouse`]
     fn occlude(mut self) -> Self {
         self.interactivity().occlude_mouse();
         self
     }
 
-    /// Set the bounds of this element as a window control area for the platform window.
-    /// The fluent API equivalent to [`Interactivity::window_control_area`]
-    fn window_control_area(mut self, area: WindowControlArea) -> Self {
-        self.interactivity().window_control_area(area);
-        self
+    /// Stops propagation of left mouse down event.
+    fn block_mouse_down(mut self) -> Self {
+        self.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     }
 
-    /// Block non-scroll mouse interactions with elements behind this element's hitbox. See
-    /// [`Hitbox::is_hovered`] for details.
-    ///
+    /// Registers event handles that stop propagation of mouse events for non-scroll events.
     /// The fluent API equivalent to [`Interactivity::block_mouse_except_scroll`]
-    fn block_mouse_except_scroll(mut self) -> Self {
-        self.interactivity().block_mouse_except_scroll();
+    fn stop_mouse_events_except_scroll(mut self) -> Self {
+        self.interactivity().stop_mouse_events_except_scroll();
         self
     }
 }
@@ -1461,8 +1448,7 @@ pub struct Interactivity {
     pub(crate) drag_listener: Option<(Arc<dyn Any>, DragListener)>,
     pub(crate) hover_listener: Option<Box<dyn Fn(&bool, &mut Window, &mut App)>>,
     pub(crate) tooltip_builder: Option<TooltipBuilder>,
-    pub(crate) window_control: Option<WindowControlArea>,
-    pub(crate) hitbox_behavior: HitboxBehavior,
+    pub(crate) occlude_mouse: bool,
 
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub(crate) source_location: Option<&'static core::panic::Location<'static>>,
@@ -1608,7 +1594,7 @@ impl Interactivity {
                         style.overflow_mask(bounds, window.rem_size()),
                         |window| {
                             let hitbox = if self.should_insert_hitbox(&style, window, cx) {
-                                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
+                                Some(window.insert_hitbox(bounds, self.occlude_mouse))
                             } else {
                                 None
                             };
@@ -1625,8 +1611,7 @@ impl Interactivity {
     }
 
     fn should_insert_hitbox(&self, style: &Style, window: &Window, cx: &App) -> bool {
-        self.hitbox_behavior != HitboxBehavior::Normal
-            || self.window_control.is_some()
+        self.occlude_mouse
             || style.mouse_cursor.is_some()
             || self.group.is_some()
             || self.scroll_offset.is_some()
@@ -1744,21 +1729,16 @@ impl Interactivity {
 
                                         if let Some(drag) = cx.active_drag.as_ref() {
                                             if let Some(mouse_cursor) = drag.cursor_style {
-                                                window.set_window_cursor_style(mouse_cursor);
+                                                window.set_cursor_style(mouse_cursor, None);
                                             }
                                         } else {
                                             if let Some(mouse_cursor) = style.mouse_cursor {
-                                                window.set_cursor_style(mouse_cursor, hitbox);
+                                                window.set_cursor_style(mouse_cursor, Some(hitbox));
                                             }
                                         }
 
                                         if let Some(group) = self.group.clone() {
                                             GroupHitboxes::push(group, hitbox.id, cx);
-                                        }
-
-                                        if let Some(area) = self.window_control {
-                                            window
-                                                .insert_window_control_hitbox(area, hitbox.clone());
                                         }
 
                                         self.paint_mouse_listeners(
@@ -2290,7 +2270,7 @@ impl Interactivity {
             let hitbox = hitbox.clone();
             let current_view = window.current_view();
             window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
-                if phase == DispatchPhase::Bubble && hitbox.should_handle_scroll(window) {
+                if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     let mut scroll_offset = scroll_offset.borrow_mut();
                     let old_scroll_offset = *scroll_offset;
                     let delta = event.delta.pixel_delta(line_height);
@@ -2320,6 +2300,7 @@ impl Interactivity {
                     }
                     scroll_offset.y += delta_y;
                     scroll_offset.x += delta_x;
+                    cx.stop_propagation();
                     if *scroll_offset != old_scroll_offset {
                         cx.notify(current_view);
                     }

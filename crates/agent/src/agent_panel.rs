@@ -57,7 +57,7 @@ use zed_llm_client::{CompletionIntent, UsageLimit};
 use crate::active_thread::{self, ActiveThread, ActiveThreadEvent};
 use crate::agent_configuration::{AgentConfiguration, AssistantConfigurationEvent};
 use crate::agent_diff::AgentDiff;
-use crate::history_store::{HistoryEntryId, HistoryStore};
+use crate::history_store::{HistoryStore, RecentEntry};
 use crate::message_editor::{MessageEditor, MessageEditorEvent};
 use crate::thread::{Thread, ThreadError, ThreadId, ThreadSummary, TokenUsageRatio};
 use crate::thread_history::{HistoryEntryElement, ThreadHistory};
@@ -67,8 +67,8 @@ use crate::{
     AddContextServer, AgentDiffPane, ContextStore, ContinueThread, ContinueWithBurnMode,
     DeleteRecentlyOpenThread, ExpandMessageEditor, Follow, InlineAssistant, NewTextThread,
     NewThread, OpenActiveThreadAsMarkdown, OpenAgentDiff, OpenHistory, ResetTrialEndUpsell,
-    ResetTrialUpsell, TextThreadStore, ThreadEvent, ToggleBurnMode, ToggleContextPicker,
-    ToggleNavigationMenu, ToggleOptionsMenu,
+    ResetTrialUpsell, TextThreadStore, ThreadEvent, ToggleContextPicker, ToggleNavigationMenu,
+    ToggleOptionsMenu,
 };
 
 const AGENT_PANEL_KEY: &str = "agent_panel";
@@ -174,7 +174,7 @@ enum ActiveView {
         thread: WeakEntity<Thread>,
         _subscriptions: Vec<gpui::Subscription>,
     },
-    TextThread {
+    PromptEditor {
         context_editor: Entity<ContextEditor>,
         title_editor: Entity<Editor>,
         buffer_search_bar: Entity<BufferSearchBar>,
@@ -194,7 +194,7 @@ impl ActiveView {
     pub fn which_font_size_used(&self) -> WhichFontSize {
         match self {
             ActiveView::Thread { .. } | ActiveView::History => WhichFontSize::AgentFont,
-            ActiveView::TextThread { .. } => WhichFontSize::BufferFont,
+            ActiveView::PromptEditor { .. } => WhichFontSize::BufferFont,
             ActiveView::Configuration => WhichFontSize::None,
         }
     }
@@ -257,7 +257,6 @@ impl ActiveView {
 
     pub fn prompt_editor(
         context_editor: Entity<ContextEditor>,
-        history_store: Entity<HistoryStore>,
         language_registry: Arc<LanguageRegistry>,
         window: &mut Window,
         cx: &mut App,
@@ -323,19 +322,6 @@ impl ActiveView {
                             editor.set_text(summary, window, cx);
                         })
                     }
-                    ContextEvent::PathChanged { old_path, new_path } => {
-                        history_store.update(cx, |history_store, cx| {
-                            if let Some(old_path) = old_path {
-                                history_store
-                                    .replace_recently_opened_text_thread(old_path, new_path, cx);
-                            } else {
-                                history_store.push_recently_opened_entry(
-                                    HistoryEntryId::Context(new_path.clone()),
-                                    cx,
-                                );
-                            }
-                        });
-                    }
                     _ => {}
                 }
             }),
@@ -347,7 +333,7 @@ impl ActiveView {
             buffer_search_bar.set_active_pane_item(Some(&context_editor), window, cx)
         });
 
-        Self::TextThread {
+        Self::PromptEditor {
             context_editor,
             title_editor: editor,
             buffer_search_bar,
@@ -530,7 +516,8 @@ impl AgentPanel {
             HistoryStore::new(
                 thread_store.clone(),
                 context_store.clone(),
-                [HistoryEntryId::Thread(thread_id)],
+                [RecentEntry::Thread(thread_id, thread.clone())],
+                window,
                 cx,
             )
         });
@@ -557,13 +544,7 @@ impl AgentPanel {
                     editor.insert_default_prompt(window, cx);
                     editor
                 });
-                ActiveView::prompt_editor(
-                    context_editor,
-                    history_store.clone(),
-                    language_registry.clone(),
-                    window,
-                    cx,
-                )
+                ActiveView::prompt_editor(context_editor, language_registry.clone(), window, cx)
             }
         };
 
@@ -600,9 +581,86 @@ impl AgentPanel {
             let panel = weak_panel.clone();
             let assistant_navigation_menu =
                 ContextMenu::build_persistent(window, cx, move |mut menu, _window, cx| {
-                    if let Some(panel) = panel.upgrade() {
-                        menu = Self::populate_recently_opened_menu_section(menu, panel, cx);
+                    let recently_opened = panel
+                        .update(cx, |this, cx| {
+                            this.history_store.update(cx, |history_store, cx| {
+                                history_store.recently_opened_entries(cx)
+                            })
+                        })
+                        .unwrap_or_default();
+
+                    if !recently_opened.is_empty() {
+                        menu = menu.header("Recently Opened");
+
+                        for entry in recently_opened.iter() {
+                            if let RecentEntry::Context(context) = entry {
+                                if context.read(cx).path().is_none() {
+                                    log::error!(
+                                        "bug: text thread in recent history list was never saved"
+                                    );
+                                    continue;
+                                }
+                            }
+
+                            let summary = entry.summary(cx);
+
+                            menu = menu.entry_with_end_slot_on_hover(
+                                summary,
+                                None,
+                                {
+                                    let panel = panel.clone();
+                                    let entry = entry.clone();
+                                    move |window, cx| {
+                                        panel
+                                            .update(cx, {
+                                                let entry = entry.clone();
+                                                move |this, cx| match entry {
+                                                    RecentEntry::Thread(_, thread) => {
+                                                        this.open_thread(thread, window, cx)
+                                                    }
+                                                    RecentEntry::Context(context) => {
+                                                        let Some(path) = context.read(cx).path()
+                                                        else {
+                                                            return;
+                                                        };
+                                                        this.open_saved_prompt_editor(
+                                                            path.clone(),
+                                                            window,
+                                                            cx,
+                                                        )
+                                                        .detach_and_log_err(cx)
+                                                    }
+                                                }
+                                            })
+                                            .ok();
+                                    }
+                                },
+                                IconName::Close,
+                                "Close Entry".into(),
+                                {
+                                    let panel = panel.clone();
+                                    let entry = entry.clone();
+                                    move |_window, cx| {
+                                        panel
+                                            .update(cx, |this, cx| {
+                                                this.history_store.update(
+                                                    cx,
+                                                    |history_store, cx| {
+                                                        history_store.remove_recently_opened_entry(
+                                                            &entry, cx,
+                                                        );
+                                                    },
+                                                );
+                                            })
+                                            .ok();
+                                    }
+                                },
+                            );
+                        }
+
+                        menu = menu.separator();
                     }
+
                     menu.action("View All", Box::new(OpenHistory))
                         .end_slot_action(DeleteRecentlyOpenThread.boxed_clone())
                         .fixed_width(px(320.).into())
@@ -840,7 +898,6 @@ impl AgentPanel {
         self.set_active_view(
             ActiveView::prompt_editor(
                 context_editor.clone(),
-                self.history_store.clone(),
                 self.language_registry.clone(),
                 window,
                 cx,
@@ -927,13 +984,7 @@ impl AgentPanel {
             )
         });
         self.set_active_view(
-            ActiveView::prompt_editor(
-                editor.clone(),
-                self.history_store.clone(),
-                self.language_registry.clone(),
-                window,
-                cx,
-            ),
+            ActiveView::prompt_editor(editor.clone(), self.language_registry.clone(), window, cx),
             window,
             cx,
         );
@@ -1033,23 +1084,9 @@ impl AgentPanel {
     pub fn go_back(&mut self, _: &workspace::GoBack, window: &mut Window, cx: &mut Context<Self>) {
         match self.active_view {
             ActiveView::Configuration | ActiveView::History => {
-                if let Some(previous_view) = self.previous_view.take() {
-                    self.active_view = previous_view;
-
-                    match &self.active_view {
-                        ActiveView::Thread { .. } => {
-                            self.message_editor.focus_handle(cx).focus(window);
-                        }
-                        ActiveView::TextThread { context_editor, .. } => {
-                            context_editor.focus_handle(cx).focus(window);
-                        }
-                        _ => {}
-                    }
-                } else {
-                    self.active_view =
-                        ActiveView::thread(self.thread.read(cx).thread().clone(), window, cx);
-                    self.message_editor.focus_handle(cx).focus(window);
-                }
+                self.active_view =
+                    ActiveView::thread(self.thread.read(cx).thread().clone(), window, cx);
+                self.message_editor.focus_handle(cx).focus(window);
                 cx.notify();
             }
             _ => {}
@@ -1272,27 +1309,9 @@ impl AgentPanel {
         }
     }
 
-    fn toggle_burn_mode(
-        &mut self,
-        _: &ToggleBurnMode,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.thread.update(cx, |active_thread, cx| {
-            active_thread.thread().update(cx, |thread, _cx| {
-                let current_mode = thread.completion_mode();
-
-                thread.set_completion_mode(match current_mode {
-                    CompletionMode::Burn => CompletionMode::Normal,
-                    CompletionMode::Normal => CompletionMode::Burn,
-                });
-            });
-        });
-    }
-
     pub(crate) fn active_context_editor(&self) -> Option<Entity<ContextEditor>> {
         match &self.active_view {
-            ActiveView::TextThread { context_editor, .. } => Some(context_editor.clone()),
+            ActiveView::PromptEditor { context_editor, .. } => Some(context_editor.clone()),
             _ => None,
         }
     }
@@ -1315,12 +1334,6 @@ impl AgentPanel {
         let current_is_history = matches!(self.active_view, ActiveView::History);
         let new_is_history = matches!(new_view, ActiveView::History);
 
-        let current_is_config = matches!(self.active_view, ActiveView::Configuration);
-        let new_is_config = matches!(new_view, ActiveView::Configuration);
-
-        let current_is_special = current_is_history || current_is_config;
-        let new_is_special = new_is_history || new_is_config;
-
         match &self.active_view {
             ActiveView::Thread { thread, .. } => {
                 if let Some(thread) = thread.upgrade() {
@@ -1332,6 +1345,16 @@ impl AgentPanel {
                     }
                 }
             }
+            ActiveView::PromptEditor { context_editor, .. } => {
+                let context = context_editor.read(cx).context();
+                // When switching away from an unsaved text thread, delete its entry.
+                if context.read(cx).path().is_none() {
+                    let context = context.clone();
+                    self.history_store.update(cx, |store, cx| {
+                        store.remove_recently_opened_entry(&RecentEntry::Context(context), cx);
+                    });
+                }
+            }
             _ => {}
         }
 
@@ -1339,95 +1362,30 @@ impl AgentPanel {
             ActiveView::Thread { thread, .. } => self.history_store.update(cx, |store, cx| {
                 if let Some(thread) = thread.upgrade() {
                     let id = thread.read(cx).id().clone();
-                    store.push_recently_opened_entry(HistoryEntryId::Thread(id), cx);
+                    store.push_recently_opened_entry(RecentEntry::Thread(id, thread), cx);
                 }
             }),
-            ActiveView::TextThread { context_editor, .. } => {
+            ActiveView::PromptEditor { context_editor, .. } => {
                 self.history_store.update(cx, |store, cx| {
-                    if let Some(path) = context_editor.read(cx).context().read(cx).path() {
-                        store.push_recently_opened_entry(HistoryEntryId::Context(path.clone()), cx)
-                    }
+                    let context = context_editor.read(cx).context().clone();
+                    store.push_recently_opened_entry(RecentEntry::Context(context), cx)
                 })
             }
             _ => {}
         }
 
-        if current_is_special && !new_is_special {
+        if current_is_history && !new_is_history {
             self.active_view = new_view;
-        } else if !current_is_special && new_is_special {
+        } else if !current_is_history && new_is_history {
             self.previous_view = Some(std::mem::replace(&mut self.active_view, new_view));
         } else {
-            if !new_is_special {
+            if !new_is_history {
                 self.previous_view = None;
             }
             self.active_view = new_view;
         }
 
         self.focus_handle(cx).focus(window);
-    }
-
-    fn populate_recently_opened_menu_section(
-        mut menu: ContextMenu,
-        panel: Entity<Self>,
-        cx: &mut Context<ContextMenu>,
-    ) -> ContextMenu {
-        let entries = panel
-            .read(cx)
-            .history_store
-            .read(cx)
-            .recently_opened_entries(cx);
-
-        if entries.is_empty() {
-            return menu;
-        }
-
-        menu = menu.header("Recently Opened");
-
-        for entry in entries {
-            let title = entry.title().clone();
-            let id = entry.id();
-
-            menu = menu.entry_with_end_slot_on_hover(
-                title,
-                None,
-                {
-                    let panel = panel.downgrade();
-                    let id = id.clone();
-                    move |window, cx| {
-                        let id = id.clone();
-                        panel
-                            .update(cx, move |this, cx| match id {
-                                HistoryEntryId::Thread(id) => this
-                                    .open_thread_by_id(&id, window, cx)
-                                    .detach_and_log_err(cx),
-                                HistoryEntryId::Context(path) => this
-                                    .open_saved_prompt_editor(path.clone(), window, cx)
-                                    .detach_and_log_err(cx),
-                            })
-                            .ok();
-                    }
-                },
-                IconName::Close,
-                "Close Entry".into(),
-                {
-                    let panel = panel.downgrade();
-                    let id = id.clone();
-                    move |_window, cx| {
-                        panel
-                            .update(cx, |this, cx| {
-                                this.history_store.update(cx, |history_store, cx| {
-                                    history_store.remove_recently_opened_entry(&id, cx);
-                                });
-                            })
-                            .ok();
-                    }
-                },
-            );
-        }
-
-        menu = menu.separator();
-
-        menu
     }
 }
 
@@ -1436,7 +1394,7 @@ impl Focusable for AgentPanel {
         match &self.active_view {
             ActiveView::Thread { .. } => self.message_editor.focus_handle(cx),
             ActiveView::History => self.history.focus_handle(cx),
-            ActiveView::TextThread { context_editor, .. } => context_editor.focus_handle(cx),
+            ActiveView::PromptEditor { context_editor, .. } => context_editor.focus_handle(cx),
             ActiveView::Configuration => {
                 if let Some(configuration) = self.configuration.as_ref() {
                     configuration.focus_handle(cx)
@@ -1588,7 +1546,7 @@ impl AgentPanel {
                         .into_any_element(),
                 }
             }
-            ActiveView::TextThread {
+            ActiveView::PromptEditor {
                 title_editor,
                 context_editor,
                 ..
@@ -1680,7 +1638,7 @@ impl AgentPanel {
 
         let show_token_count = match &self.active_view {
             ActiveView::Thread { .. } => !is_empty || !editor_empty,
-            ActiveView::TextThread { .. } => true,
+            ActiveView::PromptEditor { .. } => true,
             _ => false,
         };
 
@@ -1996,7 +1954,7 @@ impl AgentPanel {
 
                 Some(token_count)
             }
-            ActiveView::TextThread { context_editor, .. } => {
+            ActiveView::PromptEditor { context_editor, .. } => {
                 let element = render_remaining_tokens(context_editor, cx)?;
 
                 Some(element.into_any_element())
@@ -2710,7 +2668,7 @@ impl AgentPanel {
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.thread.update(cx, |active_thread, cx| {
                                         active_thread.thread().update(cx, |thread, _cx| {
-                                            thread.set_completion_mode(CompletionMode::Burn);
+                                            thread.set_completion_mode(CompletionMode::Max);
                                         });
                                     });
                                     this.continue_conversation(window, cx);
@@ -2914,7 +2872,7 @@ impl AgentPanel {
     ) -> Div {
         let mut registrar = buffer_search::DivRegistrar::new(
             |this, _, _cx| match &this.active_view {
-                ActiveView::TextThread {
+                ActiveView::PromptEditor {
                     buffer_search_bar, ..
                 } => Some(buffer_search_bar.clone()),
                 _ => None,
@@ -3032,7 +2990,7 @@ impl AgentPanel {
                     .detach();
                 });
             }
-            ActiveView::TextThread { context_editor, .. } => {
+            ActiveView::PromptEditor { context_editor, .. } => {
                 context_editor.update(cx, |context_editor, cx| {
                     ContextEditor::insert_dragged_files(
                         context_editor,
@@ -3059,7 +3017,7 @@ impl AgentPanel {
     fn key_context(&self) -> KeyContext {
         let mut key_context = KeyContext::new_with_defaults();
         key_context.add("AgentPanel");
-        if matches!(self.active_view, ActiveView::TextThread { .. }) {
+        if matches!(self.active_view, ActiveView::PromptEditor { .. }) {
             key_context.add("prompt_editor");
         }
         key_context
@@ -3107,12 +3065,11 @@ impl Render for AgentPanel {
             .on_action(cx.listener(|this, _: &ContinueWithBurnMode, window, cx| {
                 this.thread.update(cx, |active_thread, cx| {
                     active_thread.thread().update(cx, |thread, _cx| {
-                        thread.set_completion_mode(CompletionMode::Burn);
+                        thread.set_completion_mode(CompletionMode::Max);
                     });
                 });
                 this.continue_conversation(window, cx);
             }))
-            .on_action(cx.listener(Self::toggle_burn_mode))
             .child(self.render_toolbar(window, cx))
             .children(self.render_upsell(window, cx))
             .children(self.render_trial_end_upsell(window, cx))
@@ -3125,7 +3082,7 @@ impl Render for AgentPanel {
                     .children(self.render_last_error(cx))
                     .child(self.render_drag_target(cx)),
                 ActiveView::History => parent.child(self.history.clone()),
-                ActiveView::TextThread {
+                ActiveView::PromptEditor {
                     context_editor,
                     buffer_search_bar,
                     ..

@@ -102,7 +102,7 @@ pub struct AgentSettings {
     pub using_outdated_settings_version: bool,
     pub default_profile: AgentProfileId,
     pub default_view: DefaultView,
-    pub profiles: IndexMap<AgentProfileId, AgentProfileSettings>,
+    pub profiles: IndexMap<AgentProfileId, AgentProfile>,
     pub always_allow_tool_actions: bool,
     pub notify_when_agent_waiting: NotifyWhenAgentWaiting,
     pub play_sound_when_agent_done: bool,
@@ -372,8 +372,6 @@ impl AgentSettingsContent {
                                 None,
                                 None,
                                 Some(language_model.supports_tools()),
-                                Some(language_model.supports_images()),
-                                None,
                             )),
                             api_url,
                         });
@@ -531,7 +529,7 @@ impl AgentSettingsContent {
     pub fn create_profile(
         &mut self,
         profile_id: AgentProfileId,
-        profile_settings: AgentProfileSettings,
+        profile: AgentProfile,
     ) -> Result<()> {
         self.v2_setting(|settings| {
             let profiles = settings.profiles.get_or_insert_default();
@@ -542,10 +540,10 @@ impl AgentSettingsContent {
             profiles.insert(
                 profile_id,
                 AgentProfileContent {
-                    name: profile_settings.name.into(),
-                    tools: profile_settings.tools,
-                    enable_all_context_servers: Some(profile_settings.enable_all_context_servers),
-                    context_servers: profile_settings
+                    name: profile.name.into(),
+                    tools: profile.tools,
+                    enable_all_context_servers: Some(profile.enable_all_context_servers),
+                    context_servers: profile
                         .context_servers
                         .into_iter()
                         .map(|(server_id, preset)| {
@@ -691,15 +689,14 @@ pub struct AgentSettingsContentV2 {
 pub enum CompletionMode {
     #[default]
     Normal,
-    #[serde(alias = "max")]
-    Burn,
+    Max,
 }
 
 impl From<CompletionMode> for zed_llm_client::CompletionMode {
     fn from(value: CompletionMode) -> Self {
         match value {
             CompletionMode::Normal => zed_llm_client::CompletionMode::Normal,
-            CompletionMode::Burn => zed_llm_client::CompletionMode::Max,
+            CompletionMode::Max => zed_llm_client::CompletionMode::Max,
         }
     }
 }
@@ -730,7 +727,6 @@ impl JsonSchema for LanguageModelProviderSetting {
                 "zed.dev".into(),
                 "copilot_chat".into(),
                 "deepseek".into(),
-                "openrouter".into(),
                 "mistral".into(),
             ]),
             ..Default::default()
@@ -910,7 +906,7 @@ impl Settings for AgentSettings {
                     .extend(profiles.into_iter().map(|(id, profile)| {
                         (
                             id,
-                            AgentProfileSettings {
+                            AgentProfile {
                                 name: profile.name.into(),
                                 tools: profile.tools,
                                 enable_all_context_servers: profile

@@ -138,7 +138,7 @@
       "cmd-;": "editor::ToggleLineNumbers",
       "cmd-'": "editor::ToggleSelectedDiffHunks",
       "cmd-\"": "editor::ExpandAllDiffHunks",
-      "cmd-alt-g b": "git::Blame",
+      "cmd-alt-g b": "editor::ToggleGitBlame",
       "cmd-i": "editor::ShowSignatureHelp",
       "f9": "editor::ToggleBreakpoint",
       "shift-f9": "editor::EditLogBreakpoint",
@@ -181,7 +181,8 @@
     "use_key_equivalents": true,
     "bindings": {
       "alt-tab": "editor::NextEditPrediction",
-      "alt-shift-tab": "editor::PreviousEditPrediction"
+      "alt-shift-tab": "editor::PreviousEditPrediction",
+      "ctrl-cmd-right": "editor::AcceptPartialEditPrediction"
     }
   },
   {
@@ -252,6 +253,7 @@
     "bindings": {
       "cmd-enter": "assistant::Assist",
       "cmd-s": "workspace::Save",
+      "cmd->": "assistant::QuoteSelection",
       "cmd-<": "assistant::InsertIntoEditor",
       "shift-enter": "assistant::Split",
       "ctrl-r": "assistant::CycleMessageRole",
@@ -275,15 +277,13 @@
       "cmd-i": "agent::ToggleProfileSelector",
       "cmd-alt-/": "agent::ToggleModelSelector",
       "cmd-shift-a": "agent::ToggleContextPicker",
-      "cmd-shift-j": "agent::ToggleNavigationMenu",
+      "cmd-shift-o": "agent::ToggleNavigationMenu",
       "cmd-shift-i": "agent::ToggleOptionsMenu",
       "shift-alt-escape": "agent::ExpandMessageEditor",
-      "cmd->": "assistant::QuoteSelection",
       "cmd-alt-e": "agent::RemoveAllContext",
       "cmd-shift-e": "project_panel::ToggleFocus",
       "cmd-shift-enter": "agent::ContinueThread",
-      "alt-enter": "agent::ContinueWithBurnMode",
-      "cmd-alt-b": "agent::ToggleBurnMode"
+      "alt-enter": "agent::ContinueWithBurnMode"
     }
   },
   {
@@ -314,9 +314,7 @@
       "enter": "agent::Chat",
       "cmd-enter": "agent::ChatWithFollow",
       "cmd-i": "agent::ToggleProfileSelector",
-      "shift-ctrl-r": "agent::OpenAgentDiff",
-      "cmd-shift-y": "agent::KeepAll",
-      "cmd-shift-n": "agent::RejectAll"
+      "shift-ctrl-r": "agent::OpenAgentDiff"
     }
   },
   {
@@ -545,7 +543,9 @@
       "cmd-\\": "pane::SplitRight",
       "cmd-k v": "markdown::OpenPreviewToTheSide",
       "cmd-shift-v": "markdown::OpenPreview",
-      "ctrl-cmd-c": "editor::DisplayCursorNames"
+      "ctrl-cmd-c": "editor::DisplayCursorNames",
+      "cmd-shift-backspace": "editor::GoToPreviousChange",
+      "cmd-shift-alt-backspace": "editor::GoToNextChange"
     }
   },
   {
@@ -553,9 +553,7 @@
     "use_key_equivalents": true,
     "bindings": {
       "cmd-shift-o": "outline::Toggle",
-      "ctrl-g": "go_to_line::Toggle",
-      "cmd-shift-backspace": "editor::GoToPreviousChange",
-      "cmd-shift-alt-backspace": "editor::GoToNextChange"
+      "ctrl-g": "go_to_line::Toggle"
     }
   },
   {
@@ -583,9 +581,9 @@
     "bindings": {
       // Change the default action on `menu::Confirm` by setting the parameter
       // "alt-cmd-o": ["projects::OpenRecent", {"create_new_window": true }],
-      "alt-cmd-o": ["projects::OpenRecent", { "create_new_window": false }],
-      "ctrl-cmd-o": ["projects::OpenRemote", { "from_existing_connection": false, "create_new_window": false }],
-      "ctrl-cmd-shift-o": ["projects::OpenRemote", { "from_existing_connection": true, "create_new_window": false }],
+      "alt-cmd-o": "projects::OpenRecent",
+      "ctrl-cmd-o": "projects::OpenRemote",
+      "ctrl-cmd-shift-o": ["projects::OpenRemote", { "from_existing_connection": true }],
       "alt-cmd-b": "branches::OpenRecent",
       "ctrl-~": "workspace::NewTerminal",
       "cmd-s": "workspace::Save",
@@ -718,16 +716,14 @@
     "context": "Editor && edit_prediction",
     "bindings": {
       "alt-tab": "editor::AcceptEditPrediction",
-      "tab": "editor::AcceptEditPrediction",
-      "ctrl-cmd-right": "editor::AcceptPartialEditPrediction"
+      "tab": "editor::AcceptEditPrediction"
     }
   },
   {
     "context": "Editor && edit_prediction_conflict",
     "use_key_equivalents": true,
     "bindings": {
-      "alt-tab": "editor::AcceptEditPrediction",
-      "ctrl-cmd-right": "editor::AcceptPartialEditPrediction"
+      "alt-tab": "editor::AcceptEditPrediction"
     }
   },
   {
@@ -968,9 +964,7 @@
     "use_key_equivalents": true,
     "bindings": {
       "ctrl-backspace": "collab_panel::Remove",
-      "space": "menu::Confirm",
-      "cmd-up": "collab_panel::MoveChannelUp",
-      "cmd-down": "collab_panel::MoveChannelDown"
+      "space": "menu::Confirm"
     }
   },
   {
@@ -1004,14 +998,6 @@
     "use_key_equivalents": true,
     "bindings": {
       "tab": "channel_modal::ToggleMode"
-    }
-  },
-  {
-    "context": "FileFinder",
-    "use_key_equivalents": true,
-    "bindings": {
-      "cmd-shift-a": "file_finder::ToggleSplitMenu",
-      "cmd-shift-i": "file_finder::ToggleFilterMenu"
     }
   },
   {

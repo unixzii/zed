@@ -70,7 +70,7 @@ use workspace::{
     create_and_open_local_file, notifications::simple_message_notification::MessageNotification,
     open_new,
 };
-use workspace::{CloseIntent, CloseWindow, RestoreBanner, with_active_or_new_workspace};
+use workspace::{CloseIntent, RestoreBanner};
 use workspace::{Pane, notifications::DetachAndPromptErr};
 use zed_actions::{
     OpenAccountSettings, OpenBrowser, OpenDocs, OpenServerSettings, OpenSettings, OpenZedUrl, Quit,
@@ -111,98 +111,6 @@ pub fn init(cx: &mut App) {
     if ReleaseChannel::global(cx) == ReleaseChannel::Dev {
         cx.on_action(test_panic);
     }
-
-    cx.on_action(|_: &OpenLog, cx| {
-        with_active_or_new_workspace(cx, |workspace, window, cx| {
-            open_log_file(workspace, window, cx);
-        });
-    });
-    cx.on_action(|_: &zed_actions::OpenLicenses, cx| {
-        with_active_or_new_workspace(cx, |workspace, window, cx| {
-            open_bundled_file(
-                workspace,
-                asset_str::<Assets>("licenses.md"),
-                "Open Source License Attribution",
-                "Markdown",
-                window,
-                cx,
-            );
-        });
-    });
-    cx.on_action(|_: &zed_actions::OpenTelemetryLog, cx| {
-        with_active_or_new_workspace(cx, |workspace, window, cx| {
-            open_telemetry_log_file(workspace, window, cx);
-        });
-    });
-    cx.on_action(|&zed_actions::OpenKeymap, cx| {
-        with_active_or_new_workspace(cx, |_, window, cx| {
-            open_settings_file(
-                paths::keymap_file(),
-                || settings::initial_keymap_content().as_ref().into(),
-                window,
-                cx,
-            );
-        });
-    });
-    cx.on_action(|_: &OpenSettings, cx| {
-        with_active_or_new_workspace(cx, |_, window, cx| {
-            open_settings_file(
-                paths::settings_file(),
-                || settings::initial_user_settings_content().as_ref().into(),
-                window,
-                cx,
-            );
-        });
-    });
-    cx.on_action(|_: &OpenAccountSettings, cx| {
-        with_active_or_new_workspace(cx, |_, _, cx| {
-            cx.open_url(&zed_urls::account_url(cx));
-        });
-    });
-    cx.on_action(|_: &OpenTasks, cx| {
-        with_active_or_new_workspace(cx, |_, window, cx| {
-            open_settings_file(
-                paths::tasks_file(),
-                || settings::initial_tasks_content().as_ref().into(),
-                window,
-                cx,
-            );
-        });
-    });
-    cx.on_action(|_: &OpenDebugTasks, cx| {
-        with_active_or_new_workspace(cx, |_, window, cx| {
-            open_settings_file(
-                paths::debug_scenarios_file(),
-                || settings::initial_debug_tasks_content().as_ref().into(),
-                window,
-                cx,
-            );
-        });
-    });
-    cx.on_action(|_: &OpenDefaultSettings, cx| {
-        with_active_or_new_workspace(cx, |workspace, window, cx| {
-            open_bundled_file(
-                workspace,
-                settings::default_settings(),
-                "Default Settings",
-                "JSON",
-                window,
-                cx,
-            );
-        });
-    });
-    cx.on_action(|_: &zed_actions::OpenDefaultKeymap, cx| {
-        with_active_or_new_workspace(cx, |workspace, window, cx| {
-            open_bundled_file(
-                workspace,
-                settings::default_keymap(),
-                "Default Key Bindings",
-                "JSON",
-                window,
-                cx,
-            );
-        });
-    });
 }
 
 fn bind_on_window_closed(cx: &mut App) -> Option<gpui::Subscription> {
@@ -347,7 +255,7 @@ pub fn initialize_workspace(
             handle
                 .update(cx, |workspace, cx| {
                     // We'll handle closing asynchronously
-                    workspace.close_window(&CloseWindow, window, cx);
+                    workspace.close_window(&Default::default(), window, cx);
                     false
                 })
                 .unwrap_or(true)
@@ -595,10 +503,7 @@ fn register_actions(
                     directories: true,
                     multiple: true,
                 },
-                DirectoryLister::Local(
-                    workspace.project().clone(),
-                    workspace.app_state().fs.clone(),
-                ),
+                DirectoryLister::Local(workspace.app_state().fs.clone()),
                 window,
                 cx,
             );
@@ -775,9 +680,99 @@ fn register_actions(
                 |_, _, _| None,
             );
         })
+        .register_action(|workspace, _: &OpenLog, window, cx| {
+            open_log_file(workspace, window, cx);
+        })
+        .register_action(|workspace, _: &zed_actions::OpenLicenses, window, cx| {
+            open_bundled_file(
+                workspace,
+                asset_str::<Assets>("licenses.md"),
+                "Open Source License Attribution",
+                "Markdown",
+                window,
+                cx,
+            );
+        })
+        .register_action(
+            move |workspace: &mut Workspace,
+                  _: &zed_actions::OpenTelemetryLog,
+                  window: &mut Window,
+                  cx: &mut Context<Workspace>| {
+                open_telemetry_log_file(workspace, window, cx);
+            },
+        )
+        .register_action(
+            move |_: &mut Workspace, _: &zed_actions::OpenKeymap, window, cx| {
+                open_settings_file(
+                    paths::keymap_file(),
+                    || settings::initial_keymap_content().as_ref().into(),
+                    window,
+                    cx,
+                );
+            },
+        )
+        .register_action(move |_: &mut Workspace, _: &OpenSettings, window, cx| {
+            open_settings_file(
+                paths::settings_file(),
+                || settings::initial_user_settings_content().as_ref().into(),
+                window,
+                cx,
+            );
+        })
+        .register_action(
+            |_: &mut Workspace, _: &OpenAccountSettings, _: &mut Window, cx| {
+                cx.open_url(&zed_urls::account_url(cx));
+            },
+        )
+        .register_action(move |_: &mut Workspace, _: &OpenTasks, window, cx| {
+            open_settings_file(
+                paths::tasks_file(),
+                || settings::initial_tasks_content().as_ref().into(),
+                window,
+                cx,
+            );
+        })
+        .register_action(move |_: &mut Workspace, _: &OpenDebugTasks, window, cx| {
+            open_settings_file(
+                paths::debug_scenarios_file(),
+                || settings::initial_debug_tasks_content().as_ref().into(),
+                window,
+                cx,
+            );
+        })
+        .register_action(move |_: &mut Workspace, _: &OpenDebugTasks, window, cx| {
+            open_settings_file(
+                paths::debug_scenarios_file(),
+                || settings::initial_debug_tasks_content().as_ref().into(),
+                window,
+                cx,
+            );
+        })
         .register_action(open_project_settings_file)
         .register_action(open_project_tasks_file)
         .register_action(open_project_debug_tasks_file)
+        .register_action(
+            move |workspace, _: &zed_actions::OpenDefaultKeymap, window, cx| {
+                open_bundled_file(
+                    workspace,
+                    settings::default_keymap(),
+                    "Default Key Bindings",
+                    "JSON",
+                    window,
+                    cx,
+                );
+            },
+        )
+        .register_action(move |workspace, _: &OpenDefaultSettings, window, cx| {
+            open_bundled_file(
+                workspace,
+                settings::default_settings(),
+                "Default Settings",
+                "JSON",
+                window,
+                cx,
+            );
+        })
         .register_action(
             |workspace: &mut Workspace,
              _: &project_panel::ToggleFocus,
@@ -1196,15 +1191,19 @@ pub fn handle_settings_file_changes(
             };
 
             let result = cx.update_global(|store: &mut SettingsStore, cx| {
-                let migrating_in_memory = process_settings(content, is_user, store, cx);
-                if let Some(notifier) = MigrationNotification::try_global(cx) {
-                    notifier.update(cx, |_, cx| {
-                        cx.emit(MigrationEvent::ContentChanged {
-                            migration_type: MigrationType::Settings,
-                            migrating_in_memory,
+                let content_migrated = process_settings(content, is_user, store, cx);
+
+                if content_migrated {
+                    if let Some(notifier) = MigrationNotification::try_global(cx) {
+                        notifier.update(cx, |_, cx| {
+                            cx.emit(MigrationEvent::ContentChanged {
+                                migration_type: MigrationType::Settings,
+                                migrated: true,
+                            });
                         });
-                    });
+                    }
                 }
+
                 cx.refresh_windows();
             });
 
@@ -1256,7 +1255,7 @@ pub fn handle_keymap_file_changes(
 
     cx.spawn(async move |cx| {
         let mut user_keymap_content = String::new();
-        let mut migrating_in_memory = false;
+        let mut content_migrated = false;
         loop {
             select_biased! {
                 _ = base_keymap_rx.next() => {},
@@ -1265,10 +1264,10 @@ pub fn handle_keymap_file_changes(
                     if let Some(content) = content {
                         if let Ok(Some(migrated_content)) = migrate_keymap(&content) {
                             user_keymap_content = migrated_content;
-                            migrating_in_memory = true;
+                            content_migrated = true;
                         } else {
                             user_keymap_content = content;
-                            migrating_in_memory = false;
+                            content_migrated = false;
                         }
                     }
                 }
@@ -1278,7 +1277,7 @@ pub fn handle_keymap_file_changes(
                     notifier.update(cx, |_, cx| {
                         cx.emit(MigrationEvent::ContentChanged {
                             migration_type: MigrationType::Keymap,
-                            migrating_in_memory,
+                            migrated: content_migrated,
                         });
                     });
                 }
@@ -2139,6 +2138,7 @@ mod tests {
                 pane.update(cx, |pane, cx| {
                     drop(editor);
                     pane.close_active_item(&Default::default(), window, cx)
+                        .unwrap()
                 })
             })
             .unwrap();

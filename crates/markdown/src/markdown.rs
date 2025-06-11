@@ -3,7 +3,6 @@ mod path_range;
 
 use base64::Engine as _;
 use futures::FutureExt as _;
-use gpui::HitboxBehavior;
 use language::LanguageName;
 use log::Level;
 pub use path_range::{LineCol, PathWithRange};
@@ -576,9 +575,9 @@ impl MarkdownElement {
                 .is_some();
 
         if is_hovering_link {
-            window.set_cursor_style(CursorStyle::PointingHand, hitbox);
+            window.set_cursor_style(CursorStyle::PointingHand, Some(hitbox));
         } else {
-            window.set_cursor_style(CursorStyle::IBeam, hitbox);
+            window.set_cursor_style(CursorStyle::IBeam, Some(hitbox));
         }
 
         let on_open_url = self.on_url_click.take();
@@ -1212,7 +1211,7 @@ impl Element for MarkdownElement {
         window.set_focus_handle(&focus_handle, cx);
         window.set_view_id(self.markdown.entity_id());
 
-        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
+        let hitbox = window.insert_hitbox(bounds, false);
         rendered_markdown.element.prepaint(window, cx);
         self.autoscroll(&rendered_markdown.text, window, cx);
         hitbox

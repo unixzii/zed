@@ -11,7 +11,7 @@ use assistant_slash_commands::FileCommandMetadata;
 use client::{self, proto, telemetry::Telemetry};
 use clock::ReplicaId;
 use collections::{HashMap, HashSet};
-use fs::{Fs, RenameOptions};
+use fs::{Fs, RemoveOptions};
 use futures::{FutureExt, StreamExt, future::Shared};
 use gpui::{
     App, AppContext as _, Context, Entity, EventEmitter, RenderImage, SharedString, Subscription,
@@ -452,10 +452,6 @@ pub enum ContextEvent {
     MessagesEdited,
     SummaryChanged,
     SummaryGenerated,
-    PathChanged {
-        old_path: Option<Arc<Path>>,
-        new_path: Arc<Path>,
-    },
     StreamedCompletion,
     StartedThoughtProcess(Range<language::Anchor>),
     EndedThoughtProcess(language::Anchor),
@@ -2898,34 +2894,22 @@ impl AssistantContext {
                 }
 
                 fs.create_dir(contexts_dir().as_ref()).await?;
-
-                // rename before write ensures that only one file exists
-                if let Some(old_path) = old_path.as_ref() {
+                fs.atomic_write(new_path.clone(), serde_json::to_string(&context).unwrap())
+                    .await?;
+                if let Some(old_path) = old_path {
                     if new_path.as_path() != old_path.as_ref() {
-                        fs.rename(
+                        fs.remove_file(
                             &old_path,
-                            &new_path,
-                            RenameOptions {
-                                overwrite: true,
-                                ignore_if_exists: true,
+                            RemoveOptions {
+                                recursive: false,
+                                ignore_if_not_exists: true,
                             },
                         )
                         .await?;
                     }
                 }
 
-                // update path before write in case it fails
-                this.update(cx, {
-                    let new_path: Arc<Path> = new_path.clone().into();
-                    move |this, cx| {
-                        this.path = Some(new_path.clone());
-                        cx.emit(ContextEvent::PathChanged { old_path, new_path });
-                    }
-                })
-                .ok();
-
-                fs.atomic_write(new_path, serde_json::to_string(&context).unwrap())
-                    .await?;
+                this.update(cx, |this, _| this.path = Some(new_path.into()))?;
             }
 
             Ok(())
@@ -3293,7 +3277,7 @@ impl SavedContextV0_1_0 {
 
 #[derive(Debug, Clone)]
 pub struct SavedContextMetadata {
-    pub title: SharedString,
+    pub title: String,
     pub path: Arc<Path>,
     pub mtime: chrono::DateTime<chrono::Local>,
 }

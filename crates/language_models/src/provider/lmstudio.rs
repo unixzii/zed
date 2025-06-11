@@ -7,7 +7,7 @@ use http_client::HttpClient;
 use language_model::{
     AuthenticateError, LanguageModelCompletionError, LanguageModelCompletionEvent,
     LanguageModelToolChoice, LanguageModelToolResultContent, LanguageModelToolUse, MessageContent,
-    StopReason,
+    StopReason, WrappedTextContent,
 };
 use language_model::{
     LanguageModel, LanguageModelId, LanguageModelName, LanguageModelProvider,
@@ -15,7 +15,7 @@ use language_model::{
     LanguageModelRequest, RateLimiter, Role,
 };
 use lmstudio::{
-    ChatCompletionRequest, ChatMessage, ModelType, ResponseStreamEvent, get_models,
+    ChatCompletionRequest, ChatMessage, ModelType, ResponseStreamEvent, get_models, preload_model,
     stream_chat_completion,
 };
 use schemars::JsonSchema;
@@ -84,9 +84,7 @@ impl State {
                     lmstudio::Model::new(
                         &model.id,
                         None,
-                        model
-                            .loaded_context_length
-                            .or_else(|| model.max_context_length),
+                        None,
                         model.capabilities.supports_tool_calls(),
                     )
                 })
@@ -218,6 +216,15 @@ impl LanguageModelProvider for LmStudioLanguageModelProvider {
             .collect()
     }
 
+    fn load_model(&self, model: Arc<dyn LanguageModel>, cx: &App) {
+        let settings = &AllLanguageModelSettings::get_global(cx).lmstudio;
+        let http_client = self.http_client.clone();
+        let api_url = settings.api_url.clone();
+        let id = model.id().0.to_string();
+        cx.spawn(async move |_| preload_model(http_client, &api_url, &id).await)
+            .detach_and_log_err(cx);
+    }
+
     fn is_authenticated(&self, cx: &App) -> bool {
         self.state.read(cx).is_authenticated()
     }
@@ -286,7 +293,11 @@ impl LmStudioLanguageModel {
                     }
                     MessageContent::ToolResult(tool_result) => {
                         match &tool_result.content {
-                            LanguageModelToolResultContent::Text(text) => {
+                            LanguageModelToolResultContent::Text(text)
+                            | LanguageModelToolResultContent::WrappedText(WrappedTextContent {
+                                text,
+                                ..
+                            }) => {
                                 messages.push(lmstudio::ChatMessage::Tool {
                                     content: text.to_string(),
                                     tool_call_id: tool_result.tool_use_id.to_string(),
