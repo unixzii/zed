@@ -150,7 +150,7 @@ impl<T> Drop for Changed<'_, T> {
 }
 
 impl<T> Receiver<T> {
-    pub fn borrow(&mut self) -> parking_lot::MappedRwLockReadGuard<'_, T> {
+    pub fn borrow(&mut self) -> parking_lot::MappedRwLockReadGuard<T> {
         let state = self.state.read();
         self.version = state.version;
         RwLockReadGuard::map(state, |state| &state.value)

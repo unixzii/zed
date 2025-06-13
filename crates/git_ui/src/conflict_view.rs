@@ -248,8 +248,6 @@ fn conflicts_updated(
             removed_block_ids.insert(block_id);
         }
 
-        editor.remove_gutter_highlights::<ConflictsOuter>(removed_highlighted_ranges.clone(), cx);
-
         editor.remove_highlighted_rows::<ConflictsOuter>(removed_highlighted_ranges.clone(), cx);
         editor.remove_highlighted_rows::<ConflictsOurs>(removed_highlighted_ranges.clone(), cx);
         editor
@@ -327,7 +325,8 @@ fn update_conflict_highlighting(
     cx: &mut Context<Editor>,
 ) {
     log::debug!("update conflict highlighting for {conflict:?}");
-
+    let theme = cx.theme().clone();
+    let colors = theme.colors();
     let outer_start = buffer
         .anchor_in_excerpt(excerpt_id, conflict.range.start)
         .unwrap();
@@ -347,29 +346,26 @@ fn update_conflict_highlighting(
         .anchor_in_excerpt(excerpt_id, conflict.theirs.end)
         .unwrap();
 
-    let ours_background = cx.theme().colors().version_control_conflict_marker_ours;
-    let theirs_background = cx.theme().colors().version_control_conflict_marker_theirs;
+    let ours_background = colors.version_control_conflict_ours_background;
+    let ours_marker = colors.version_control_conflict_ours_marker_background;
+    let theirs_background = colors.version_control_conflict_theirs_background;
+    let theirs_marker = colors.version_control_conflict_theirs_marker_background;
+    let divider_background = colors.version_control_conflict_divider_background;
 
     let options = RowHighlightOptions {
-        include_gutter: true,
+        include_gutter: false,
         ..Default::default()
     };
 
-    editor.insert_gutter_highlight::<ConflictsOuter>(
-        outer_start..their_end,
-        |cx| cx.theme().colors().editor_background,
-        cx,
-    );
-
     // Prevent diff hunk highlighting within the entire conflict region.
-    editor.highlight_rows::<ConflictsOuter>(outer_start..outer_end, theirs_background, options, cx);
-    editor.highlight_rows::<ConflictsOurs>(our_start..our_end, ours_background, options, cx);
-    editor.highlight_rows::<ConflictsOursMarker>(
-        outer_start..our_start,
-        ours_background,
+    editor.highlight_rows::<ConflictsOuter>(
+        outer_start..outer_end,
+        divider_background,
         options,
         cx,
     );
+    editor.highlight_rows::<ConflictsOurs>(our_start..our_end, ours_background, options, cx);
+    editor.highlight_rows::<ConflictsOursMarker>(outer_start..our_start, ours_marker, options, cx);
     editor.highlight_rows::<ConflictsTheirs>(
         their_start..their_end,
         theirs_background,
@@ -378,7 +374,7 @@ fn update_conflict_highlighting(
     );
     editor.highlight_rows::<ConflictsTheirsMarker>(
         their_end..outer_end,
-        theirs_background,
+        theirs_marker,
         options,
         cx,
     );
@@ -516,9 +512,6 @@ pub(crate) fn resolve_conflict(
                 let end = snapshot
                     .anchor_in_excerpt(excerpt_id, resolved_conflict.range.end)
                     .unwrap();
-
-                editor.remove_gutter_highlights::<ConflictsOuter>(vec![start..end], cx);
-
                 editor.remove_highlighted_rows::<ConflictsOuter>(vec![start..end], cx);
                 editor.remove_highlighted_rows::<ConflictsOurs>(vec![start..end], cx);
                 editor.remove_highlighted_rows::<ConflictsTheirs>(vec![start..end], cx);

@@ -1,4 +1,8 @@
-use std::{ops::Range, rc::Rc, time::Duration};
+use std::{
+    ops::Range,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use gpui::{
     App, Application, Bounds, Context, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
@@ -18,7 +22,7 @@ pub struct Quote {
     open: f64,
     high: f64,
     low: f64,
-    timestamp: Duration,
+    timestamp: Instant,
     volume: i64,
     turnover: f64,
     ttm: f64,
@@ -46,7 +50,8 @@ impl Quote {
         let open = prev_close + rng.gen_range(-3.0..3.0);
         let high = (prev_close + rng.gen_range::<f64, _>(0.0..10.0)).max(open);
         let low = (prev_close - rng.gen_range::<f64, _>(0.0..10.0)).min(open);
-        let timestamp = Duration::from_secs(rng.gen_range(0..86400));
+        // Randomize the timestamp in the past 24 hours
+        let timestamp = Instant::now() - Duration::from_secs(rng.gen_range(0..86400));
         let volume = rng.gen_range(1_000_000..100_000_000);
         let turnover = last_done * volume as f64;
         let symbol = {
@@ -165,7 +170,7 @@ impl TableRow {
                     .child(format!("{:.2}%", self.quote.change())),
                 "timestamp" => div()
                     .text_color(color)
-                    .child(format!("{:?}", self.quote.timestamp.as_secs())),
+                    .child(format!("{:?}", self.quote.timestamp.elapsed().as_secs())),
                 "open" => div()
                     .text_color(color)
                     .child(format!("{:.2}", self.quote.open)),
@@ -373,6 +378,8 @@ impl DataTable {
 
 impl Render for DataTable {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let entity = cx.entity();
+
         div()
             .font_family(".SystemUIFont")
             .bg(gpui::white())
@@ -424,10 +431,8 @@ impl Render for DataTable {
                             .relative()
                             .size_full()
                             .child(
-                                uniform_list(
-                                    "items",
-                                    self.quotes.len(),
-                                    cx.processor(move |this, range: Range<usize>, _, _| {
+                                uniform_list(entity, "items", self.quotes.len(), {
+                                    move |this, range, _, _| {
                                         this.visible_range = range.clone();
                                         let mut items = Vec::with_capacity(range.end - range.start);
                                         for i in range {
@@ -436,8 +441,8 @@ impl Render for DataTable {
                                             }
                                         }
                                         items
-                                    }),
-                                )
+                                    }
+                                })
                                 .size_full()
                                 .track_scroll(self.scroll_handle.clone()),
                             )

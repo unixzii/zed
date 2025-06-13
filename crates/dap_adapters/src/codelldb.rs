@@ -21,21 +21,18 @@ impl CodeLldbDebugAdapter {
 
     fn request_args(
         &self,
-        delegate: &Arc<dyn DapDelegate>,
         task_definition: &DebugTaskDefinition,
     ) -> Result<dap::StartDebuggingRequestArguments> {
         // CodeLLDB uses `name` for a terminal label.
         let mut configuration = task_definition.config.clone();
 
-        let obj = configuration
+        configuration
             .as_object_mut()
-            .context("CodeLLDB is not a valid json object")?;
-
-        obj.entry("name")
-            .or_insert(Value::String(String::from(task_definition.label.as_ref())));
-
-        obj.entry("cwd")
-            .or_insert(delegate.worktree_root_path().to_string_lossy().into());
+            .context("CodeLLDB is not a valid json object")?
+            .insert(
+                "name".into(),
+                Value::String(String::from(task_definition.label.as_ref())),
+            );
 
         let request = self.request_kind(&configuration)?;
 
@@ -362,13 +359,13 @@ impl DebugAdapter for CodeLldbDebugAdapter {
         };
 
         Ok(DebugAdapterBinary {
-            command: Some(command.unwrap()),
+            command: command.unwrap(),
             cwd: Some(delegate.worktree_root_path().to_path_buf()),
             arguments: vec![
                 "--settings".into(),
                 json!({"sourceLanguages": ["cpp", "rust"]}).to_string(),
             ],
-            request_args: self.request_args(delegate, &config)?,
+            request_args: self.request_args(&config)?,
             envs: HashMap::default(),
             connection: None,
         })

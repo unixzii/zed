@@ -31,7 +31,7 @@ use util::ResultExt;
 use workspace::{
     Item, ItemHandle, ItemNavHistory, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView,
     Workspace,
-    item::{BreadcrumbText, ItemEvent, SaveOptions, TabContentParams},
+    item::{BreadcrumbText, ItemEvent, TabContentParams},
     searchable::SearchableItemHandle,
 };
 use zed_actions::assistant::ToggleFocus;
@@ -532,12 +532,12 @@ impl Item for AgentDiffPane {
 
     fn save(
         &mut self,
-        options: SaveOptions,
+        format: bool,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
-        self.editor.save(options, project, window, cx)
+        self.editor.save(format, project, window, cx)
     }
 
     fn save_as(
@@ -1086,7 +1086,7 @@ impl Render for AgentDiffToolbar {
                     .child(vertical_divider())
                     .when_some(editor.read(cx).workspace(), |this, _workspace| {
                         this.child(
-                            IconButton::new("review", IconName::ListTodo)
+                            IconButton::new("review", IconName::ListCollapse)
                                 .icon_size(IconSize::Small)
                                 .tooltip(Tooltip::for_action_title_in(
                                     "Review All Files",
@@ -1116,13 +1116,8 @@ impl Render for AgentDiffToolbar {
                     return Empty.into_any();
                 };
 
-                let has_pending_edit_tool_use = agent_diff
-                    .read(cx)
-                    .thread
-                    .read(cx)
-                    .has_pending_edit_tool_uses();
-
-                if has_pending_edit_tool_use {
+                let is_generating = agent_diff.read(cx).thread.read(cx).is_generating();
+                if is_generating {
                     return div().px_2().child(spinner_icon).into_any();
                 }
 
@@ -1378,8 +1373,7 @@ impl AgentDiff {
             | ThreadEvent::CheckpointChanged
             | ThreadEvent::ToolConfirmationNeeded
             | ThreadEvent::ToolUseLimitReached
-            | ThreadEvent::CancelEditing
-            | ThreadEvent::ProfileChanged => {}
+            | ThreadEvent::CancelEditing => {}
         }
     }
 

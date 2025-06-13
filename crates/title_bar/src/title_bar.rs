@@ -3,6 +3,7 @@ mod collab;
 mod onboarding_banner;
 mod platforms;
 mod title_bar_settings;
+mod window_controls;
 
 #[cfg(feature = "stories")]
 mod stories;
@@ -21,8 +22,7 @@ use client::{Client, UserStore};
 use gpui::{
     Action, AnyElement, App, Context, Corner, Decorations, Element, Entity, InteractiveElement,
     Interactivity, IntoElement, MouseButton, ParentElement, Render, Stateful,
-    StatefulInteractiveElement, Styled, Subscription, WeakEntity, Window, WindowControlArea,
-    actions, div, px,
+    StatefulInteractiveElement, Styled, Subscription, WeakEntity, Window, actions, div, px,
 };
 use onboarding_banner::OnboardingBanner;
 use project::Project;
@@ -143,7 +143,6 @@ impl Render for TitleBar {
 
         h_flex()
             .id("titlebar")
-            .window_control_area(WindowControlArea::Drag)
             .w_full()
             .h(height)
             .map(|this| {
@@ -440,7 +439,6 @@ impl TitleBar {
                         "Remote Project",
                         Some(&OpenRemote {
                             from_existing_connection: false,
-                            create_new_window: false,
                         }),
                         meta.clone(),
                         window,
@@ -451,7 +449,6 @@ impl TitleBar {
                     window.dispatch_action(
                         OpenRemote {
                             from_existing_connection: false,
-                            create_new_window: false,
                         }
                         .boxed_clone(),
                         cx,
@@ -594,7 +591,6 @@ impl TitleBar {
                             .icon(IconName::GitBranch)
                             .icon_position(IconPosition::Start)
                             .icon_color(Color::Muted)
-                            .icon_size(IconSize::Indicator)
                     },
                 ),
         )

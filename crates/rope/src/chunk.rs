@@ -53,7 +53,7 @@ impl Chunk {
     }
 
     #[inline(always)]
-    pub fn as_slice(&self) -> ChunkSlice<'_> {
+    pub fn as_slice(&self) -> ChunkSlice {
         ChunkSlice {
             chars: self.chars,
             chars_utf16: self.chars_utf16,
@@ -64,7 +64,7 @@ impl Chunk {
     }
 
     #[inline(always)]
-    pub fn slice(&self, range: Range<usize>) -> ChunkSlice<'_> {
+    pub fn slice(&self, range: Range<usize>) -> ChunkSlice {
         self.as_slice().slice(range)
     }
 }

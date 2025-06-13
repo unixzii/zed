@@ -177,23 +177,18 @@ impl DebugAdapter for GdbDebugAdapter {
 
         let gdb_path = user_setting_path.unwrap_or(gdb_path?);
 
-        let mut configuration = config.config.clone();
-        if let Some(configuration) = configuration.as_object_mut() {
-            configuration
-                .entry("cwd")
-                .or_insert_with(|| delegate.worktree_root_path().to_string_lossy().into());
-        }
+        let request_args = StartDebuggingRequestArguments {
+            request: self.request_kind(&config.config)?,
+            configuration: config.config.clone(),
+        };
 
         Ok(DebugAdapterBinary {
-            command: Some(gdb_path),
+            command: gdb_path,
             arguments: vec!["-i=dap".into()],
             envs: HashMap::default(),
             cwd: Some(delegate.worktree_root_path().to_path_buf()),
             connection: None,
-            request_args: StartDebuggingRequestArguments {
-                request: self.request_kind(&config.config)?,
-                configuration,
-            },
+            request_args,
         })
     }
 }

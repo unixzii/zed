@@ -183,9 +183,6 @@ jobs:
       - name: Check for todo! and FIXME comments
         run: script/check-todos
 
-      - name: Check modifier use in keymaps
-        run: script/check-keymaps
-
       - name: Run style checks
         uses: ./.github/actions/check_style
 
@@ -193,27 +190,6 @@ jobs:
         uses: crate-ci/typos@8e6a4285bcbde632c5d79900a7779746e8b7ea3f # v1.24.6
         with:
           config: ./typos.toml
-
-  check_docs:
-    timeout-minutes: 60
-    name: Check docs
-    needs: [job_spec]
-    if: github.repository_owner == 'zed-industries'
-    runs-on:
-      - buildjet-8vcpu-ubuntu-2204
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-        with:
-          clean: false
-
-      - name: Configure CI
-        run: |
-          mkdir -p ./../.cargo
-          cp ./.cargo/ci-config.toml ./../.cargo/config.toml
-
-      - name: Build docs
-        uses: ./.github/actions/build_docs
 
   macos_tests:
     timeout-minutes: 60
@@ -801,7 +777,6 @@ jobs:
     name: Build with Nix
     uses: ./.github/workflows/nix.yml
     if: github.repository_owner == 'zed-industries' && contains(github.event.pull_request.labels.*.name, 'run-nix')
-    secrets: inherit
     with:
       flake-output: debug
       # excludes the final package to only cache dependencies

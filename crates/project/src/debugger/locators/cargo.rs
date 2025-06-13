@@ -57,10 +57,10 @@ impl DapLocator for CargoLocator {
         }
 
         match cargo_action.as_ref() {
-            "run" | "r" => {
+            "run" => {
                 *cargo_action = "build".to_owned();
             }
-            "test" | "t" | "bench" => {
+            "test" | "bench" => {
                 let delimiter = task_template
                     .args
                     .iter()
@@ -75,7 +75,6 @@ impl DapLocator for CargoLocator {
             }
             _ => {}
         }
-
         Some(DebugScenario {
             adapter: adapter.0,
             label: resolved_label.to_string().into(),
@@ -133,10 +132,7 @@ impl DapLocator for CargoLocator {
             !executables.is_empty(),
             "Couldn't get executable in cargo locator"
         );
-        let is_test = build_config
-            .args
-            .first()
-            .map_or(false, |arg| arg == "test" || arg == "t");
+        let is_test = build_config.args.first().map_or(false, |arg| arg == "test");
 
         let mut test_name = None;
         if is_test {
@@ -164,10 +160,7 @@ impl DapLocator for CargoLocator {
             anyhow::bail!("Couldn't get executable in cargo locator");
         };
 
-        let mut args: Vec<_> = test_name.into_iter().collect();
-        if is_test {
-            args.push("--nocapture".to_owned());
-        }
+        let args = test_name.into_iter().collect();
 
         Ok(DebugRequest::Launch(task::LaunchRequest {
             program: executable,

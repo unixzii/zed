@@ -149,7 +149,7 @@ impl Scene {
         ),
         allow(dead_code)
     )]
-    pub(crate) fn batches(&self) -> impl Iterator<Item = PrimitiveBatch<'_>> {
+    pub(crate) fn batches(&self) -> impl Iterator<Item = PrimitiveBatch> {
         BatchIterator {
             shadows: &self.shadows,
             shadows_start: 0,

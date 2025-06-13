@@ -297,7 +297,7 @@ mod tests {
         let client = DebugAdapterClient::start(
             crate::client::SessionId(1),
             DebugAdapterBinary {
-                command: Some("command".into()),
+                command: "command".into(),
                 arguments: Default::default(),
                 envs: Default::default(),
                 connection: None,
@@ -367,7 +367,7 @@ mod tests {
         let client = DebugAdapterClient::start(
             crate::client::SessionId(1),
             DebugAdapterBinary {
-                command: Some("command".into()),
+                command: "command".into(),
                 arguments: Default::default(),
                 envs: Default::default(),
                 connection: None,
@@ -420,7 +420,7 @@ mod tests {
         let client = DebugAdapterClient::start(
             crate::client::SessionId(1),
             DebugAdapterBinary {
-                command: Some("command".into()),
+                command: "command".into(),
                 arguments: Default::default(),
                 envs: Default::default(),
                 connection: None,

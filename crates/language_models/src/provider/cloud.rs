@@ -807,7 +807,6 @@ impl LanguageModel for CloudLanguageModel {
         'static,
         Result<
             BoxStream<'static, Result<LanguageModelCompletionEvent, LanguageModelCompletionError>>,
-            LanguageModelCompletionError,
         >,
     > {
         let thread_id = request.thread_id.clone();
@@ -849,8 +848,7 @@ impl LanguageModel for CloudLanguageModel {
                             mode,
                             provider: zed_llm_client::LanguageModelProvider::Anthropic,
                             model: request.model.clone(),
-                            provider_request: serde_json::to_value(&request)
-                                .map_err(|e| anyhow!(e))?,
+                            provider_request: serde_json::to_value(&request)?,
                         },
                     )
                     .await
@@ -886,7 +884,7 @@ impl LanguageModel for CloudLanguageModel {
                 let client = self.client.clone();
                 let model = match open_ai::Model::from_id(&self.model.id.0) {
                     Ok(model) => model,
-                    Err(err) => return async move { Err(anyhow!(err).into()) }.boxed(),
+                    Err(err) => return async move { Err(anyhow!(err)) }.boxed(),
                 };
                 let request = into_open_ai(request, &model, None);
                 let llm_api_token = self.llm_api_token.clone();
@@ -907,8 +905,7 @@ impl LanguageModel for CloudLanguageModel {
                             mode,
                             provider: zed_llm_client::LanguageModelProvider::OpenAi,
                             model: request.model.clone(),
-                            provider_request: serde_json::to_value(&request)
-                                .map_err(|e| anyhow!(e))?,
+                            provider_request: serde_json::to_value(&request)?,
                         },
                     )
                     .await?;
@@ -947,8 +944,7 @@ impl LanguageModel for CloudLanguageModel {
                             mode,
                             provider: zed_llm_client::LanguageModelProvider::Google,
                             model: request.model.model_id.clone(),
-                            provider_request: serde_json::to_value(&request)
-                                .map_err(|e| anyhow!(e))?,
+                            provider_request: serde_json::to_value(&request)?,
                         },
                     )
                     .await?;

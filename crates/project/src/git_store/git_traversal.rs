@@ -211,7 +211,7 @@ pub struct GitEntry {
 }
 
 impl GitEntry {
-    pub fn to_ref(&self) -> GitEntryRef<'_> {
+    pub fn to_ref(&self) -> GitEntryRef {
         GitEntryRef {
             entry: &self.entry,
             git_summary: self.git_summary,
@@ -741,7 +741,6 @@ mod tests {
                 ("a.txt".into(), "".into()),
                 ("b/c.txt".into(), "something-else".into()),
             ],
-            "deadbeef",
         );
         cx.executor().run_until_parked();
         cx.executor().advance_clock(Duration::from_secs(1));

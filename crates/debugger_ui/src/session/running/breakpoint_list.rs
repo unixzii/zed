@@ -1,5 +1,4 @@
 use std::{
-    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -278,9 +277,10 @@ impl BreakpointList {
         let selected_ix = self.selected_ix;
         let focus_handle = self.focus_handle.clone();
         uniform_list(
+            cx.entity(),
             "breakpoint-list",
             self.breakpoints.len(),
-            cx.processor(move |this, range: Range<usize>, window, cx| {
+            move |this, range, window, cx| {
                 range
                     .clone()
                     .zip(&mut this.breakpoints[range])
@@ -291,7 +291,7 @@ impl BreakpointList {
                             .into_any_element()
                     })
                     .collect()
-            }),
+            },
         )
         .track_scroll(self.scroll_handle.clone())
         .flex_grow()

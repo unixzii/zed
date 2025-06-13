@@ -278,7 +278,7 @@ impl language::LanguageToolchainStore for RemoteStore {
     }
 }
 
-pub struct EmptyToolchainStore;
+pub(crate) struct EmptyToolchainStore;
 #[async_trait(?Send)]
 impl language::LanguageToolchainStore for EmptyToolchainStore {
     async fn active_toolchain(

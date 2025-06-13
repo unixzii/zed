@@ -12,7 +12,7 @@ use context_server::ContextServerId;
 use fs::Fs;
 use gpui::{
     Action, Animation, AnimationExt as _, AnyView, App, Entity, EventEmitter, FocusHandle,
-    Focusable, ScrollHandle, Subscription, Transformation, percentage,
+    Focusable, ScrollHandle, Subscription, pulsating_between,
 };
 use language_model::{LanguageModelProvider, LanguageModelProviderId, LanguageModelRegistry};
 use project::context_server_store::{ContextServerStatus, ContextServerStore};
@@ -475,6 +475,7 @@ impl AgentConfiguration {
             .get(&context_server_id)
             .copied()
             .unwrap_or_default();
+
         let tools = tools_by_source
             .get(&ToolSource::ContextServer {
                 id: context_server_id.0.clone().into(),
@@ -483,23 +484,25 @@ impl AgentConfiguration {
         let tool_count = tools.len();
 
         let border_color = cx.theme().colors().border.opacity(0.6);
+        let success_color = Color::Success.color(cx);
 
         let (status_indicator, tooltip_text) = match server_status {
             ContextServerStatus::Starting => (
-                Icon::new(IconName::LoadCircle)
-                    .size(IconSize::XSmall)
-                    .color(Color::Accent)
+                Indicator::dot()
+                    .color(Color::Success)
                     .with_animation(
                         SharedString::from(format!("{}-starting", context_server_id.0.clone(),)),
-                        Animation::new(Duration::from_secs(3)).repeat(),
-                        |icon, delta| icon.transform(Transformation::rotate(percentage(delta))),
+                        Animation::new(Duration::from_secs(2))
+                            .repeat()
+                            .with_easing(pulsating_between(0.4, 1.)),
+                        move |this, delta| this.color(success_color.alpha(delta).into()),
                     )
                     .into_any_element(),
                 "Server is starting.",
             ),
             ContextServerStatus::Running => (
                 Indicator::dot().color(Color::Success).into_any_element(),
-                "Server is active.",
+                "Server is running.",
             ),
             ContextServerStatus::Error(_) => (
                 Indicator::dot().color(Color::Error).into_any_element(),
@@ -523,11 +526,12 @@ impl AgentConfiguration {
                     .p_1()
                     .justify_between()
                     .when(
-                        error.is_some() || are_tools_expanded && tool_count >= 1,
+                        error.is_some() || are_tools_expanded && tool_count > 1,
                         |element| element.border_b_1().border_color(border_color),
                     )
                     .child(
                         h_flex()
+                            .gap_1p5()
                             .child(
                                 Disclosure::new(
                                     "tool-list-disclosure",
@@ -547,16 +551,12 @@ impl AgentConfiguration {
                                 })),
                             )
                             .child(
-                                h_flex()
-                                    .id(SharedString::from(format!("tooltip-{}", item_id)))
-                                    .h_full()
-                                    .w_3()
-                                    .mx_1()
-                                    .justify_center()
+                                div()
+                                    .id(item_id.clone())
                                     .tooltip(Tooltip::text(tooltip_text))
                                     .child(status_indicator),
                             )
-                            .child(Label::new(item_id).ml_0p5().mr_1p5())
+                            .child(Label::new(context_server_id.0.clone()).ml_0p5())
                             .when(is_running, |this| {
                                 this.child(
                                     Label::new(if tool_count == 1 {

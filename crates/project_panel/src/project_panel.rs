@@ -260,14 +260,6 @@ pub fn init(cx: &mut App) {
                 setting.hide_gitignore = Some(!setting.hide_gitignore.unwrap_or(false));
             })
         });
-
-        workspace.register_action(|workspace, action: &CollapseAllEntries, window, cx| {
-            if let Some(panel) = workspace.panel::<ProjectPanel>(cx) {
-                panel.update(cx, |panel, cx| {
-                    panel.collapse_all_entries(action, window, cx);
-                });
-            }
-        });
     })
     .detach();
 }
@@ -470,9 +462,6 @@ impl ProjectPanel {
                 let new_settings = *ProjectPanelSettings::get_global(cx);
                 if project_panel_settings != new_settings {
                     if project_panel_settings.hide_gitignore != new_settings.hide_gitignore {
-                        this.update_visible_entries(None, cx);
-                    }
-                    if project_panel_settings.hide_root != new_settings.hide_root {
                         this.update_visible_entries(None, cx);
                     }
                     project_panel_settings = new_settings;
@@ -779,12 +768,6 @@ impl ProjectPanel {
             let is_remote = project.is_via_collab();
             let is_local = project.is_local();
 
-            let settings = ProjectPanelSettings::get_global(cx);
-            let visible_worktrees_count = project.visible_worktrees(cx).count();
-            let should_hide_rename = is_root
-                && (cfg!(target_os = "windows")
-                    || (settings.hide_root && visible_worktrees_count == 1));
-
             let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
                 menu.context(self.focus_handle.clone()).map(|menu| {
                     if is_read_only {
@@ -834,7 +817,7 @@ impl ProjectPanel {
                                 Box::new(zed_actions::workspace::CopyRelativePath),
                             )
                             .separator()
-                            .when(!should_hide_rename, |menu| {
+                            .when(!is_root || !cfg!(target_os = "windows"), |menu| {
                                 menu.action("Rename", Box::new(Rename))
                             })
                             .when(!is_root & !is_remote, |menu| {
@@ -1400,8 +1383,6 @@ impl ProjectPanel {
 
     fn cancel(&mut self, _: &menu::Cancel, window: &mut Window, cx: &mut Context<Self>) {
         if cx.stop_active_drag(window) {
-            self.drag_target_entry.take();
-            self.hover_expand_task.take();
             return;
         }
 
@@ -1555,16 +1536,6 @@ impl ProjectPanel {
                     if Some(entry) == worktree.read(cx).root_entry() {
                         return;
                     }
-
-                    if Some(entry) == worktree.read(cx).root_entry() {
-                        let settings = ProjectPanelSettings::get_global(cx);
-                        let visible_worktrees_count =
-                            self.project.read(cx).visible_worktrees(cx).count();
-                        if settings.hide_root && visible_worktrees_count == 1 {
-                            return;
-                        }
-                    }
-
                     self.edit_state = Some(EditState {
                         worktree_id,
                         entry_id: sub_entry_id,
@@ -2133,11 +2104,19 @@ impl ProjectPanel {
     }
 
     fn select_first(&mut self, _: &SelectFirst, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some((worktree_id, visible_worktree_entries, _)) = self.visible_entries.first() {
-            if let Some(entry) = visible_worktree_entries.first() {
+        let worktree = self
+            .visible_entries
+            .first()
+            .and_then(|(worktree_id, _, _)| {
+                self.project.read(cx).worktree_for_id(*worktree_id, cx)
+            });
+        if let Some(worktree) = worktree {
+            let worktree = worktree.read(cx);
+            let worktree_id = worktree.id();
+            if let Some(root_entry) = worktree.root_entry() {
                 let selection = SelectedEntry {
-                    worktree_id: *worktree_id,
-                    entry_id: entry.id,
+                    worktree_id,
+                    entry_id: root_entry.id,
                 };
                 self.selection = Some(selection);
                 if window.modifiers().shift {
@@ -2790,31 +2769,6 @@ impl ProjectPanel {
         Some(())
     }
 
-    fn create_new_git_entry(
-        parent_entry: &Entry,
-        git_summary: GitSummary,
-        new_entry_kind: EntryKind,
-    ) -> GitEntry {
-        GitEntry {
-            entry: Entry {
-                id: NEW_ENTRY_ID,
-                kind: new_entry_kind,
-                path: parent_entry.path.join("\0").into(),
-                inode: 0,
-                mtime: parent_entry.mtime,
-                size: parent_entry.size,
-                is_ignored: parent_entry.is_ignored,
-                is_external: false,
-                is_private: false,
-                is_always_included: parent_entry.is_always_included,
-                canonical_path: parent_entry.canonical_path.clone(),
-                char_bag: parent_entry.char_bag,
-                is_fifo: parent_entry.is_fifo,
-            },
-            git_summary,
-        }
-    }
-
     fn update_visible_entries(
         &mut self,
         new_selected_entry: Option<(WorktreeId, ProjectEntryId)>,
@@ -2834,10 +2788,7 @@ impl ProjectPanel {
         let old_ancestors = std::mem::take(&mut self.ancestors);
         self.visible_entries.clear();
         let mut max_width_item = None;
-
-        let visible_worktrees: Vec<_> = project.visible_worktrees(cx).collect();
-        let hide_root = settings.hide_root && visible_worktrees.len() == 1;
-        for worktree in visible_worktrees {
+        for worktree in project.visible_worktrees(cx) {
             let worktree_snapshot = worktree.read(cx).snapshot();
             let worktree_id = worktree_snapshot.id();
 
@@ -2872,18 +2823,6 @@ impl ProjectPanel {
                 GitTraversal::new(&repo_snapshots, worktree_snapshot.entries(true, 0));
             let mut auto_folded_ancestors = vec![];
             while let Some(entry) = entry_iter.entry() {
-                if hide_root && Some(entry.entry) == worktree.read(cx).root_entry() {
-                    if new_entry_parent_id == Some(entry.id) {
-                        visible_worktree_entries.push(Self::create_new_git_entry(
-                            &entry.entry,
-                            entry.git_summary,
-                            new_entry_kind,
-                        ));
-                        new_entry_parent_id = None;
-                    }
-                    entry_iter.advance();
-                    continue;
-                }
                 if auto_collapse_dirs && entry.kind.is_dir() {
                     auto_folded_ancestors.push(entry.id);
                     if !self.unfolded_dir_ids.contains(&entry.id) {
@@ -2937,11 +2876,24 @@ impl ProjectPanel {
                     false
                 };
                 if precedes_new_entry && (!hide_gitignore || !entry.is_ignored) {
-                    visible_worktree_entries.push(Self::create_new_git_entry(
-                        &entry.entry,
-                        entry.git_summary,
-                        new_entry_kind,
-                    ));
+                    visible_worktree_entries.push(GitEntry {
+                        entry: Entry {
+                            id: NEW_ENTRY_ID,
+                            kind: new_entry_kind,
+                            path: entry.path.join("\0").into(),
+                            inode: 0,
+                            mtime: entry.mtime,
+                            size: entry.size,
+                            is_ignored: entry.is_ignored,
+                            is_external: false,
+                            is_private: false,
+                            is_always_included: entry.is_always_included,
+                            canonical_path: entry.canonical_path.clone(),
+                            char_bag: entry.char_bag,
+                            is_fifo: entry.is_fifo,
+                        },
+                        git_summary: entry.git_summary,
+                    });
                 }
                 let worktree_abs_path = worktree.read(cx).abs_path();
                 let (depth, path) = if Some(entry.entry) == worktree.read(cx).root_entry() {
@@ -3273,7 +3225,7 @@ impl ProjectPanel {
         None
     }
 
-    fn entry_at_index(&self, index: usize) -> Option<(WorktreeId, GitEntryRef<'_>)> {
+    fn entry_at_index(&self, index: usize) -> Option<(WorktreeId, GitEntryRef)> {
         let mut offset = 0;
         for (worktree_id, visible_worktree_entries, _) in &self.visible_entries {
             if visible_worktree_entries.len() > offset + index {
@@ -3775,7 +3727,7 @@ impl ProjectPanel {
                     None
                 }
             })
-            .unwrap_or_else(|| (0, entry.path.components().count()));
+            .unwrap_or((0, 0));
 
         (depth, difference)
     }
@@ -4421,7 +4373,8 @@ impl ProjectPanel {
                                     )
                                 }
                             })
-                        },
+                        }
+                        .ml_1(),
                     )
                     .on_secondary_mouse_down(cx.listener(
                         move |this, event: &MouseDownEvent, window, cx| {
@@ -4921,8 +4874,8 @@ impl Render for ProjectPanel {
                 )
                 .track_focus(&self.focus_handle(cx))
                 .child(
-                    uniform_list("entries", item_count, {
-                        cx.processor(|this, range: Range<usize>, window, cx| {
+                    uniform_list(cx.entity().clone(), "entries", item_count, {
+                        |this, range, window, cx| {
                             let mut items = Vec::with_capacity(range.end - range.start);
                             this.for_each_visible_entry(
                                 range,
@@ -4933,7 +4886,7 @@ impl Render for ProjectPanel {
                                 },
                             );
                             items
-                        })
+                        }
                     })
                     .when(show_indent_guides, |list| {
                         list.with_decoration(

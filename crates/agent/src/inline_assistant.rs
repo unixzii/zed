@@ -1334,7 +1334,7 @@ impl InlineAssistant {
                 editor.clear_gutter_highlights::<GutterPendingRange>(cx);
             } else {
                 editor.highlight_gutter::<GutterPendingRange>(
-                    gutter_pending_ranges,
+                    &gutter_pending_ranges,
                     |cx| cx.theme().status().info_background,
                     cx,
                 )
@@ -1345,7 +1345,7 @@ impl InlineAssistant {
                 editor.clear_gutter_highlights::<GutterTransformedRange>(cx);
             } else {
                 editor.highlight_gutter::<GutterTransformedRange>(
-                    gutter_transformed_ranges,
+                    &gutter_transformed_ranges,
                     |cx| cx.theme().status().info,
                     cx,
                 )

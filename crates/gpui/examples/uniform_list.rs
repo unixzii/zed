@@ -9,9 +9,10 @@ impl Render for UniformListExample {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div().size_full().bg(rgb(0xffffff)).child(
             uniform_list(
+                cx.entity().clone(),
                 "entries",
                 50,
-                cx.processor(|_this, range, _window, _cx| {
+                |_this, range, _window, _cx| {
                     let mut items = Vec::new();
                     for ix in range {
                         let item = ix + 1;
@@ -28,7 +29,7 @@ impl Render for UniformListExample {
                         );
                     }
                     items
-                }),
+                },
             )
             .h_full(),
         )

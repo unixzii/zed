@@ -49,7 +49,6 @@ pub struct EditorSettings {
     #[serde(default)]
     pub diagnostics_max_severity: Option<DiagnosticSeverity>,
     pub inline_code_actions: bool,
-    pub drag_and_drop_selection: bool,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
@@ -150,7 +149,6 @@ impl Minimap {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct Gutter {
-    pub min_line_number_digits: usize,
     pub line_numbers: bool,
     pub runnables: bool,
     pub breakpoints: bool,
@@ -424,7 +422,7 @@ pub struct EditorSettingsContent {
     /// Default: always
     pub seed_search_query_from_cursor: Option<SeedQuerySetting>,
     pub use_smartcase_search: Option<bool>,
-    /// Determines the modifier to be used to add multiple cursors with the mouse. The open hover link mouse gestures will adapt such that it do not conflict with the multicursor modifier.
+    /// The key to use for adding multiple cursors
     ///
     /// Default: alt
     pub multi_cursor_modifier: Option<MultiCursorModifier>,
@@ -497,11 +495,6 @@ pub struct EditorSettingsContent {
     ///
     /// Default: true
     pub inline_code_actions: Option<bool>,
-
-    /// Whether to allow drag and drop text selection in buffer.
-    ///
-    /// Default: true
-    pub drag_and_drop_selection: Option<bool>,
 }
 
 // Toolbar related settings
@@ -610,10 +603,6 @@ pub struct GutterContent {
     ///
     /// Default: true
     pub line_numbers: Option<bool>,
-    /// Minimum number of characters to reserve space for in the gutter.
-    ///
-    /// Default: 4
-    pub min_line_number_digits: Option<usize>,
     /// Whether to show runnable buttons in the gutter.
     ///
     /// Default: true

@@ -243,8 +243,8 @@ pub struct ModelEntry {
     pub compatibility_type: CompatibilityType,
     pub quantization: Option<String>,
     pub state: ModelState,
-    pub max_context_length: Option<usize>,
-    pub loaded_context_length: Option<usize>,
+    pub max_context_length: Option<u32>,
+    pub loaded_context_length: Option<u32>,
     #[serde(default)]
     pub capabilities: Capabilities,
 }
@@ -276,8 +276,6 @@ pub enum CompatibilityType {
 pub struct ResponseMessageDelta {
     pub role: Option<Role>,
     pub content: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning_content: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCallChunk>>,
 }

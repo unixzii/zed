@@ -620,20 +620,24 @@ pub struct ThemeColorsContent {
     pub version_control_ignored: Option<String>,
 
     /// Background color for row highlights of "ours" regions in merge conflicts.
-    #[serde(rename = "version_control.conflict_marker.ours")]
-    pub version_control_conflict_marker_ours: Option<String>,
-
-    /// Background color for row highlights of "theirs" regions in merge conflicts.
-    #[serde(rename = "version_control.conflict_marker.theirs")]
-    pub version_control_conflict_marker_theirs: Option<String>,
-
-    /// Deprecated in favor of `version_control_conflict_marker_ours`.
-    #[deprecated]
+    #[serde(rename = "version_control.conflict.ours_background")]
     pub version_control_conflict_ours_background: Option<String>,
 
-    /// Deprecated in favor of `version_control_conflict_marker_theirs`.
-    #[deprecated]
+    /// Background color for row highlights of "theirs" regions in merge conflicts.
+    #[serde(rename = "version_control.conflict.theirs_background")]
     pub version_control_conflict_theirs_background: Option<String>,
+
+    /// Background color for row highlights of "ours" conflict markers in merge conflicts.
+    #[serde(rename = "version_control.conflict.ours_marker_background")]
+    pub version_control_conflict_ours_marker_background: Option<String>,
+
+    /// Background color for row highlights of "theirs" conflict markers in merge conflicts.
+    #[serde(rename = "version_control.conflict.theirs_marker_background")]
+    pub version_control_conflict_theirs_marker_background: Option<String>,
+
+    /// Background color for row highlights of the "ours"/"theirs" divider in merge conflicts.
+    #[serde(rename = "version_control.conflict.divider_background")]
+    pub version_control_conflict_divider_background: Option<String>,
 }
 
 impl ThemeColorsContent {
@@ -1114,17 +1118,25 @@ impl ThemeColorsContent {
                 .and_then(|color| try_parse_color(color).ok())
                 // Fall back to `conflict`, for backwards compatibility.
                 .or(status_colors.ignored),
-            #[allow(deprecated)]
-            version_control_conflict_marker_ours: self
-                .version_control_conflict_marker_ours
+            version_control_conflict_ours_background: self
+                .version_control_conflict_ours_background
                 .as_ref()
-                .or(self.version_control_conflict_ours_background.as_ref())
                 .and_then(|color| try_parse_color(color).ok()),
-            #[allow(deprecated)]
-            version_control_conflict_marker_theirs: self
-                .version_control_conflict_marker_theirs
+            version_control_conflict_theirs_background: self
+                .version_control_conflict_theirs_background
                 .as_ref()
-                .or(self.version_control_conflict_theirs_background.as_ref())
+                .and_then(|color| try_parse_color(color).ok()),
+            version_control_conflict_ours_marker_background: self
+                .version_control_conflict_ours_marker_background
+                .as_ref()
+                .and_then(|color| try_parse_color(color).ok()),
+            version_control_conflict_theirs_marker_background: self
+                .version_control_conflict_theirs_marker_background
+                .as_ref()
+                .and_then(|color| try_parse_color(color).ok()),
+            version_control_conflict_divider_background: self
+                .version_control_conflict_divider_background
+                .as_ref()
                 .and_then(|color| try_parse_color(color).ok()),
         }
     }

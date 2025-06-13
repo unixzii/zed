@@ -83,7 +83,6 @@ impl PythonDebugAdapter {
 
     fn request_args(
         &self,
-        delegate: &Arc<dyn DapDelegate>,
         task_definition: &DebugTaskDefinition,
     ) -> Result<StartDebuggingRequestArguments> {
         let request = self.request_kind(&task_definition.config)?;
@@ -94,11 +93,6 @@ impl PythonDebugAdapter {
             if console.is_null() {
                 *console = Value::String("integratedTerminal".into());
             }
-        }
-
-        if let Some(obj) = configuration.as_object_mut() {
-            obj.entry("cwd")
-                .or_insert(delegate.worktree_root_path().to_string_lossy().into());
         }
 
         Ok(StartDebuggingRequestArguments {
@@ -193,7 +187,7 @@ impl PythonDebugAdapter {
         );
 
         Ok(DebugAdapterBinary {
-            command: Some(python_command),
+            command: python_command,
             arguments,
             connection: Some(adapters::TcpArguments {
                 host,
@@ -202,7 +196,7 @@ impl PythonDebugAdapter {
             }),
             cwd: Some(delegate.worktree_root_path().to_path_buf()),
             envs: HashMap::default(),
-            request_args: self.request_args(delegate, config)?,
+            request_args: self.request_args(config)?,
         })
     }
 }

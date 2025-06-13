@@ -277,7 +277,7 @@ mod tests {
     use settings::SettingsStore;
     use smol::channel;
     use std::{future, path::Path, sync::Arc};
-    use util::path;
+    use util::separator;
 
     fn init_test(cx: &mut TestAppContext) {
         zlog::init_test();
@@ -422,7 +422,7 @@ mod tests {
 
         assert_eq!(
             search_result.path.to_string_lossy(),
-            path!("fixture/needle.md")
+            separator!("fixture/needle.md")
         );
 
         let content = cx

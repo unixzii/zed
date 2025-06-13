@@ -37,7 +37,7 @@ use util::ResultExt as _;
 use workspace::{
     CloseActiveItem, ItemNavHistory, SerializableItem, ToolbarItemEvent, ToolbarItemLocation,
     ToolbarItemView, Workspace,
-    item::{BreadcrumbText, Item, ItemEvent, ItemHandle, SaveOptions, TabContentParams},
+    item::{BreadcrumbText, Item, ItemEvent, ItemHandle, TabContentParams},
     searchable::SearchableItemHandle,
 };
 
@@ -632,12 +632,12 @@ impl Item for ProjectDiff {
 
     fn save(
         &mut self,
-        options: SaveOptions,
+        format: bool,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
-        self.editor.save(options, project, window, cx)
+        self.editor.save(format, project, window, cx)
     }
 
     fn save_as(
@@ -1387,7 +1387,6 @@ mod tests {
         fs.set_head_for_repo(
             path!("/project/.git").as_ref(),
             &[("foo.txt".into(), "foo\n".into())],
-            "deadbeef",
         );
         fs.set_index_for_repo(
             path!("/project/.git").as_ref(),
@@ -1524,7 +1523,6 @@ mod tests {
         fs.set_head_for_repo(
             path!("/project/.git").as_ref(),
             &[("foo".into(), "original\n".into())],
-            "deadbeef",
         );
         cx.run_until_parked();
 
@@ -1565,15 +1563,7 @@ mod tests {
 
         cx.update_window_entity(&buffer_editor, |buffer_editor, window, cx| {
             buffer_editor.set_text("different\n", window, cx);
-            buffer_editor.save(
-                SaveOptions {
-                    format: false,
-                    autosave: false,
-                },
-                project.clone(),
-                window,
-                cx,
-            )
+            buffer_editor.save(false, project.clone(), window, cx)
         })
         .await
         .unwrap();

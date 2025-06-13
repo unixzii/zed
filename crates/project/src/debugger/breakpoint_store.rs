@@ -665,7 +665,6 @@ impl BreakpointStore {
             .as_ref()
             .is_some_and(|active_position| active_position == &position)
         {
-            cx.emit(BreakpointStoreEvent::SetDebugLine);
             return;
         }
 
@@ -841,7 +840,7 @@ impl BreakpointStore {
                         } else {
                             "breakpoint"
                         };
-                        log::debug!("Deserialized {count} {breakpoint_str} at path: {path}");
+                        log::info!("Deserialized {count} {breakpoint_str} at path: {path}");
                     }
 
                     this.breakpoints = new_breakpoints;

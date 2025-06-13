@@ -406,7 +406,6 @@ impl LanguageModel for OllamaLanguageModel {
         'static,
         Result<
             BoxStream<'static, Result<LanguageModelCompletionEvent, LanguageModelCompletionError>>,
-            LanguageModelCompletionError,
         >,
     > {
         let request = self.to_ollama_request(request);
@@ -416,7 +415,7 @@ impl LanguageModel for OllamaLanguageModel {
             let settings = &AllLanguageModelSettings::get_global(cx).ollama;
             settings.api_url.clone()
         }) else {
-            return futures::future::ready(Err(anyhow!("App state dropped").into())).boxed();
+            return futures::future::ready(Err(anyhow!("App state dropped"))).boxed();
         };
 
         let future = self.request_limiter.stream(async move {

@@ -8,7 +8,7 @@ use util::ResultExt as _;
 use language::{BufferSnapshot, JsxTagAutoCloseConfig, Node};
 use text::{Anchor, OffsetRangeExt as _};
 
-use crate::{Editor, SelectionEffects};
+use crate::Editor;
 
 pub struct JsxTagCompletionState {
     edit_index: usize,
@@ -600,14 +600,9 @@ pub(crate) fn handle_from(
                     })
                     .collect::<Vec<_>>();
                 this.update_in(cx, |this, window, cx| {
-                    this.change_selections(
-                        SelectionEffects::no_scroll().completions(false),
-                        window,
-                        cx,
-                        |s| {
-                            s.select(base_selections);
-                        },
-                    );
+                    this.change_selections_without_updating_completions(None, window, cx, |s| {
+                        s.select(base_selections);
+                    });
                 })
                 .ok()?;
             }

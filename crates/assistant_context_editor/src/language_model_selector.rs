@@ -682,12 +682,11 @@ mod tests {
             _: &AsyncApp,
         ) -> BoxFuture<
             'static,
-            Result<
+            http_client::Result<
                 BoxStream<
                     'static,
-                    Result<LanguageModelCompletionEvent, LanguageModelCompletionError>,
+                    http_client::Result<LanguageModelCompletionEvent, LanguageModelCompletionError>,
                 >,
-                LanguageModelCompletionError,
             >,
         > {
             unimplemented!()

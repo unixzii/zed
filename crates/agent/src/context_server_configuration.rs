@@ -3,21 +3,16 @@ use std::sync::Arc;
 use anyhow::Context as _;
 use context_server::ContextServerId;
 use extension::{ContextServerConfiguration, ExtensionManifest};
-use fs::Fs;
 use gpui::Task;
 use language::LanguageRegistry;
-use project::{
-    context_server_store::registry::ContextServerDescriptorRegistry,
-    project_settings::ProjectSettings,
-};
-use settings::update_settings_file;
+use project::context_server_store::registry::ContextServerDescriptorRegistry;
 use ui::prelude::*;
 use util::ResultExt;
 use workspace::Workspace;
 
 use crate::agent_configuration::ConfigureContextServerModal;
 
-pub(crate) fn init(language_registry: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, cx: &mut App) {
+pub(crate) fn init(language_registry: Arc<LanguageRegistry>, cx: &mut App) {
     cx.observe_new(move |_: &mut Workspace, window, cx| {
         let Some(window) = window else {
             return;
@@ -26,7 +21,6 @@ pub(crate) fn init(language_registry: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, cx
         if let Some(extension_events) = extension::ExtensionEvents::try_global(cx).as_ref() {
             cx.subscribe_in(extension_events, window, {
                 let language_registry = language_registry.clone();
-                let fs = fs.clone();
                 move |workspace, _, event, window, cx| match event {
                     extension::Event::ExtensionInstalled(manifest) => {
                         show_configure_mcp_modal(
@@ -34,13 +28,6 @@ pub(crate) fn init(language_registry: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, cx
                             manifest,
                             workspace,
                             window,
-                            cx,
-                        );
-                    }
-                    extension::Event::ExtensionUninstalled(manifest) => {
-                        remove_context_server_settings(
-                            manifest.context_servers.keys().cloned().collect(),
-                            fs.clone(),
                             cx,
                         );
                     }
@@ -68,18 +55,6 @@ pub(crate) fn init(language_registry: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, cx
     .detach();
 }
 
-fn remove_context_server_settings(
-    context_server_ids: Vec<Arc<str>>,
-    fs: Arc<dyn Fs>,
-    cx: &mut App,
-) {
-    update_settings_file::<ProjectSettings>(fs, cx, move |settings, _| {
-        settings
-            .context_servers
-            .retain(|server_id, _| !context_server_ids.contains(server_id));
-    });
-}
-
 pub enum Configuration {
     NotAvailable(ContextServerId, Option<SharedString>),
     Required(
@@ -96,10 +71,6 @@ fn show_configure_mcp_modal(
     window: &mut Window,
     cx: &mut Context<'_, Workspace>,
 ) {
-    if !window.is_window_active() {
-        return;
-    }
-
     let context_server_store = workspace.project().read(cx).context_server_store();
     let repository: Option<SharedString> = manifest.repository.as_ref().map(|s| s.clone().into());
 
