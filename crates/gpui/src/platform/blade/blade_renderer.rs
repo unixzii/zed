@@ -342,7 +342,7 @@ impl BladeRenderer {
         let surface = context
             .gpu
             .create_surface_configured(window, surface_config)
-            .map_err(|err| anyhow::anyhow!("Failed to create surface: {err:?}"))?;
+            .unwrap();
 
         let command_encoder = context.gpu.create_command_encoder(gpu::CommandEncoderDesc {
             name: "main",

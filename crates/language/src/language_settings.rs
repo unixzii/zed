@@ -765,8 +765,6 @@ pub enum ShowWhitespaceSetting {
     /// - It is adjacent to an edge (start or end)
     /// - It is adjacent to a whitespace (left or right)
     Boundary,
-    /// Draw whitespaces only after non-whitespace characters.
-    Trailing,
 }
 
 /// Controls which formatter should be used when formatting code.
@@ -1454,8 +1452,7 @@ impl settings::Settings for AllLanguageSettings {
         vscode.bool_setting("editor.inlineSuggest.enabled", &mut d.show_edit_predictions);
         vscode.enum_setting("editor.renderWhitespace", &mut d.show_whitespaces, |s| {
             Some(match s {
-                "boundary" => ShowWhitespaceSetting::Boundary,
-                "trailing" => ShowWhitespaceSetting::Trailing,
+                "boundary" | "trailing" => ShowWhitespaceSetting::Boundary,
                 "selection" => ShowWhitespaceSetting::Selection,
                 "all" => ShowWhitespaceSetting::All,
                 _ => ShowWhitespaceSetting::None,
@@ -1827,7 +1824,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_language_servers() {
+    pub fn test_resolve_language_servers() {
         fn language_server_names(names: &[&str]) -> Vec<LanguageServerName> {
             names
                 .iter()

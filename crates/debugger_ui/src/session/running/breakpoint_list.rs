@@ -1,5 +1,4 @@
 use std::{
-    ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -278,9 +277,10 @@ impl BreakpointList {
         let selected_ix = self.selected_ix;
         let focus_handle = self.focus_handle.clone();
         uniform_list(
+            cx.entity(),
             "breakpoint-list",
             self.breakpoints.len(),
-            cx.processor(move |this, range: Range<usize>, window, cx| {
+            move |this, range, window, cx| {
                 range
                     .clone()
                     .zip(&mut this.breakpoints[range])
@@ -291,7 +291,7 @@ impl BreakpointList {
                             .into_any_element()
                     })
                     .collect()
-            }),
+            },
         )
         .track_scroll(self.scroll_handle.clone())
         .flex_grow()
@@ -506,48 +506,44 @@ impl LineBreakpoint {
             cx.stop_propagation();
         })
         .end_hover_slot(
-            h_flex()
-                .child(
-                    IconButton::new(
-                        SharedString::from(format!(
-                            "breakpoint-ui-on-click-go-to-line-remove-{:?}/{}:{}",
-                            self.dir, self.name, self.line
-                        )),
-                        IconName::Close,
-                    )
-                    .on_click({
-                        let weak = weak.clone();
-                        let path = path.clone();
-                        move |_, _, cx| {
-                            weak.update(cx, |breakpoint_list, cx| {
-                                breakpoint_list.edit_line_breakpoint(
-                                    path.clone(),
-                                    row,
-                                    BreakpointEditAction::Toggle,
-                                    cx,
-                                );
-                            })
-                            .ok();
-                        }
-                    })
-                    .tooltip(move |window, cx| {
-                        Tooltip::for_action_in(
-                            "Unset Breakpoint",
-                            &UnsetBreakpoint,
-                            &focus_handle,
-                            window,
+            IconButton::new(
+                SharedString::from(format!(
+                    "breakpoint-ui-on-click-go-to-line-remove-{:?}/{}:{}",
+                    self.dir, self.name, self.line
+                )),
+                IconName::Close,
+            )
+            .on_click({
+                let weak = weak.clone();
+                let path = path.clone();
+                move |_, _, cx| {
+                    weak.update(cx, |breakpoint_list, cx| {
+                        breakpoint_list.edit_line_breakpoint(
+                            path.clone(),
+                            row,
+                            BreakpointEditAction::Toggle,
                             cx,
-                        )
+                        );
                     })
-                    .icon_size(ui::IconSize::XSmall),
+                    .ok();
+                }
+            })
+            .tooltip(move |window, cx| {
+                Tooltip::for_action_in(
+                    "Unset Breakpoint",
+                    &UnsetBreakpoint,
+                    &focus_handle,
+                    window,
+                    cx,
                 )
-                .right_4(),
+            })
+            .icon_size(ui::IconSize::Indicator),
         )
         .child(
             v_flex()
                 .py_1()
                 .gap_1()
-                .min_h(px(26.))
+                .min_h(px(22.))
                 .justify_center()
                 .id(SharedString::from(format!(
                     "breakpoint-ui-on-click-go-to-line-{:?}/{}:{}",
@@ -654,7 +650,7 @@ impl ExceptionBreakpoint {
             v_flex()
                 .py_1()
                 .gap_1()
-                .min_h(px(26.))
+                .min_h(px(22.))
                 .justify_center()
                 .id(("exception-breakpoint-label", ix))
                 .child(

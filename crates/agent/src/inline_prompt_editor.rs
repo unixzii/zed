@@ -1,4 +1,4 @@
-use crate::agent_model_selector::AgentModelSelector;
+use crate::agent_model_selector::{AgentModelSelector, ModelType};
 use crate::buffer_codegen::BufferCodegen;
 use crate::context::ContextCreasesAddon;
 use crate::context_picker::{ContextPicker, ContextPickerCompletionProvider};
@@ -7,13 +7,12 @@ use crate::context_strip::{ContextStrip, ContextStripEvent, SuggestContextKind};
 use crate::message_editor::{extract_message_creases, insert_message_creases};
 use crate::terminal_codegen::TerminalCodegen;
 use crate::thread_store::{TextThreadStore, ThreadStore};
-use crate::{CycleNextInlineAssist, CyclePreviousInlineAssist, ModelUsageContext};
+use crate::{CycleNextInlineAssist, CyclePreviousInlineAssist};
 use crate::{RemoveAllContext, ToggleContextPicker};
 use assistant_context_editor::language_model_selector::ToggleModelSelector;
 use client::ErrorExt;
 use collections::VecDeque;
 use db::kvp::Dismissable;
-use editor::actions::Paste;
 use editor::display_map::EditorMargins;
 use editor::{
     ContextMenuOptions, Editor, EditorElement, EditorEvent, EditorMode, EditorStyle, MultiBuffer,
@@ -100,7 +99,6 @@ impl<T: 'static> Render for PromptEditor<T> {
 
         v_flex()
             .key_context("PromptEditor")
-            .capture_action(cx.listener(Self::paste))
             .bg(cx.theme().colors().editor_background)
             .block_mouse_except_scroll()
             .gap_0p5()
@@ -261,7 +259,7 @@ impl<T: 'static> PromptEditor<T> {
 
         let focus = self.editor.focus_handle(cx).contains_focused(window, cx);
         self.editor = cx.new(|cx| {
-            let mut editor = Editor::auto_height(1, Self::MAX_LINES as usize, window, cx);
+            let mut editor = Editor::auto_height(Self::MAX_LINES as usize, window, cx);
             editor.set_soft_wrap_mode(language::language_settings::SoftWrap::EditorWidth, cx);
             editor.set_placeholder_text("Add a prompt…", cx);
             editor.set_text(prompt, window, cx);
@@ -303,10 +301,6 @@ impl<T: 'static> PromptEditor<T> {
 
     pub fn prompt(&self, cx: &App) -> String {
         self.editor.read(cx).text(cx)
-    }
-
-    fn paste(&mut self, _: &Paste, _window: &mut Window, cx: &mut Context<Self>) {
-        crate::active_thread::attach_pasted_images_as_context(&self.context_store, cx);
     }
 
     fn toggle_rate_limit_notice(
@@ -403,7 +397,9 @@ impl<T: 'static> PromptEditor<T> {
             CodegenStatus::Idle => {
                 cx.emit(PromptEditorEvent::StartRequested);
             }
-            CodegenStatus::Pending => {}
+            CodegenStatus::Pending => {
+                cx.emit(PromptEditorEvent::DismissRequested);
+            }
             CodegenStatus::Done => {
                 if self.edited_since_done {
                     cx.emit(PromptEditorEvent::StartRequested);
@@ -829,6 +825,7 @@ pub enum PromptEditorEvent {
     StopRequested,
     ConfirmRequested { execute: bool },
     CancelRequested,
+    DismissRequested,
     Resized { height_in_lines: u8 },
 }
 
@@ -869,7 +866,6 @@ impl PromptEditor<BufferCodegen> {
         let prompt_editor = cx.new(|cx| {
             let mut editor = Editor::new(
                 EditorMode::AutoHeight {
-                    min_lines: 1,
                     max_lines: Self::MAX_LINES as usize,
                 },
                 prompt_buffer,
@@ -916,7 +912,6 @@ impl PromptEditor<BufferCodegen> {
                 text_thread_store.clone(),
                 context_picker_menu_handle.clone(),
                 SuggestContextKind::Thread,
-                ModelUsageContext::InlineAssistant,
                 window,
                 cx,
             )
@@ -935,7 +930,7 @@ impl PromptEditor<BufferCodegen> {
                     fs,
                     model_selector_menu_handle,
                     prompt_editor.focus_handle(cx),
-                    ModelUsageContext::InlineAssistant,
+                    ModelType::InlineAssistant,
                     window,
                     cx,
                 )
@@ -1048,7 +1043,6 @@ impl PromptEditor<TerminalCodegen> {
         let prompt_editor = cx.new(|cx| {
             let mut editor = Editor::new(
                 EditorMode::AutoHeight {
-                    min_lines: 1,
                     max_lines: Self::MAX_LINES as usize,
                 },
                 prompt_buffer,
@@ -1089,7 +1083,6 @@ impl PromptEditor<TerminalCodegen> {
                 text_thread_store.clone(),
                 context_picker_menu_handle.clone(),
                 SuggestContextKind::Thread,
-                ModelUsageContext::InlineAssistant,
                 window,
                 cx,
             )
@@ -1108,7 +1101,7 @@ impl PromptEditor<TerminalCodegen> {
                     fs,
                     model_selector_menu_handle.clone(),
                     prompt_editor.focus_handle(cx),
-                    ModelUsageContext::InlineAssistant,
+                    ModelType::InlineAssistant,
                     window,
                     cx,
                 )

@@ -1,17 +1,15 @@
 use anyhow::{Context as _, bail};
-use collections::HashMap;
 use dap::{
     StartDebuggingRequestArguments,
     adapters::{
-        DebugTaskDefinition, DownloadedFileType, TcpArguments, download_adapter_from_github,
+        DebugTaskDefinition, DownloadedFileType, download_adapter_from_github,
         latest_github_release,
     },
 };
 
 use gpui::{AsyncApp, SharedString};
 use language::LanguageName;
-use std::{env::consts, ffi::OsStr, path::PathBuf, sync::OnceLock};
-use task::TcpArgumentsTemplate;
+use std::{collections::HashMap, env::consts, ffi::OsStr, path::PathBuf, sync::OnceLock};
 use util;
 
 use crate::*;
@@ -96,7 +94,7 @@ impl DebugAdapter for GoDebugAdapter {
         Some(SharedString::new_static("Go").into())
     }
 
-    fn dap_schema(&self) -> serde_json::Value {
+    async fn dap_schema(&self) -> serde_json::Value {
         // Create common properties shared between launch and attach
         let common_properties = json!({
             "debugAdapter": {
@@ -352,7 +350,7 @@ impl DebugAdapter for GoDebugAdapter {
         })
     }
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
         let mut args = match &zed_scenario.request {
             dap::DebugRequest::Attach(attach_config) => {
                 json!({
@@ -435,6 +433,10 @@ impl DebugAdapter for GoDebugAdapter {
 
             adapter_path.join("dlv").to_string_lossy().to_string()
         };
+        let minidelve_path = self.install_shim(delegate).await?;
+        let tcp_connection = task_definition.tcp_connection.clone().unwrap_or_default();
+
+        let (host, port, _) = crate::configure_tcp_connection(tcp_connection).await?;
 
         let cwd = task_definition
             .config
@@ -443,59 +445,32 @@ impl DebugAdapter for GoDebugAdapter {
             .map(PathBuf::from)
             .unwrap_or_else(|| delegate.worktree_root_path().to_path_buf());
 
-        let arguments;
-        let command;
-        let connection;
-
-        let mut configuration = task_definition.config.clone();
-        if let Some(configuration) = configuration.as_object_mut() {
-            configuration
-                .entry("cwd")
-                .or_insert_with(|| delegate.worktree_root_path().to_string_lossy().into());
-        }
-
-        if let Some(connection_options) = &task_definition.tcp_connection {
-            command = None;
-            arguments = vec![];
-            let (host, port, timeout) =
-                crate::configure_tcp_connection(connection_options.clone()).await?;
-            connection = Some(TcpArguments {
-                host,
-                port,
-                timeout,
-            });
+        let arguments = if cfg!(windows) {
+            vec![
+                delve_path,
+                "dap".into(),
+                "--listen".into(),
+                format!("{}:{}", host, port),
+                "--headless".into(),
+            ]
         } else {
-            let minidelve_path = self.install_shim(delegate).await?;
-            let (host, port, _) =
-                crate::configure_tcp_connection(TcpArgumentsTemplate::default()).await?;
-            command = Some(minidelve_path.to_string_lossy().into_owned());
-            connection = None;
-            arguments = if cfg!(windows) {
-                vec![
-                    delve_path,
-                    "dap".into(),
-                    "--listen".into(),
-                    format!("{}:{}", host, port),
-                    "--headless".into(),
-                ]
-            } else {
-                vec![
-                    delve_path,
-                    "dap".into(),
-                    "--listen".into(),
-                    format!("{}:{}", host, port),
-                ]
-            };
-        }
+            vec![
+                delve_path,
+                "dap".into(),
+                "--listen".into(),
+                format!("{}:{}", host, port),
+            ]
+        };
+
         Ok(DebugAdapterBinary {
-            command,
+            command: minidelve_path.to_string_lossy().into_owned(),
             arguments,
             cwd: Some(cwd),
             envs: HashMap::default(),
-            connection,
+            connection: None,
             request_args: StartDebuggingRequestArguments {
-                configuration,
-                request: self.request_kind(&task_definition.config).await?,
+                configuration: task_definition.config.clone(),
+                request: self.request_kind(&task_definition.config)?,
             },
         })
     }

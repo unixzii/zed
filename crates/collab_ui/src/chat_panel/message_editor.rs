@@ -15,6 +15,7 @@ use language::{
 use project::{Completion, CompletionResponse, CompletionSource, search::SearchQuery};
 use settings::Settings;
 use std::{
+    cell::RefCell,
     ops::Range,
     rc::Rc,
     sync::{Arc, LazyLock},
@@ -70,6 +71,16 @@ impl CompletionProvider for MessageEditorCompletionProvider {
         handle.update(cx, |message_editor, cx| {
             message_editor.completions(buffer, buffer_position, cx)
         })
+    }
+
+    fn resolve_completions(
+        &self,
+        _buffer: Entity<Buffer>,
+        _completion_indices: Vec<usize>,
+        _completions: Rc<RefCell<Box<[Completion]>>>,
+        _cx: &mut Context<Editor>,
+    ) -> Task<anyhow::Result<bool>> {
+        Task::ready(Ok(false))
     }
 
     fn is_completion_trigger(
@@ -193,10 +204,10 @@ impl MessageEditor {
             let highlights = editor.text_highlights::<Self>(cx);
             let text = editor.text(cx);
             let snapshot = editor.buffer().read(cx).snapshot(cx);
-            let mentions = if let Some(ranges) = highlights {
+            let mentions = if let Some((_, ranges)) = highlights {
                 ranges
                     .iter()
-                    .map(|(range, _)| range.to_offset(&snapshot))
+                    .map(|range| range.to_offset(&snapshot))
                     .zip(self.mentions.iter().copied())
                     .collect()
             } else {
@@ -244,7 +255,7 @@ impl MessageEditor {
         {
             if !candidates.is_empty() {
                 return cx.spawn(async move |_, cx| {
-                    let completion_response = Self::completions_for_candidates(
+                    let completion_response = Self::resolve_completions_for_candidates(
                         &cx,
                         query.as_str(),
                         &candidates,
@@ -262,7 +273,7 @@ impl MessageEditor {
         {
             if !candidates.is_empty() {
                 return cx.spawn(async move |_, cx| {
-                    let completion_response = Self::completions_for_candidates(
+                    let completion_response = Self::resolve_completions_for_candidates(
                         &cx,
                         query.as_str(),
                         candidates,
@@ -281,7 +292,7 @@ impl MessageEditor {
         }]))
     }
 
-    async fn completions_for_candidates(
+    async fn resolve_completions_for_candidates(
         cx: &AsyncApp,
         query: &str,
         candidates: &[StringMatchCandidate],
@@ -483,19 +494,20 @@ impl MessageEditor {
                             let end = multi_buffer.anchor_after(range.end);
 
                             mentioned_user_ids.push(user.id);
-                            anchor_ranges.push((
-                                start..end,
-                                HighlightStyle {
-                                    font_weight: Some(FontWeight::BOLD),
-                                    ..Default::default()
-                                },
-                            ));
+                            anchor_ranges.push(start..end);
                         }
                     }
                 }
 
                 editor.clear_highlights::<Self>(cx);
-                editor.highlight_text::<Self>(anchor_ranges, cx)
+                editor.highlight_text::<Self>(
+                    anchor_ranges,
+                    HighlightStyle {
+                        font_weight: Some(FontWeight::BOLD),
+                        ..Default::default()
+                    },
+                    cx,
+                )
             });
 
             this.mentions = mentioned_user_ids;

@@ -93,7 +93,7 @@ impl<'a> From<&'a str> for DebugAdapterName {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TcpArguments {
     pub host: Ipv4Addr,
     pub port: u16,
@@ -179,9 +179,9 @@ impl DebugTaskDefinition {
 }
 
 /// Created from a [DebugTaskDefinition], this struct describes how to spawn the debugger to create a previously-configured debug session.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DebugAdapterBinary {
-    pub command: Option<String>,
+    pub command: String,
     pub arguments: Vec<String>,
     pub envs: HashMap<String, String>,
     pub cwd: Option<PathBuf>,
@@ -337,7 +337,7 @@ pub async fn download_adapter_from_github(
 pub trait DebugAdapter: 'static + Send + Sync {
     fn name(&self) -> DebugAdapterName;
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario>;
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario>;
 
     async fn get_binary(
         &self,
@@ -355,7 +355,7 @@ pub trait DebugAdapter: 'static + Send + Sync {
     /// Extracts the kind (attach/launch) of debug configuration from the given JSON config.
     /// This method should only return error when the kind cannot be determined for a given configuration;
     /// in particular, it *should not* validate whether the request as a whole is valid, because that's best left to the debug adapter itself to decide.
-    async fn request_kind(
+    fn request_kind(
         &self,
         config: &serde_json::Value,
     ) -> Result<StartDebuggingRequestArgumentsRequest> {
@@ -368,11 +368,7 @@ pub trait DebugAdapter: 'static + Send + Sync {
         }
     }
 
-    fn dap_schema(&self) -> serde_json::Value;
-
-    fn label_for_child_session(&self, _args: &StartDebuggingRequestArguments) -> Option<String> {
-        None
-    }
+    async fn dap_schema(&self) -> serde_json::Value;
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -394,11 +390,11 @@ impl DebugAdapter for FakeAdapter {
         DebugAdapterName(Self::ADAPTER_NAME.into())
     }
 
-    fn dap_schema(&self) -> serde_json::Value {
+    async fn dap_schema(&self) -> serde_json::Value {
         serde_json::Value::Null
     }
 
-    async fn request_kind(
+    fn request_kind(
         &self,
         config: &serde_json::Value,
     ) -> Result<StartDebuggingRequestArgumentsRequest> {
@@ -417,7 +413,7 @@ impl DebugAdapter for FakeAdapter {
         None
     }
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
         let config = serde_json::to_value(zed_scenario.request).unwrap();
 
         Ok(DebugScenario {
@@ -437,13 +433,13 @@ impl DebugAdapter for FakeAdapter {
         _: &mut AsyncApp,
     ) -> Result<DebugAdapterBinary> {
         Ok(DebugAdapterBinary {
-            command: Some("command".into()),
+            command: "command".into(),
             arguments: vec![],
             connection: None,
             envs: HashMap::default(),
             cwd: None,
             request_args: StartDebuggingRequestArguments {
-                request: self.request_kind(&task_definition.config).await?,
+                request: self.request_kind(&task_definition.config)?,
                 configuration: task_definition.config.clone(),
             },
         })

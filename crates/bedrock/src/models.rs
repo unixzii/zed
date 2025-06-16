@@ -452,10 +452,6 @@ impl Model {
                 | Model::Claude3_5SonnetV2
                 | Model::Claude3_7Sonnet
                 | Model::Claude3_7SonnetThinking
-                | Model::ClaudeSonnet4
-                | Model::ClaudeSonnet4Thinking
-                | Model::ClaudeOpus4
-                | Model::ClaudeOpus4Thinking
                 | Model::Claude3Haiku
                 | Model::Claude3Opus
                 | Model::Claude3Sonnet

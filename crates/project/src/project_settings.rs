@@ -55,7 +55,7 @@ pub struct ProjectSettings {
 
     /// Settings for context servers used for AI-related features.
     #[serde(default)]
-    pub context_servers: HashMap<Arc<str>, ContextServerSettings>,
+    pub context_servers: HashMap<Arc<str>, ContextServerConfiguration>,
 
     /// Configuration for Diagnostics-related features.
     #[serde(default)]
@@ -84,22 +84,17 @@ pub struct DapSettings {
     pub binary: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, Debug)]
-#[serde(tag = "source", rename_all = "snake_case")]
-pub enum ContextServerSettings {
-    Custom {
-        /// The command to run this context server.
-        ///
-        /// This will override the command set by an extension.
-        command: ContextServerCommand,
-    },
-    Extension {
-        /// The settings for this context server specified by the extension.
-        ///
-        /// Consult the documentation for the context server to see what settings
-        /// are supported.
-        settings: serde_json::Value,
-    },
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, Debug, Default)]
+pub struct ContextServerConfiguration {
+    /// The command to run this context server.
+    ///
+    /// This will override the command set by an extension.
+    pub command: Option<ContextServerCommand>,
+    /// The settings for this context server.
+    ///
+    /// Consult the documentation for the context server to see what settings
+    /// are supported.
+    pub settings: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -132,9 +127,6 @@ pub struct DiagnosticsSettings {
     /// Whether or not to include warning diagnostics.
     pub include_warnings: bool,
 
-    /// Settings for using LSP pull diagnostics mechanism in Zed.
-    pub lsp_pull_diagnostics: LspPullDiagnosticsSettings,
-
     /// Settings for showing inline diagnostics.
     pub inline: InlineDiagnosticsSettings,
 
@@ -152,26 +144,6 @@ impl DiagnosticsSettings {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub struct LspPullDiagnosticsSettings {
-    /// Whether to pull for diagnostics or not.
-    ///
-    /// Default: true
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    /// Minimum time to wait before pulling diagnostics from the language server(s).
-    /// 0 turns the debounce off.
-    ///
-    /// Default: 50
-    #[serde(default = "default_lsp_diagnostics_pull_debounce_ms")]
-    pub debounce_ms: u64,
-}
-
-fn default_lsp_diagnostics_pull_debounce_ms() -> u64 {
-    50
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
 pub struct InlineDiagnosticsSettings {
     /// Whether or not to show inline diagnostics
     ///
@@ -181,13 +153,11 @@ pub struct InlineDiagnosticsSettings {
     /// last editor event.
     ///
     /// Default: 150
-    #[serde(default = "default_inline_diagnostics_update_debounce_ms")]
     pub update_debounce_ms: u64,
     /// The amount of padding between the end of the source line and the start
     /// of the inline diagnostic in units of columns.
     ///
     /// Default: 4
-    #[serde(default = "default_inline_diagnostics_padding")]
     pub padding: u32,
     /// The minimum column to display inline diagnostics. This setting can be
     /// used to horizontally align inline diagnostics at some position. Lines
@@ -197,47 +167,6 @@ pub struct InlineDiagnosticsSettings {
     pub min_column: u32,
 
     pub max_severity: Option<DiagnosticSeverity>,
-}
-
-fn default_inline_diagnostics_update_debounce_ms() -> u64 {
-    150
-}
-
-fn default_inline_diagnostics_padding() -> u32 {
-    4
-}
-
-impl Default for DiagnosticsSettings {
-    fn default() -> Self {
-        Self {
-            button: true,
-            include_warnings: true,
-            lsp_pull_diagnostics: LspPullDiagnosticsSettings::default(),
-            inline: InlineDiagnosticsSettings::default(),
-            cargo: None,
-        }
-    }
-}
-
-impl Default for LspPullDiagnosticsSettings {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            debounce_ms: default_lsp_diagnostics_pull_debounce_ms(),
-        }
-    }
-}
-
-impl Default for InlineDiagnosticsSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            update_debounce_ms: default_inline_diagnostics_update_debounce_ms(),
-            padding: default_inline_diagnostics_padding(),
-            min_column: 0,
-            max_severity: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -271,6 +200,29 @@ impl DiagnosticSeverity {
             DiagnosticSeverity::Warning => Some(lsp::DiagnosticSeverity::WARNING),
             DiagnosticSeverity::Info => Some(lsp::DiagnosticSeverity::INFORMATION),
             DiagnosticSeverity::Hint => Some(lsp::DiagnosticSeverity::HINT),
+        }
+    }
+}
+
+impl Default for DiagnosticsSettings {
+    fn default() -> Self {
+        Self {
+            button: true,
+            include_warnings: true,
+            inline: Default::default(),
+            cargo: Default::default(),
+        }
+    }
+}
+
+impl Default for InlineDiagnosticsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            update_debounce_ms: 150,
+            padding: 4,
+            min_column: 0,
+            max_severity: None,
         }
     }
 }
@@ -477,12 +429,13 @@ impl Settings for ProjectSettings {
                 .extend(mcp.iter().filter_map(|(k, v)| {
                     Some((
                         k.clone().into(),
-                        ContextServerSettings::Custom {
-                            command: serde_json::from_value::<VsCodeContextServerCommand>(
-                                v.clone(),
-                            )
-                            .ok()?
-                            .into(),
+                        ContextServerConfiguration {
+                            command: Some(
+                                serde_json::from_value::<VsCodeContextServerCommand>(v.clone())
+                                    .ok()?
+                                    .into(),
+                            ),
+                            settings: None,
                         },
                     ))
                 }));

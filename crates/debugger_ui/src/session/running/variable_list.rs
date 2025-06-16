@@ -980,11 +980,10 @@ impl Render for VariableList {
             .on_action(cx.listener(Self::edit_variable))
             .child(
                 uniform_list(
+                    cx.entity().clone(),
                     "variable-list",
                     self.entries.len(),
-                    cx.processor(move |this, range: Range<usize>, window, cx| {
-                        this.render_entries(range, window, cx)
-                    }),
+                    move |this, range, window, cx| this.render_entries(range, window, cx),
                 )
                 .track_scroll(self.list_handle.clone())
                 .gap_1_5()

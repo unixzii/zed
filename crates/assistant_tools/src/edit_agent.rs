@@ -8,7 +8,6 @@ use crate::{Template, Templates};
 use anyhow::Result;
 use assistant_tool::ActionLog;
 use create_file_parser::{CreateFileParser, CreateFileParserEvent};
-pub use edit_parser::EditFormat;
 use edit_parser::{EditParser, EditParserEvent, EditParserMetrics};
 use futures::{
     Stream, StreamExt,
@@ -42,23 +41,13 @@ impl Template for CreateFilePromptTemplate {
 }
 
 #[derive(Serialize)]
-struct EditFileXmlPromptTemplate {
+struct EditFilePromptTemplate {
     path: Option<PathBuf>,
     edit_description: String,
 }
 
-impl Template for EditFileXmlPromptTemplate {
-    const TEMPLATE_NAME: &'static str = "edit_file_prompt_xml.hbs";
-}
-
-#[derive(Serialize)]
-struct EditFileDiffFencedPromptTemplate {
-    path: Option<PathBuf>,
-    edit_description: String,
-}
-
-impl Template for EditFileDiffFencedPromptTemplate {
-    const TEMPLATE_NAME: &'static str = "edit_file_prompt_diff_fenced.hbs";
+impl Template for EditFilePromptTemplate {
+    const TEMPLATE_NAME: &'static str = "edit_file_prompt.hbs";
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,7 +70,6 @@ pub struct EditAgent {
     action_log: Entity<ActionLog>,
     project: Entity<Project>,
     templates: Arc<Templates>,
-    edit_format: EditFormat,
 }
 
 impl EditAgent {
@@ -90,14 +78,12 @@ impl EditAgent {
         project: Entity<Project>,
         action_log: Entity<ActionLog>,
         templates: Arc<Templates>,
-        edit_format: EditFormat,
     ) -> Self {
         EditAgent {
             model,
             project,
             action_log,
             templates,
-            edit_format,
         }
     }
 
@@ -223,23 +209,14 @@ impl EditAgent {
         let this = self.clone();
         let (events_tx, events_rx) = mpsc::unbounded();
         let conversation = conversation.clone();
-        let edit_format = self.edit_format;
         let output = cx.spawn(async move |cx| {
             let snapshot = buffer.read_with(cx, |buffer, _| buffer.snapshot())?;
             let path = cx.update(|cx| snapshot.resolve_file_path(cx, true))?;
-            let prompt = match edit_format {
-                EditFormat::XmlTags => EditFileXmlPromptTemplate {
-                    path,
-                    edit_description,
-                }
-                .render(&this.templates)?,
-                EditFormat::DiffFenced => EditFileDiffFencedPromptTemplate {
-                    path,
-                    edit_description,
-                }
-                .render(&this.templates)?,
-            };
-
+            let prompt = EditFilePromptTemplate {
+                path,
+                edit_description,
+            }
+            .render(&this.templates)?;
             let edit_chunks = this
                 .request(conversation, CompletionIntent::EditFile, prompt, cx)
                 .await?;
@@ -259,7 +236,7 @@ impl EditAgent {
         self.action_log
             .update(cx, |log, cx| log.buffer_read(buffer.clone(), cx))?;
 
-        let (output, edit_events) = Self::parse_edit_chunks(edit_chunks, self.edit_format, cx);
+        let (output, edit_events) = Self::parse_edit_chunks(edit_chunks, cx);
         let mut edit_events = edit_events.peekable();
         while let Some(edit_event) = Pin::new(&mut edit_events).peek().await {
             // Skip events until we're at the start of a new edit.
@@ -309,13 +286,7 @@ impl EditAgent {
                 _ => {
                     let ranges = resolved_old_text
                         .into_iter()
-                        .map(|text| {
-                            let start_line =
-                                (snapshot.offset_to_point(text.range.start).row + 1) as usize;
-                            let end_line =
-                                (snapshot.offset_to_point(text.range.end).row + 1) as usize;
-                            start_line..end_line
-                        })
+                        .map(|text| text.range)
                         .collect();
                     output_events
                         .unbounded_send(EditAgentOutputEvent::AmbiguousEditRange(ranges))
@@ -373,7 +344,6 @@ impl EditAgent {
 
     fn parse_edit_chunks(
         chunks: impl 'static + Send + Stream<Item = Result<String, LanguageModelCompletionError>>,
-        edit_format: EditFormat,
         cx: &mut AsyncApp,
     ) -> (
         Task<Result<EditAgentOutput>>,
@@ -383,7 +353,7 @@ impl EditAgent {
         let output = cx.background_spawn(async move {
             pin_mut!(chunks);
 
-            let mut parser = EditParser::new(edit_format);
+            let mut parser = EditParser::new();
             let mut raw_edits = String::new();
             while let Some(chunk) = chunks.next().await {
                 match chunk {
@@ -459,25 +429,25 @@ impl EditAgent {
         let task = cx.background_spawn(async move {
             let mut matcher = StreamingFuzzyMatcher::new(snapshot);
             while let Some(edit_event) = edit_events.next().await {
-                let EditParserEvent::OldTextChunk {
-                    chunk,
-                    done,
-                    line_hint,
-                } = edit_event?
-                else {
+                let EditParserEvent::OldTextChunk { chunk, done } = edit_event? else {
                     break;
                 };
 
-                old_range_tx.send(matcher.push(&chunk, line_hint))?;
+                old_range_tx.send(matcher.push(&chunk))?;
                 if done {
                     break;
                 }
             }
 
             let matches = matcher.finish();
-            let best_match = matcher.select_best_match();
 
-            old_range_tx.send(best_match.clone())?;
+            let old_range = if matches.len() == 1 {
+                matches.first()
+            } else {
+                // No matches or multiple ambiguous matches
+                None
+            };
+            old_range_tx.send(old_range.cloned())?;
 
             let indent = LineIndent::from_iter(
                 matcher
@@ -486,18 +456,10 @@ impl EditAgent {
                     .unwrap_or(&String::new())
                     .chars(),
             );
-
-            let resolved_old_texts = if let Some(best_match) = best_match {
-                vec![ResolvedOldText {
-                    range: best_match,
-                    indent,
-                }]
-            } else {
-                matches
-                    .into_iter()
-                    .map(|range| ResolvedOldText { range, indent })
-                    .collect::<Vec<_>>()
-            };
+            let resolved_old_texts = matches
+                .into_iter()
+                .map(|range| ResolvedOldText { range, indent })
+                .collect::<Vec<_>>();
 
             Ok((edit_events, resolved_old_texts))
         });
@@ -1379,13 +1341,7 @@ mod tests {
         let project = Project::test(FakeFs::new(cx.executor()), [], cx).await;
         let model = Arc::new(FakeLanguageModel::default());
         let action_log = cx.new(|_| ActionLog::new(project.clone()));
-        EditAgent::new(
-            model,
-            project,
-            action_log,
-            Templates::new(),
-            EditFormat::XmlTags,
-        )
+        EditAgent::new(model, project, action_log, Templates::new())
     }
 
     #[gpui::test(iterations = 10)]
@@ -1418,12 +1374,10 @@ mod tests {
             &agent,
             indoc! {"
                 <old_text>
-                    return 42;
-                }
+                return 42;
                 </old_text>
                 <new_text>
-                    return 100;
-                }
+                return 100;
                 </new_text>
             "},
             &mut rng,
@@ -1453,7 +1407,7 @@ mod tests {
 
         // And AmbiguousEditRange even should be emitted
         let events = drain_events(&mut events);
-        let ambiguous_ranges = vec![2..3, 6..7, 10..11];
+        let ambiguous_ranges = vec![17..31, 52..66, 87..101];
         assert!(
             events.contains(&EditAgentOutputEvent::AmbiguousEditRange(ambiguous_ranges)),
             "Should emit AmbiguousEditRange for non-unique text"

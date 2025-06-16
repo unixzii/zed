@@ -292,7 +292,7 @@ impl Prettier {
 
         let server = cx
             .update(|cx| {
-                let params = server.default_initialize_params(false, cx);
+                let params = server.default_initialize_params(cx);
                 let configuration = lsp::DidChangeConfigurationParams {
                     settings: Default::default(),
                 };
@@ -452,13 +452,14 @@ impl Prettier {
                             },
                         })
                     })?
-                    .context("building prettier request")?;
+                    .context("prettier params calculation")?;
 
                 let response = local
                     .server
                     .request::<Format>(params)
                     .await
-                    .into_response()?;
+                    .into_response()
+                    .context("prettier format")?;
                 let diff_task = buffer.update(cx, |buffer, cx| buffer.diff(response.text, cx))?;
                 Ok(diff_task.await)
             }

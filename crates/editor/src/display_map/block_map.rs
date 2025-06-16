@@ -464,7 +464,7 @@ impl BlockMap {
         map
     }
 
-    pub fn read(&self, wrap_snapshot: WrapSnapshot, edits: Patch<u32>) -> BlockMapReader<'_> {
+    pub fn read(&self, wrap_snapshot: WrapSnapshot, edits: Patch<u32>) -> BlockMapReader {
         self.sync(&wrap_snapshot, edits);
         *self.wrap_snapshot.borrow_mut() = wrap_snapshot.clone();
         BlockMapReader {
@@ -479,7 +479,7 @@ impl BlockMap {
         }
     }
 
-    pub fn write(&mut self, wrap_snapshot: WrapSnapshot, edits: Patch<u32>) -> BlockMapWriter<'_> {
+    pub fn write(&mut self, wrap_snapshot: WrapSnapshot, edits: Patch<u32>) -> BlockMapWriter {
         self.sync(&wrap_snapshot, edits);
         *self.wrap_snapshot.borrow_mut() = wrap_snapshot;
         BlockMapWriter(self)
@@ -1327,7 +1327,7 @@ impl BlockSnapshot {
         }
     }
 
-    pub(super) fn row_infos(&self, start_row: BlockRow) -> BlockRows<'_> {
+    pub(super) fn row_infos(&self, start_row: BlockRow) -> BlockRows {
         let mut cursor = self.transforms.cursor::<(BlockRow, WrapRow)>(&());
         cursor.seek(&start_row, Bias::Right, &());
         let (output_start, input_start) = cursor.start();

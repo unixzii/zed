@@ -11,7 +11,7 @@ use client::{Client, UserStore};
 use collections::HashMap;
 use fs::FakeFs;
 use futures::{FutureExt, future::LocalBoxFuture};
-use gpui::{AppContext, TestAppContext, Timer};
+use gpui::{AppContext, TestAppContext};
 use indoc::{formatdoc, indoc};
 use language_model::{
     LanguageModelRegistry, LanguageModelRequestTool, LanguageModelToolResult,
@@ -26,7 +26,6 @@ use std::{
     cmp::Reverse,
     fmt::{self, Display},
     io::Write as _,
-    path::Path,
     str::FromStr,
     sync::mpsc,
 };
@@ -39,11 +38,10 @@ fn eval_extract_handle_command_output() {
     //
     // Model                       | Pass rate
     // ----------------------------|----------
-    // claude-3.7-sonnet           |  0.99 (2025-06-14)
-    // claude-sonnet-4             |  0.97 (2025-06-14)
-    // gemini-2.5-pro-06-05        |  0.98 (2025-06-16)
-    // gemini-2.5-flash            |  0.11 (2025-05-22)
-    // gpt-4.1                     |  1.00 (2025-05-22)
+    // claude-3.7-sonnet           |  0.98
+    // gemini-2.5-pro              |  0.86
+    // gemini-2.5-flash            |  0.11
+    // gpt-4.1                     |  1.00
 
     let input_file_path = "root/blame.rs";
     let input_file_content = include_str!("evals/fixtures/extract_handle_command_output/before.rs");
@@ -59,8 +57,7 @@ fn eval_extract_handle_command_output() {
     let edit_description = "Extract `handle_command_output` method from `run_git_blame`.";
     eval(
         100,
-        0.95,
-        0.05,
+        0.7, // Taking the lower bar for Gemini
         EvalInput::from_conversation(
             vec![
                 message(
@@ -112,13 +109,6 @@ fn eval_extract_handle_command_output() {
 #[test]
 #[cfg_attr(not(feature = "eval"), ignore)]
 fn eval_delete_run_git_blame() {
-    // Model                       | Pass rate
-    // ----------------------------|----------
-    // claude-3.7-sonnet           | 1.0  (2025-06-14)
-    // claude-sonnet-4             | 0.96 (2025-06-14)
-    // gemini-2.5-pro-06-05        | 1.0  (2025-06-16)
-    // gemini-2.5-flash            |
-    // gpt-4.1                     |
     let input_file_path = "root/blame.rs";
     let input_file_content = include_str!("evals/fixtures/delete_run_git_blame/before.rs");
     let output_file_content = include_str!("evals/fixtures/delete_run_git_blame/after.rs");
@@ -126,7 +116,6 @@ fn eval_delete_run_git_blame() {
     eval(
         100,
         0.95,
-        0.05,
         EvalInput::from_conversation(
             vec![
                 message(
@@ -174,12 +163,13 @@ fn eval_delete_run_git_blame() {
 #[test]
 #[cfg_attr(not(feature = "eval"), ignore)]
 fn eval_translate_doc_comments() {
+    // Results for 2025-05-22
+    //
     //  Model                          | Pass rate
     // ============================================
     //
-    //  claude-3.7-sonnet              |  1.0  (2025-06-14)
-    //  claude-sonnet-4                |  1.0  (2025-06-14)
-    //  gemini-2.5-pro-preview-03-25   |  1.0  (2025-05-22)
+    //  claude-3.7-sonnet              |
+    //  gemini-2.5-pro-preview-03-25   |  1.0
     //  gemini-2.5-flash-preview-04-17 |
     //  gpt-4.1                        |
     let input_file_path = "root/canvas.rs";
@@ -188,7 +178,6 @@ fn eval_translate_doc_comments() {
     eval(
         200,
         1.,
-        0.05,
         EvalInput::from_conversation(
             vec![
                 message(
@@ -236,12 +225,13 @@ fn eval_translate_doc_comments() {
 #[test]
 #[cfg_attr(not(feature = "eval"), ignore)]
 fn eval_use_wasi_sdk_in_compile_parser_to_wasm() {
+    // Results for 2025-05-22
+    //
     //  Model                          | Pass rate
     // ============================================
     //
-    //  claude-3.7-sonnet              |  0.96 (2025-06-14)
-    //  claude-sonnet-4                |  0.11 (2025-06-14)
-    //  gemini-2.5-pro-preview-latest  |  0.99 (2025-06-16)
+    //  claude-3.7-sonnet              |  0.98
+    //  gemini-2.5-pro-preview-03-25   |  0.99
     //  gemini-2.5-flash-preview-04-17 |
     //  gpt-4.1                        |
     let input_file_path = "root/lib.rs";
@@ -251,7 +241,6 @@ fn eval_use_wasi_sdk_in_compile_parser_to_wasm() {
     eval(
         100,
         0.95,
-        0.05,
         EvalInput::from_conversation(
             vec![
                 message(
@@ -361,12 +350,13 @@ fn eval_use_wasi_sdk_in_compile_parser_to_wasm() {
 #[test]
 #[cfg_attr(not(feature = "eval"), ignore)]
 fn eval_disable_cursor_blinking() {
+    // Results for 2025-05-22
+    //
     //  Model                          | Pass rate
     // ============================================
     //
-    //  claude-3.7-sonnet              |  0.99 (2025-06-14)
-    //  claude-sonnet-4                |  0.85 (2025-06-14)
-    //  gemini-2.5-pro-preview-latest  |  0.97 (2025-06-16)
+    //  claude-3.7-sonnet              |
+    //  gemini-2.5-pro-preview-03-25   |  1.0
     //  gemini-2.5-flash-preview-04-17 |
     //  gpt-4.1                        |
     let input_file_path = "root/editor.rs";
@@ -375,7 +365,6 @@ fn eval_disable_cursor_blinking() {
     eval(
         100,
         0.95,
-        0.05,
         EvalInput::from_conversation(
             vec![
                 message(User, [text("Let's research how to cursor blinking works.")]),
@@ -444,20 +433,14 @@ fn eval_disable_cursor_blinking() {
 #[test]
 #[cfg_attr(not(feature = "eval"), ignore)]
 fn eval_from_pixels_constructor() {
-    // Results for 2025-06-13
+    // Results for 2025-05-22
     //
-    // The outcome of this evaluation depends heavily on the LINE_HINT_TOLERANCE
-    // value. Higher values improve the pass rate but may sometimes cause
-    // edits to be misapplied. In the context of this eval, this means
-    // the agent might add from_pixels tests in incorrect locations
-    // (e.g., at the beginning of the file), yet the evaluation may still
-    // rate it highly.
+    //  Model                          | Pass rate
+    // ============================================
     //
-    //  Model                          | Date        | Pass rate
-    // =========================================================
-    //  claude-4.0-sonnet              | 2025-06-14  | 0.99
-    //  claude-3.7-sonnet              | 2025-06-14  | 0.88
-    //  gemini-2.5-pro-preview-06-05   | 2025-06-16  | 0.98
+    //  claude-3.7-sonnet              |
+    //  gemini-2.5-pro-preview-03-25   |  0.94
+    //  gemini-2.5-flash-preview-04-17 |
     //  gpt-4.1                        |
     let input_file_path = "root/canvas.rs";
     let input_file_content = include_str!("evals/fixtures/from_pixels_constructor/before.rs");
@@ -465,9 +448,6 @@ fn eval_from_pixels_constructor() {
     eval(
         100,
         0.95,
-        // For whatever reason, this eval produces more mismatched tags.
-        // Increasing for now, let's see if we can bring this down.
-        0.25,
         EvalInput::from_conversation(
             vec![
                 message(
@@ -653,21 +633,21 @@ fn eval_from_pixels_constructor() {
 #[test]
 #[cfg_attr(not(feature = "eval"), ignore)]
 fn eval_zode() {
+    // Results for 2025-05-22
+    //
     //  Model                          | Pass rate
     // ============================================
     //
-    //  claude-3.7-sonnet              |  1.0 (2025-06-14)
-    //  claude-sonnet-4                |  1.0 (2025-06-14)
-    //  gemini-2.5-pro-preview-03-25   |  1.0 (2025-05-22)
-    //  gemini-2.5-flash-preview-04-17 |  1.0 (2025-05-22)
-    //  gpt-4.1                        |  1.0 (2025-05-22)
+    //  claude-3.7-sonnet              |  1.0
+    //  gemini-2.5-pro-preview-03-25   |  1.0
+    //  gemini-2.5-flash-preview-04-17 |  1.0
+    //  gpt-4.1                        |  1.0
     let input_file_path = "root/zode.py";
     let input_content = None;
     let edit_description = "Create the main Zode CLI script";
     eval(
         50,
         1.,
-        0.05,
         EvalInput::from_conversation(
             vec![
                 message(User, [text(include_str!("evals/fixtures/zode/prompt.md"))]),
@@ -759,12 +739,13 @@ fn eval_zode() {
 #[test]
 #[cfg_attr(not(feature = "eval"), ignore)]
 fn eval_add_overwrite_test() {
+    // Results for 2025-05-22
+    //
     //  Model                          | Pass rate
     // ============================================
     //
-    //  claude-3.7-sonnet              |  0.65 (2025-06-14)
-    //  claude-sonnet-4                |  0.07 (2025-06-14)
-    //  gemini-2.5-pro-preview-03-25   |  0.35 (2025-05-22)
+    //  claude-3.7-sonnet              |  0.16
+    //  gemini-2.5-pro-preview-03-25   |  0.35
     //  gemini-2.5-flash-preview-04-17 |
     //  gpt-4.1                        |
     let input_file_path = "root/action_log.rs";
@@ -773,7 +754,6 @@ fn eval_add_overwrite_test() {
     eval(
         200,
         0.5, // TODO: make this eval better
-        0.05,
         EvalInput::from_conversation(
             vec![
                 message(
@@ -994,14 +974,15 @@ fn eval_create_empty_file() {
     // thoughts into it. This issue is not specific to empty files, but
     // it's easier to reproduce with them.
     //
+    // Results for 2025-05-21:
+    //
     //  Model                          | Pass rate
     // ============================================
     //
-    //  claude-3.7-sonnet              |  1.00 (2025-06-14)
-    //  claude-sonnet-4                |  1.00 (2025-06-14)
-    //  gemini-2.5-pro-preview-03-25   |  1.00 (2025-05-21)
-    //  gemini-2.5-flash-preview-04-17 |  1.00 (2025-05-21)
-    //  gpt-4.1                        |  1.00 (2025-05-21)
+    //  claude-3.7-sonnet              |  1.00
+    //  gemini-2.5-pro-preview-03-25   |  1.00
+    //  gemini-2.5-flash-preview-04-17 |  1.00
+    //  gpt-4.1                        |  1.00
     //
     //
     // TODO: gpt-4.1-mini errored 38 times:
@@ -1012,7 +993,6 @@ fn eval_create_empty_file() {
     eval(
         100,
         0.99,
-        0.05,
         EvalInput::from_conversation(
             vec![
                 message(User, [text("Create a second empty todo file ")]),
@@ -1264,12 +1244,9 @@ impl EvalAssertion {
                 }],
                 ..Default::default()
             };
-            let mut response = retry_on_rate_limit(async || {
-                Ok(judge
-                    .stream_completion_text(request.clone(), &cx.to_async())
-                    .await?)
-            })
-            .await?;
+            let mut response = judge
+                .stream_completion_text(request, &cx.to_async())
+                .await?;
             let mut output = String::new();
             while let Some(chunk) = response.stream.next().await {
                 let chunk = chunk?;
@@ -1302,12 +1279,7 @@ impl EvalAssertion {
     }
 }
 
-fn eval(
-    iterations: usize,
-    expected_pass_ratio: f32,
-    mismatched_tag_threshold: f32,
-    mut eval: EvalInput,
-) {
+fn eval(iterations: usize, expected_pass_ratio: f32, mut eval: EvalInput) {
     let mut evaluated_count = 0;
     let mut failed_count = 0;
     report_progress(evaluated_count, failed_count, iterations);
@@ -1320,17 +1292,10 @@ fn eval(
     run_eval(eval.clone(), tx.clone());
 
     let executor = gpui::background_executor();
-    let semaphore = Arc::new(smol::lock::Semaphore::new(32));
     for _ in 1..iterations {
         let eval = eval.clone();
         let tx = tx.clone();
-        let semaphore = semaphore.clone();
-        executor
-            .spawn(async move {
-                let _guard = semaphore.acquire().await;
-                run_eval(eval, tx)
-            })
-            .detach();
+        executor.spawn(async move { run_eval(eval, tx) }).detach();
     }
     drop(tx);
 
@@ -1386,7 +1351,7 @@ fn eval(
 
     let mismatched_tag_ratio =
         cumulative_parser_metrics.mismatched_tags as f32 / cumulative_parser_metrics.tags as f32;
-    if mismatched_tag_ratio > mismatched_tag_threshold {
+    if mismatched_tag_ratio > 0.05 {
         for eval_output in eval_outputs {
             println!("{}", eval_output);
         }
@@ -1497,16 +1462,8 @@ impl EditAgentTest {
             .await;
         let action_log = cx.new(|_| ActionLog::new(project.clone()));
 
-        let edit_format = EditFormat::from_env(agent_model.clone()).unwrap();
-
         Self {
-            agent: EditAgent::new(
-                agent_model,
-                project.clone(),
-                action_log,
-                Templates::new(),
-                edit_format,
-            ),
+            agent: EditAgent::new(agent_model, project.clone(), action_log, Templates::new()),
             project,
             judge_model,
         }
@@ -1566,7 +1523,6 @@ impl EditAgentTest {
             .collect::<Vec<_>>();
         let worktrees = vec![WorktreeContext {
             root_name: "root".to_string(),
-            abs_path: Path::new("/path/to/root").into(),
             rules_file: None,
         }];
         let prompt_builder = PromptBuilder::new(None)?;
@@ -1605,31 +1561,21 @@ impl EditAgentTest {
             if let Some(input_content) = eval.input_content.as_deref() {
                 buffer.update(cx, |buffer, cx| buffer.set_text(input_content, cx));
             }
-            retry_on_rate_limit(async || {
-                self.agent
-                    .edit(
-                        buffer.clone(),
-                        eval.edit_file_input.display_description.clone(),
-                        &conversation,
-                        &mut cx.to_async(),
-                    )
-                    .0
-                    .await
-            })
-            .await?
+            let (edit_output, _) = self.agent.edit(
+                buffer.clone(),
+                eval.edit_file_input.display_description,
+                &conversation,
+                &mut cx.to_async(),
+            );
+            edit_output.await?
         } else {
-            retry_on_rate_limit(async || {
-                self.agent
-                    .overwrite(
-                        buffer.clone(),
-                        eval.edit_file_input.display_description.clone(),
-                        &conversation,
-                        &mut cx.to_async(),
-                    )
-                    .0
-                    .await
-            })
-            .await?
+            let (edit_output, _) = self.agent.overwrite(
+                buffer.clone(),
+                eval.edit_file_input.display_description,
+                &conversation,
+                &mut cx.to_async(),
+            );
+            edit_output.await?
         };
 
         let buffer_text = buffer.read_with(cx, |buffer, _| buffer.text());
@@ -1648,31 +1594,6 @@ impl EditAgentTest {
             .await?;
 
         Ok(EvalOutput { assertion, sample })
-    }
-}
-
-async fn retry_on_rate_limit<R>(mut request: impl AsyncFnMut() -> Result<R>) -> Result<R> {
-    let mut attempt = 0;
-    loop {
-        attempt += 1;
-        match request().await {
-            Ok(result) => return Ok(result),
-            Err(err) => match err.downcast::<LanguageModelCompletionError>() {
-                Ok(err) => match err {
-                    LanguageModelCompletionError::RateLimit(duration) => {
-                        // Wait for the duration supplied, with some jitter to avoid all requests being made at the same time.
-                        let jitter = duration.mul_f64(rand::thread_rng().gen_range(0.0..1.0));
-                        eprintln!(
-                            "Attempt #{attempt}: Rate limit exceeded. Retry after {duration:?} + jitter of {jitter:?}"
-                        );
-                        Timer::after(duration + jitter).await;
-                        continue;
-                    }
-                    _ => return Err(err.into()),
-                },
-                Err(err) => return Err(err),
-            },
-        }
     }
 }
 

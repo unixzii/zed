@@ -228,36 +228,26 @@ impl PickerDelegate for AttachModalDelegate {
             }
         }
 
-        let Some(adapter) = cx.read_global::<DapRegistry, _>(|registry, _| {
-            registry.adapter(&self.definition.adapter)
+        let Some(scenario) = cx.read_global::<DapRegistry, _>(|registry, _| {
+            registry
+                .adapter(&self.definition.adapter)
+                .and_then(|adapter| adapter.config_from_zed_format(self.definition.clone()).ok())
         }) else {
             return;
         };
 
-        let workspace = self.workspace.clone();
-        let definition = self.definition.clone();
-        cx.spawn_in(window, async move |this, cx| {
-            let Ok(scenario) = adapter.config_from_zed_format(definition).await else {
-                return;
-            };
+        let panel = self
+            .workspace
+            .update(cx, |workspace, cx| workspace.panel::<DebugPanel>(cx))
+            .ok()
+            .flatten();
+        if let Some(panel) = panel {
+            panel.update(cx, |panel, cx| {
+                panel.start_session(scenario, Default::default(), None, None, window, cx);
+            });
+        }
 
-            let panel = workspace
-                .update(cx, |workspace, cx| workspace.panel::<DebugPanel>(cx))
-                .ok()
-                .flatten();
-            if let Some(panel) = panel {
-                panel
-                    .update_in(cx, |panel, window, cx| {
-                        panel.start_session(scenario, Default::default(), None, None, window, cx);
-                    })
-                    .ok();
-            }
-            this.update(cx, |_, cx| {
-                cx.emit(DismissEvent);
-            })
-            .ok();
-        })
-        .detach();
+        cx.emit(DismissEvent);
     }
 
     fn dismissed(&mut self, _window: &mut Window, cx: &mut Context<Picker<Self>>) {

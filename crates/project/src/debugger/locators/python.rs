@@ -16,13 +16,13 @@ impl DapLocator for PythonLocator {
     }
 
     /// Determines whether this locator can generate debug target for given task.
-    async fn create_scenario(
+    fn create_scenario(
         &self,
         build_config: &TaskTemplate,
         resolved_label: &str,
-        adapter: &DebugAdapterName,
+        adapter: DebugAdapterName,
     ) -> Option<DebugScenario> {
-        if adapter.0.as_ref() != "Debugpy" {
+        if adapter.as_ref() != "Debugpy" {
             return None;
         }
         let valid_program = build_config.command.starts_with("$ZED_")
@@ -92,7 +92,7 @@ impl DapLocator for PythonLocator {
         }
 
         Some(DebugScenario {
-            adapter: adapter.0.clone(),
+            adapter: adapter.0,
             label: resolved_label.to_string().into(),
             build: None,
             config,

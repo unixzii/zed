@@ -241,7 +241,7 @@ impl Rope {
         self.chunks.extent(&())
     }
 
-    pub fn cursor(&self, offset: usize) -> Cursor<'_> {
+    pub fn cursor(&self, offset: usize) -> Cursor {
         Cursor::new(self, offset)
     }
 
@@ -258,23 +258,23 @@ impl Rope {
             .flat_map(|chunk| chunk.chars().rev())
     }
 
-    pub fn bytes_in_range(&self, range: Range<usize>) -> Bytes<'_> {
+    pub fn bytes_in_range(&self, range: Range<usize>) -> Bytes {
         Bytes::new(self, range, false)
     }
 
-    pub fn reversed_bytes_in_range(&self, range: Range<usize>) -> Bytes<'_> {
+    pub fn reversed_bytes_in_range(&self, range: Range<usize>) -> Bytes {
         Bytes::new(self, range, true)
     }
 
-    pub fn chunks(&self) -> Chunks<'_> {
+    pub fn chunks(&self) -> Chunks {
         self.chunks_in_range(0..self.len())
     }
 
-    pub fn chunks_in_range(&self, range: Range<usize>) -> Chunks<'_> {
+    pub fn chunks_in_range(&self, range: Range<usize>) -> Chunks {
         Chunks::new(self, range, false)
     }
 
-    pub fn reversed_chunks_in_range(&self, range: Range<usize>) -> Chunks<'_> {
+    pub fn reversed_chunks_in_range(&self, range: Range<usize>) -> Chunks {
         Chunks::new(self, range, true)
     }
 

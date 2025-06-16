@@ -87,7 +87,6 @@ pub struct ToggleCodeActions {
 #[derive(PartialEq, Clone, Debug)]
 pub enum CodeActionSource {
     Indicator(DisplayRow),
-    RunMenu(DisplayRow),
     QuickActionBar,
 }
 
@@ -243,8 +242,6 @@ impl_actions!(
         FoldAtLevel,
     ]
 );
-
-actions!(debugger, [RunToCursor, EvaluateSelectedText]);
 
 actions!(
     editor,
@@ -429,6 +426,8 @@ actions!(
         DisableBreakpoint,
         EnableBreakpoint,
         EditLogBreakpoint,
+        DebuggerRunToCursor,
+        DebuggerEvaluateSelectedText,
         ToggleAutoSignatureHelp,
         ToggleGitBlameInline,
         OpenGitBlameCommit,

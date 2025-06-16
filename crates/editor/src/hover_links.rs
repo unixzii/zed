@@ -1,7 +1,7 @@
 use crate::{
     Anchor, Editor, EditorSettings, EditorSnapshot, FindAllReferences, GoToDefinition,
     GoToTypeDefinition, GotoDefinitionKind, InlayId, Navigated, PointForPosition, SelectPhase,
-    editor_settings::GoToDefinitionFallback,
+    editor_settings::{GoToDefinitionFallback, MultiCursorModifier},
     hover_popover::{self, InlayHover},
     scroll::ScrollAmount,
 };
@@ -120,7 +120,11 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let hovered_link_modifier = Editor::multi_cursor_modifier(false, &modifiers, cx);
+        let multi_cursor_setting = EditorSettings::get_global(cx).multi_cursor_modifier;
+        let hovered_link_modifier = match multi_cursor_setting {
+            MultiCursorModifier::Alt => modifiers.secondary(),
+            MultiCursorModifier::CmdOrCtrl => modifiers.alt,
+        };
         if !hovered_link_modifier || self.has_pending_selection() {
             self.hide_hovered_link(cx);
             return;
@@ -635,7 +639,7 @@ pub fn show_link_definition(
 
                         match highlight_range {
                             RangeInEditor::Text(text_range) => editor
-                                .highlight_text::<HoveredLinkState>(vec![(text_range, style)], cx),
+                                .highlight_text::<HoveredLinkState>(vec![text_range], style, cx),
                             RangeInEditor::Inlay(highlight) => editor
                                 .highlight_inlays::<HoveredLinkState>(vec![highlight], style, cx),
                         }
@@ -1403,6 +1407,7 @@ mod tests {
                 let snapshot = editor.snapshot(window, cx);
                 let actual_ranges = snapshot
                     .text_highlight_ranges::<HoveredLinkState>()
+                    .map(|ranges| ranges.as_ref().clone().1)
                     .unwrap_or_default();
 
                 assert!(actual_ranges.is_empty(), "When no cmd is pressed, should have no hint label selected, but got: {actual_ranges:?}");
@@ -1634,6 +1639,7 @@ mod tests {
                     .snapshot(window, cx)
                     .text_highlight_ranges::<HoveredLinkState>()
                     .unwrap_or_default()
+                    .1
                     .is_empty()
             );
         });
@@ -1840,6 +1846,7 @@ mod tests {
                     .snapshot(window, cx)
                     .text_highlight_ranges::<HoveredLinkState>()
                     .unwrap_or_default()
+                    .1
                     .is_empty()
             );
         });

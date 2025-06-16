@@ -14,6 +14,4 @@
   (jsx_expression)
 ] @default
 
-(_ value: (call_expression
-  function: (identifier) @function_name_before_type_arguments
-  type_arguments: (type_arguments)))
+(_ value: (call_expression) @call_expression)

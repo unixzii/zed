@@ -1,3 +1,6 @@
+// Disable command line from opening on release mode
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod reliability;
 mod zed;
 
@@ -160,9 +163,24 @@ fn fail_to_open_window(e: anyhow::Error, _cx: &mut App) {
     }
 }
 
-pub fn main() {
+fn main() {
     #[cfg(unix)]
-    util::prevent_root_execution();
+    {
+        let is_root = nix::unistd::geteuid().is_root();
+        let allow_root = env::var("ZED_ALLOW_ROOT").is_ok_and(|val| val == "true");
+
+        // Prevent running Zed with root privileges on Unix systems unless explicitly allowed
+        if is_root && !allow_root {
+            eprintln!(
+                "\
+Error: Running Zed as root or via sudo is unsupported.
+       Doing so (even once) may subtly break things for all subsequent non-root usage of Zed.
+       It is untested and not recommended, don't complain when things break.
+       If you wish to proceed anyways, set `ZED_ALLOW_ROOT=true` in your environment."
+            );
+            process::exit(1);
+        }
+    }
 
     // Check if there is a pending installer
     // If there is, run the installer and exit
@@ -176,20 +194,8 @@ pub fn main() {
 
     let args = Args::parse();
 
-    // `zed --askpass` Makes zed operate in nc/netcat mode for use with askpass
     if let Some(socket) = &args.askpass {
         askpass::main(socket);
-        return;
-    }
-
-    // `zed --printenv` Outputs environment variables as JSON to stdout
-    if args.printenv {
-        util::shell_env::print_env();
-        return;
-    }
-
-    if args.dump_all_actions {
-        dump_all_gpui_actions();
         return;
     }
 
@@ -206,6 +212,9 @@ pub fn main() {
             let _ = AttachConsole(ATTACH_PARENT_PROCESS);
         }
     }
+
+    menu::init();
+    zed_actions::init();
 
     let file_errors = init_paths();
     if !file_errors.is_empty() {
@@ -347,9 +356,6 @@ pub fn main() {
     });
 
     app.run(move |cx| {
-        menu::init();
-        zed_actions::init();
-
         release_channel::init(app_version, cx);
         gpui_tokio::init(cx);
         if let Some(app_commit_sha) = app_commit_sha {
@@ -1012,7 +1018,7 @@ fn init_paths() -> HashMap<io::ErrorKind, Vec<&'static Path>> {
     })
 }
 
-pub fn stdout_is_a_pty() -> bool {
+fn stdout_is_a_pty() -> bool {
     std::env::var(FORCE_CLI_MODE_ENV_VAR_NAME).ok().is_none() && io::stdout().is_terminal()
 }
 
@@ -1049,7 +1055,7 @@ struct Args {
     #[arg(long, hide = true)]
     askpass: Option<String>,
 
-    /// Run zed in the foreground, only used on Windows, to match the behavior on macOS.
+    /// Run zed in the foreground, only used on Windows, to match the behavior of the behavior on macOS.
     #[arg(long)]
     #[cfg(target_os = "windows")]
     #[arg(hide = true)]
@@ -1060,13 +1066,6 @@ struct Args {
     #[cfg(target_os = "windows")]
     #[arg(hide = true)]
     dock_action: Option<usize>,
-
-    #[arg(long, hide = true)]
-    dump_all_actions: bool,
-
-    /// Output current environment variables as JSON to stdout
-    #[arg(long, hide = true)]
-    printenv: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1279,28 +1278,3 @@ fn watch_languages(fs: Arc<dyn fs::Fs>, languages: Arc<LanguageRegistry>, cx: &m
 
 #[cfg(not(debug_assertions))]
 fn watch_languages(_fs: Arc<dyn fs::Fs>, _languages: Arc<LanguageRegistry>, _cx: &mut App) {}
-
-fn dump_all_gpui_actions() {
-    #[derive(Debug, serde::Serialize)]
-    struct ActionDef {
-        name: &'static str,
-        human_name: String,
-        aliases: &'static [&'static str],
-    }
-    let mut actions = gpui::generate_list_of_all_registered_actions()
-        .into_iter()
-        .map(|action| ActionDef {
-            name: action.name,
-            human_name: command_palette::humanize_action_name(action.name),
-            aliases: action.aliases,
-        })
-        .collect::<Vec<ActionDef>>();
-
-    actions.sort_by_key(|a| a.name);
-
-    io::Write::write(
-        &mut std::io::stdout(),
-        serde_json::to_string_pretty(&actions).unwrap().as_bytes(),
-    )
-    .unwrap();
-}

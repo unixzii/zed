@@ -22,7 +22,6 @@ use std::fmt;
 use std::ops::{Add, Sub};
 use std::str::FromStr as _;
 use std::sync::Arc;
-use std::time::Duration;
 use thiserror::Error;
 use util::serde::is_default;
 use zed_llm_client::{
@@ -75,8 +74,6 @@ pub enum LanguageModelCompletionEvent {
 
 #[derive(Error, Debug)]
 pub enum LanguageModelCompletionError {
-    #[error("rate limit exceeded, retry after {0:?}")]
-    RateLimit(Duration),
     #[error("received bad input JSON")]
     BadInputJson {
         id: LanguageModelToolUseId,
@@ -273,7 +270,6 @@ pub trait LanguageModel: Send + Sync {
         'static,
         Result<
             BoxStream<'static, Result<LanguageModelCompletionEvent, LanguageModelCompletionError>>,
-            LanguageModelCompletionError,
         >,
     >;
 
@@ -281,7 +277,7 @@ pub trait LanguageModel: Send + Sync {
         &self,
         request: LanguageModelRequest,
         cx: &AsyncApp,
-    ) -> BoxFuture<'static, Result<LanguageModelTextStream, LanguageModelCompletionError>> {
+    ) -> BoxFuture<'static, Result<LanguageModelTextStream>> {
         let future = self.stream_completion(request, cx);
 
         async move {

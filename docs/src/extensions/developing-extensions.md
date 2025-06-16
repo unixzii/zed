@@ -8,7 +8,7 @@ Extensions can add the following capabilities to Zed:
 - [Themes](./themes.md)
 - [Icon Themes](./icon-themes.md)
 - [Slash Commands](./slash-commands.md)
-- [MCP Servers](./mcp-extensions.md)
+- [Context Servers](./context-servers.md)
 
 ## Developing an Extension Locally
 

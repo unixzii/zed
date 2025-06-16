@@ -19,8 +19,8 @@ body:
         2.
         3.
 
-        **Expected Behavior**:
-        **Actual Behavior**:
+        Actual Behavior:
+        Expected Behavior:
 
     validations:
       required: true

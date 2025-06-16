@@ -5,8 +5,8 @@ use crate::{
     AnyWindowHandle, Bounds, Decorations, DevicePixels, ForegroundExecutor, GpuSpecs, Modifiers,
     Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow,
     Point, PromptButton, PromptLevel, RequestFrameOptions, ResizeEdge, ScaledPixels, Scene, Size,
-    Tiling, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea,
-    WindowDecorations, WindowKind, WindowParams, X11ClientStatePtr, px, size,
+    Tiling, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
+    WindowKind, WindowParams, X11ClientStatePtr, px, size,
 };
 
 use blade_graphics as gpu;
@@ -20,7 +20,7 @@ use x11rb::{
     protocol::{
         sync,
         xinput::{self, ConnectionExt as _},
-        xproto::{self, ClientMessageEvent, ConnectionExt, TranslateCoordinatesReply},
+        xproto::{self, ClientMessageEvent, ConnectionExt, EventMask, TranslateCoordinatesReply},
     },
     wrapper::ConnectionExt as _,
     xcb_ffi::XCBConnection,
@@ -407,8 +407,7 @@ impl X11WindowState {
                     | xproto::EventMask::FOCUS_CHANGE
                     | xproto::EventMask::KEY_PRESS
                     | xproto::EventMask::KEY_RELEASE
-                    | xproto::EventMask::PROPERTY_CHANGE
-                    | xproto::EventMask::VISIBILITY_CHANGE,
+                    | EventMask::PROPERTY_CHANGE,
             );
 
         let mut bounds = params.bounds.to_device_pixels(scale_factor);
@@ -786,7 +785,7 @@ impl X11Window {
             self.0.xcb.send_event(
                 false,
                 state.x_root_window,
-                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
         )
@@ -837,7 +836,7 @@ impl X11Window {
             self.0.xcb.send_event(
                 false,
                 state.x_root_window,
-                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
         )?;
@@ -922,7 +921,7 @@ impl X11WindowStatePtr {
         state.fullscreen = false;
         state.maximized_vertical = false;
         state.maximized_horizontal = false;
-        state.hidden = false;
+        state.hidden = true;
 
         for atom in atoms {
             if atom == state.atoms._NET_WM_STATE_FOCUSED {
@@ -1323,11 +1322,19 @@ impl PlatformWindow for X11Window {
         Ok(())
     }
 
+    fn set_edited(&mut self, _edited: bool) {
+        log::info!("ignoring macOS specific set_edited");
+    }
+
     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {
         let mut state = self.0.state.borrow_mut();
         state.background_appearance = background_appearance;
         let transparent = state.is_transparent();
         state.renderer.update_transparency(transparent);
+    }
+
+    fn show_character_palette(&self) {
+        log::info!("ignoring macOS specific show_character_palette");
     }
 
     fn minimize(&self) {
@@ -1344,7 +1351,7 @@ impl PlatformWindow for X11Window {
             self.0.xcb.send_event(
                 false,
                 state.x_root_window,
-                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
         )
@@ -1409,9 +1416,6 @@ impl PlatformWindow for X11Window {
         self.0.callbacks.borrow_mut().close = Some(callback);
     }
 
-    fn on_hit_test_window_control(&self, _callback: Box<dyn FnMut() -> Option<WindowControlArea>>) {
-    }
-
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>) {
         self.0.callbacks.borrow_mut().appearance_changed = Some(callback);
     }
@@ -1453,7 +1457,7 @@ impl PlatformWindow for X11Window {
             self.0.xcb.send_event(
                 false,
                 state.x_root_window,
-                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
         )

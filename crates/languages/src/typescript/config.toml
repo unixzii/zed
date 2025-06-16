@@ -25,5 +25,5 @@ documentation = { start = "/**", end = "*/", prefix = "* ", tab_size = 1 }
 completion_query_characters = ["."]
 prefer_label_for_snippet = true
 
-[overrides.function_name_before_type_arguments]
+[overrides.call_expression]
 prefer_label_for_snippet = true

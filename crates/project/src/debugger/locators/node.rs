@@ -1,4 +1,4 @@
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, path::Path};
 
 use anyhow::{Result, bail};
 use async_trait::async_trait;
@@ -19,56 +19,42 @@ impl DapLocator for NodeLocator {
     }
 
     /// Determines whether this locator can generate debug target for given task.
-    async fn create_scenario(
+    fn create_scenario(
         &self,
         build_config: &TaskTemplate,
         resolved_label: &str,
-        adapter: &DebugAdapterName,
+        adapter: DebugAdapterName,
     ) -> Option<DebugScenario> {
-        if adapter.0.as_ref() != "JavaScript" {
+        // TODO(debugger) fix issues with `await` breakpoint step
+        if cfg!(not(debug_assertions)) {
+            return None;
+        }
+
+        if adapter.as_ref() != "JavaScript" {
             return None;
         }
         if build_config.command != TYPESCRIPT_RUNNER_VARIABLE.template_value() {
             return None;
         }
         let test_library = build_config.args.first()?;
-        let program_path_base: PathBuf = match test_library.as_str() {
-            "jest" => "${ZED_CUSTOM_TYPESCRIPT_JEST_PACKAGE_PATH}".to_owned(),
-            "mocha" => "${ZED_CUSTOM_TYPESCRIPT_MOCHA_PACKAGE_PATH}".to_owned(),
-            "vitest" => "${ZED_CUSTOM_TYPESCRIPT_VITEST_PACKAGE_PATH}".to_owned(),
-            "jasmine" => "${ZED_CUSTOM_TYPESCRIPT_JASMINE_PACKAGE_PATH}".to_owned(),
-            _ => VariableName::WorktreeRoot.template_value(),
-        }
-        .into();
-
-        let program_path = program_path_base
+        let program_path = Path::new("$ZED_WORKTREE_ROOT")
             .join("node_modules")
             .join(".bin")
             .join(test_library);
-
-        let mut args = if test_library == "jest" {
-            vec!["--runInBand".to_owned()]
-        } else {
-            vec![]
-        };
-        args.extend(build_config.args[1..].iter().cloned());
+        let args = build_config.args[1..].to_vec();
 
         let config = serde_json::json!({
             "request": "launch",
             "type": "pwa-node",
-            "runtimeExecutable": program_path,
+            "program": program_path,
             "args": args,
             "cwd": build_config.cwd.clone(),
-            "env": {
-                "VITEST_MIN_FORKS": "0",
-                "VITEST_MAX_FORKS": "1"
-            },
             "runtimeArgs": ["--inspect-brk"],
             "console": "integratedTerminal",
         });
 
         Some(DebugScenario {
-            adapter: adapter.0.clone(),
+            adapter: adapter.0,
             label: resolved_label.to_string().into(),
             build: None,
             config,
@@ -77,6 +63,6 @@ impl DapLocator for NodeLocator {
     }
 
     async fn run(&self, _: SpawnInTerminal) -> Result<DebugRequest> {
-        bail!("JavaScript locator should not require DapLocator::run to be ran");
+        bail!("Python locator should not require DapLocator::run to be ran");
     }
 }

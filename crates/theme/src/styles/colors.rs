@@ -273,9 +273,12 @@ pub struct ThemeColors {
     pub version_control_ignored: Hsla,
 
     /// Represents the "ours" region of a merge conflict.
-    pub version_control_conflict_marker_ours: Hsla,
+    pub version_control_conflict_ours_background: Hsla,
     /// Represents the "theirs" region of a merge conflict.
-    pub version_control_conflict_marker_theirs: Hsla,
+    pub version_control_conflict_theirs_background: Hsla,
+    pub version_control_conflict_ours_marker_background: Hsla,
+    pub version_control_conflict_theirs_marker_background: Hsla,
+    pub version_control_conflict_divider_background: Hsla,
 }
 
 #[derive(EnumIter, Debug, Clone, Copy, AsRefStr)]

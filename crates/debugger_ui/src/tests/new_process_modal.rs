@@ -308,7 +308,6 @@ async fn test_dap_adapter_config_conversion_and_validation(cx: &mut TestAppConte
 
         let debug_scenario = adapter
             .config_from_zed_format(adapter_specific_config)
-            .await
             .unwrap_or_else(|_| {
                 panic!(
                     "Adapter {} should successfully convert from Zed format",
@@ -324,7 +323,6 @@ async fn test_dap_adapter_config_conversion_and_validation(cx: &mut TestAppConte
 
         let request_type = adapter
             .request_kind(&debug_scenario.config)
-            .await
             .unwrap_or_else(|_| {
                 panic!(
                     "Adapter {} should validate the config successfully",

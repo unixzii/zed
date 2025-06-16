@@ -1,3 +1,4 @@
+use anyhow::Result;
 use futures::Stream;
 use smol::lock::{Semaphore, SemaphoreGuardArc};
 use std::{
@@ -6,8 +7,6 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-
-use crate::LanguageModelCompletionError;
 
 #[derive(Clone)]
 pub struct RateLimiter {
@@ -37,12 +36,9 @@ impl RateLimiter {
         }
     }
 
-    pub fn run<'a, Fut, T>(
-        &self,
-        future: Fut,
-    ) -> impl 'a + Future<Output = Result<T, LanguageModelCompletionError>>
+    pub fn run<'a, Fut, T>(&self, future: Fut) -> impl 'a + Future<Output = Result<T>>
     where
-        Fut: 'a + Future<Output = Result<T, LanguageModelCompletionError>>,
+        Fut: 'a + Future<Output = Result<T>>,
     {
         let guard = self.semaphore.acquire_arc();
         async move {
@@ -56,12 +52,9 @@ impl RateLimiter {
     pub fn stream<'a, Fut, T>(
         &self,
         future: Fut,
-    ) -> impl 'a
-    + Future<
-        Output = Result<impl Stream<Item = T::Item> + use<Fut, T>, LanguageModelCompletionError>,
-    >
+    ) -> impl 'a + Future<Output = Result<impl Stream<Item = T::Item> + use<Fut, T>>>
     where
-        Fut: 'a + Future<Output = Result<T, LanguageModelCompletionError>>,
+        Fut: 'a + Future<Output = Result<T>>,
         T: Stream,
     {
         let guard = self.semaphore.acquire_arc();

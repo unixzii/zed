@@ -6,7 +6,7 @@ use gpui::{
 };
 use project::WorktreeId;
 use settings::Settings;
-use std::{ops::Range, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 use theme::ThemeSettings;
 use ui::prelude::*;
 use workspace::item::Item;
@@ -224,9 +224,10 @@ impl Render for ProjectIndexDebugView {
                 .into_any_element()
         } else {
             let mut list = uniform_list(
+                cx.entity().clone(),
                 "ProjectIndexDebugView",
                 self.rows.len(),
-                cx.processor(move |this, range: Range<usize>, _, cx| {
+                move |this, range, _, cx| {
                     this.rows[range]
                         .iter()
                         .enumerate()
@@ -261,7 +262,7 @@ impl Render for ProjectIndexDebugView {
                                 })),
                         })
                         .collect()
-                }),
+                },
             )
             .track_scroll(self.list_scroll_handle.clone())
             .size_full()

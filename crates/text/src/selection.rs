@@ -26,7 +26,6 @@ impl Default for SelectionGoal {
 }
 
 impl<T: Clone> Selection<T> {
-    /// A place where the selection had stopped at.
     pub fn head(&self) -> T {
         if self.reversed {
             self.start.clone()
@@ -35,7 +34,6 @@ impl<T: Clone> Selection<T> {
         }
     }
 
-    /// A place where selection was initiated from.
     pub fn tail(&self) -> T {
         if self.reversed {
             self.end.clone()

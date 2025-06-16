@@ -20,8 +20,8 @@ use gpui::{
     UpdateGlobal, px, size,
 };
 use language::{
-    Diagnostic, DiagnosticEntry, DiagnosticSourceKind, FakeLspAdapter, Language, LanguageConfig,
-    LanguageMatcher, LineEnding, OffsetRangeExt, Point, Rope,
+    Diagnostic, DiagnosticEntry, FakeLspAdapter, Language, LanguageConfig, LanguageMatcher,
+    LineEnding, OffsetRangeExt, Point, Rope,
     language_settings::{
         AllLanguageSettings, Formatter, FormatterList, PrettierSettings, SelectedFormatter,
     },
@@ -51,7 +51,7 @@ use std::{
     time::Duration,
 };
 use unindent::Unindent as _;
-use util::{path, uri};
+use util::{path, separator, uri};
 use workspace::Pane;
 
 #[ctor::ctor]
@@ -1676,13 +1676,13 @@ async fn test_project_reconnect(
                 .map(|p| p.to_str().unwrap())
                 .collect::<Vec<_>>(),
             vec![
-                path!("a.txt"),
-                path!("b.txt"),
-                path!("subdir2"),
-                path!("subdir2/f.txt"),
-                path!("subdir2/g.txt"),
-                path!("subdir2/h.txt"),
-                path!("subdir2/i.txt")
+                separator!("a.txt"),
+                separator!("b.txt"),
+                separator!("subdir2"),
+                separator!("subdir2/f.txt"),
+                separator!("subdir2/g.txt"),
+                separator!("subdir2/h.txt"),
+                separator!("subdir2/i.txt")
             ]
         );
         assert!(worktree_a3.read(cx).has_update_observer());
@@ -1709,13 +1709,13 @@ async fn test_project_reconnect(
                 .map(|p| p.to_str().unwrap())
                 .collect::<Vec<_>>(),
             vec![
-                path!("a.txt"),
-                path!("b.txt"),
-                path!("subdir2"),
-                path!("subdir2/f.txt"),
-                path!("subdir2/g.txt"),
-                path!("subdir2/h.txt"),
-                path!("subdir2/i.txt")
+                separator!("a.txt"),
+                separator!("b.txt"),
+                separator!("subdir2"),
+                separator!("subdir2/f.txt"),
+                separator!("subdir2/g.txt"),
+                separator!("subdir2/h.txt"),
+                separator!("subdir2/i.txt")
             ]
         );
         assert!(project.worktree_for_id(worktree2_id, cx).is_none());
@@ -1806,13 +1806,13 @@ async fn test_project_reconnect(
                 .map(|p| p.to_str().unwrap())
                 .collect::<Vec<_>>(),
             vec![
-                path!("a.txt"),
-                path!("b.txt"),
-                path!("subdir2"),
-                path!("subdir2/f.txt"),
-                path!("subdir2/g.txt"),
-                path!("subdir2/h.txt"),
-                path!("subdir2/j.txt")
+                separator!("a.txt"),
+                separator!("b.txt"),
+                separator!("subdir2"),
+                separator!("subdir2/f.txt"),
+                separator!("subdir2/g.txt"),
+                separator!("subdir2/h.txt"),
+                separator!("subdir2/j.txt")
             ]
         );
         assert!(project.worktree_for_id(worktree2_id, cx).is_none());
@@ -2622,7 +2622,6 @@ async fn test_git_diff_base_change(
     client_a.fs().set_head_for_repo(
         Path::new("/dir/.git"),
         &[("a.txt".into(), committed_text.clone())],
-        "deadbeef",
     );
 
     // Create the buffer
@@ -2716,7 +2715,6 @@ async fn test_git_diff_base_change(
     client_a.fs().set_head_for_repo(
         Path::new("/dir/.git"),
         &[("a.txt".into(), new_committed_text.clone())],
-        "deadbeef",
     );
 
     // Wait for buffer_local_a to receive it
@@ -3006,7 +3004,6 @@ async fn test_git_status_sync(
     client_a.fs().set_head_for_repo(
         path!("/dir/.git").as_ref(),
         &[("b.txt".into(), "B".into()), ("c.txt".into(), "c".into())],
-        "deadbeef",
     );
     client_a.fs().set_index_for_repo(
         path!("/dir/.git").as_ref(),
@@ -3315,13 +3312,13 @@ async fn test_fs_operations(
                 .map(|p| p.to_string_lossy())
                 .collect::<Vec<_>>(),
             [
-                path!("DIR"),
-                path!("DIR/SUBDIR"),
-                path!("DIR/SUBDIR/f.txt"),
-                path!("DIR/e.txt"),
-                path!("a.txt"),
-                path!("b.txt"),
-                path!("d.txt")
+                separator!("DIR"),
+                separator!("DIR/SUBDIR"),
+                separator!("DIR/SUBDIR/f.txt"),
+                separator!("DIR/e.txt"),
+                separator!("a.txt"),
+                separator!("b.txt"),
+                separator!("d.txt")
             ]
         );
     });
@@ -3333,13 +3330,13 @@ async fn test_fs_operations(
                 .map(|p| p.to_string_lossy())
                 .collect::<Vec<_>>(),
             [
-                path!("DIR"),
-                path!("DIR/SUBDIR"),
-                path!("DIR/SUBDIR/f.txt"),
-                path!("DIR/e.txt"),
-                path!("a.txt"),
-                path!("b.txt"),
-                path!("d.txt")
+                separator!("DIR"),
+                separator!("DIR/SUBDIR"),
+                separator!("DIR/SUBDIR/f.txt"),
+                separator!("DIR/e.txt"),
+                separator!("a.txt"),
+                separator!("b.txt"),
+                separator!("d.txt")
             ]
         );
     });
@@ -3359,14 +3356,14 @@ async fn test_fs_operations(
                 .map(|p| p.to_string_lossy())
                 .collect::<Vec<_>>(),
             [
-                path!("DIR"),
-                path!("DIR/SUBDIR"),
-                path!("DIR/SUBDIR/f.txt"),
-                path!("DIR/e.txt"),
-                path!("a.txt"),
-                path!("b.txt"),
-                path!("d.txt"),
-                path!("f.txt")
+                separator!("DIR"),
+                separator!("DIR/SUBDIR"),
+                separator!("DIR/SUBDIR/f.txt"),
+                separator!("DIR/e.txt"),
+                separator!("a.txt"),
+                separator!("b.txt"),
+                separator!("d.txt"),
+                separator!("f.txt")
             ]
         );
     });
@@ -3378,14 +3375,14 @@ async fn test_fs_operations(
                 .map(|p| p.to_string_lossy())
                 .collect::<Vec<_>>(),
             [
-                path!("DIR"),
-                path!("DIR/SUBDIR"),
-                path!("DIR/SUBDIR/f.txt"),
-                path!("DIR/e.txt"),
-                path!("a.txt"),
-                path!("b.txt"),
-                path!("d.txt"),
-                path!("f.txt")
+                separator!("DIR"),
+                separator!("DIR/SUBDIR"),
+                separator!("DIR/SUBDIR/f.txt"),
+                separator!("DIR/e.txt"),
+                separator!("a.txt"),
+                separator!("b.txt"),
+                separator!("d.txt"),
+                separator!("f.txt")
             ]
         );
     });
@@ -4235,8 +4232,7 @@ async fn test_collaborating_with_diagnostics(
                         message: "message 1".to_string(),
                         severity: lsp::DiagnosticSeverity::ERROR,
                         is_primary: true,
-                        source_kind: DiagnosticSourceKind::Pushed,
-                        ..Diagnostic::default()
+                        ..Default::default()
                     }
                 },
                 DiagnosticEntry {
@@ -4246,8 +4242,7 @@ async fn test_collaborating_with_diagnostics(
                         severity: lsp::DiagnosticSeverity::WARNING,
                         message: "message 2".to_string(),
                         is_primary: true,
-                        source_kind: DiagnosticSourceKind::Pushed,
-                        ..Diagnostic::default()
+                        ..Default::default()
                     }
                 }
             ]
@@ -4259,7 +4254,7 @@ async fn test_collaborating_with_diagnostics(
         &lsp::PublishDiagnosticsParams {
             uri: lsp::Url::from_file_path(path!("/a/a.rs")).unwrap(),
             version: None,
-            diagnostics: Vec::new(),
+            diagnostics: vec![],
         },
     );
     executor.run_until_parked();

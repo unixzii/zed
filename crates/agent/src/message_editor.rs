@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::agent_model_selector::AgentModelSelector;
+use crate::agent_model_selector::{AgentModelSelector, ModelType};
 use crate::context::{AgentContextKey, ContextCreasesAddon, ContextLoadResult, load_context};
 use crate::tool_compatibility::{IncompatibleToolsState, IncompatibleToolsTooltip};
 use crate::ui::{
@@ -24,8 +24,8 @@ use fs::Fs;
 use futures::future::Shared;
 use futures::{FutureExt as _, future};
 use gpui::{
-    Animation, AnimationExt, App, Entity, EventEmitter, Focusable, Subscription, Task, TextStyle,
-    WeakEntity, linear_color_stop, linear_gradient, point, pulsating_between,
+    Animation, AnimationExt, App, ClipboardEntry, Entity, EventEmitter, Focusable, Subscription,
+    Task, TextStyle, WeakEntity, linear_color_stop, linear_gradient, point, pulsating_between,
 };
 use language::{Buffer, Language, Point};
 use language_model::{
@@ -39,9 +39,7 @@ use proto::Plan;
 use settings::Settings;
 use std::time::Duration;
 use theme::ThemeSettings;
-use ui::{
-    Callout, Disclosure, Divider, DividerColor, KeyBinding, PopoverMenuHandle, Tooltip, prelude::*,
-};
+use ui::{Disclosure, KeyBinding, PopoverMenuHandle, Tooltip, prelude::*};
 use util::{ResultExt as _, maybe};
 use workspace::{CollaboratorId, Workspace};
 use zed_llm_client::CompletionIntent;
@@ -54,8 +52,8 @@ use crate::thread::{MessageCrease, Thread, TokenUsageRatio};
 use crate::thread_store::{TextThreadStore, ThreadStore};
 use crate::{
     ActiveThread, AgentDiffPane, Chat, ChatWithFollow, ExpandMessageEditor, Follow, KeepAll,
-    ModelUsageContext, NewThread, OpenAgentDiff, RejectAll, RemoveAllContext, ToggleBurnMode,
-    ToggleContextPicker, ToggleProfileSelector, register_agent_preview,
+    NewThread, OpenAgentDiff, RejectAll, RemoveAllContext, ToggleBurnMode, ToggleContextPicker,
+    ToggleProfileSelector, register_agent_preview,
 };
 
 #[derive(RegisterComponent)]
@@ -81,7 +79,6 @@ pub struct MessageEditor {
     _subscriptions: Vec<Subscription>,
 }
 
-const MIN_EDITOR_LINES: usize = 4;
 const MAX_EDITOR_LINES: usize = 8;
 
 pub(crate) fn create_editor(
@@ -105,7 +102,6 @@ pub(crate) fn create_editor(
         let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
         let mut editor = Editor::new(
             editor::EditorMode::AutoHeight {
-                min_lines: MIN_EDITOR_LINES,
                 max_lines: MAX_EDITOR_LINES,
             },
             buffer,
@@ -173,13 +169,13 @@ impl MessageEditor {
                 Some(text_thread_store.clone()),
                 context_picker_menu_handle.clone(),
                 SuggestContextKind::File,
-                ModelUsageContext::Thread(thread.clone()),
                 window,
                 cx,
             )
         });
 
-        let incompatible_tools = cx.new(|cx| IncompatibleToolsState::new(thread.clone(), cx));
+        let incompatible_tools =
+            cx.new(|cx| IncompatibleToolsState::new(thread.read(cx).tools().clone(), cx));
 
         let subscriptions = vec![
             cx.subscribe_in(&context_strip, window, Self::handle_context_strip_event),
@@ -201,14 +197,21 @@ impl MessageEditor {
                 fs.clone(),
                 model_selector_menu_handle,
                 editor.focus_handle(cx),
-                ModelUsageContext::Thread(thread.clone()),
+                ModelType::Default(thread.clone()),
                 window,
                 cx,
             )
         });
 
-        let profile_selector =
-            cx.new(|cx| ProfileSelector::new(fs, thread.clone(), editor.focus_handle(cx), cx));
+        let profile_selector = cx.new(|cx| {
+            ProfileSelector::new(
+                fs,
+                thread.clone(),
+                thread_store,
+                editor.focus_handle(cx),
+                cx,
+            )
+        });
 
         Self {
             editor: editor.clone(),
@@ -257,7 +260,6 @@ impl MessageEditor {
                 })
             } else {
                 editor.set_mode(EditorMode::AutoHeight {
-                    min_lines: MIN_EDITOR_LINES,
                     max_lines: MAX_EDITOR_LINES,
                 })
             }
@@ -301,7 +303,6 @@ impl MessageEditor {
         self.set_editor_is_expanded(false, cx);
         self.send_to_model(window, cx);
 
-        cx.emit(MessageEditorEvent::ScrollThreadToBottom);
         cx.notify();
     }
 
@@ -430,10 +431,38 @@ impl MessageEditor {
     }
 
     fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        crate::active_thread::attach_pasted_images_as_context(&self.context_store, cx);
+        let images = cx
+            .read_from_clipboard()
+            .map(|item| {
+                item.into_entries()
+                    .filter_map(|entry| {
+                        if let ClipboardEntry::Image(image) = entry {
+                            Some(image)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        if images.is_empty() {
+            return;
+        }
+        cx.stop_propagation();
+
+        self.context_store.update(cx, |store, cx| {
+            for image in images {
+                store.add_image_instance(Arc::new(image), cx);
+            }
+        });
     }
 
     fn handle_review_click(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.thread.read(cx).has_pending_edit_tool_uses() {
+            return;
+        }
+
         self.edits_expanded = true;
         AgentDiffPane::deploy(self.thread.clone(), self.workspace.clone(), window, cx).log_err();
         cx.notify();
@@ -508,47 +537,7 @@ impl MessageEditor {
         cx.notify();
     }
 
-    fn handle_reject_file_changes(
-        &mut self,
-        buffer: Entity<Buffer>,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.thread.read(cx).has_pending_edit_tool_uses() {
-            return;
-        }
-
-        self.thread.update(cx, |thread, cx| {
-            let buffer_snapshot = buffer.read(cx);
-            let start = buffer_snapshot.anchor_before(Point::new(0, 0));
-            let end = buffer_snapshot.anchor_after(buffer_snapshot.max_point());
-            thread
-                .reject_edits_in_ranges(buffer, vec![start..end], cx)
-                .detach();
-        });
-        cx.notify();
-    }
-
-    fn handle_accept_file_changes(
-        &mut self,
-        buffer: Entity<Buffer>,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.thread.read(cx).has_pending_edit_tool_uses() {
-            return;
-        }
-
-        self.thread.update(cx, |thread, cx| {
-            let buffer_snapshot = buffer.read(cx);
-            let start = buffer_snapshot.anchor_before(Point::new(0, 0));
-            let end = buffer_snapshot.anchor_after(buffer_snapshot.max_point());
-            thread.keep_edits_in_range(buffer, start..end, cx);
-        });
-        cx.notify();
-    }
-
-    fn render_burn_mode_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn render_max_mode_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let thread = self.thread.read(cx);
         let model = thread.configured_model();
         if !model?.model.supports_max_mode() {
@@ -683,87 +672,96 @@ impl MessageEditor {
             .border_color(cx.theme().colors().border)
             .child(
                 h_flex()
+                    .items_start()
                     .justify_between()
                     .child(self.context_strip.clone())
-                    .when(focus_handle.is_focused(window), |this| {
-                        this.child(
-                            IconButton::new("toggle-height", expand_icon)
-                                .icon_size(IconSize::XSmall)
-                                .icon_color(Color::Muted)
-                                .tooltip({
-                                    let focus_handle = focus_handle.clone();
-                                    move |window, cx| {
-                                        let expand_label = if is_editor_expanded {
-                                            "Minimize Message Editor".to_string()
-                                        } else {
-                                            "Expand Message Editor".to_string()
-                                        };
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .when(focus_handle.is_focused(window), |this| {
+                                this.child(
+                                    IconButton::new("toggle-height", expand_icon)
+                                        .icon_size(IconSize::XSmall)
+                                        .icon_color(Color::Muted)
+                                        .tooltip({
+                                            let focus_handle = focus_handle.clone();
+                                            move |window, cx| {
+                                                let expand_label = if is_editor_expanded {
+                                                    "Minimize Message Editor".to_string()
+                                                } else {
+                                                    "Expand Message Editor".to_string()
+                                                };
 
-                                        Tooltip::for_action_in(
-                                            expand_label,
-                                            &ExpandMessageEditor,
-                                            &focus_handle,
-                                            window,
-                                            cx,
-                                        )
-                                    }
-                                })
-                                .on_click(cx.listener(|_, _, window, cx| {
-                                    window.dispatch_action(Box::new(ExpandMessageEditor), cx);
-                                })),
-                        )
-                    }),
+                                                Tooltip::for_action_in(
+                                                    expand_label,
+                                                    &ExpandMessageEditor,
+                                                    &focus_handle,
+                                                    window,
+                                                    cx,
+                                                )
+                                            }
+                                        })
+                                        .on_click(cx.listener(|_, _, window, cx| {
+                                            window
+                                                .dispatch_action(Box::new(ExpandMessageEditor), cx);
+                                        })),
+                                )
+                            }),
+                    ),
             )
             .child(
                 v_flex()
                     .size_full()
-                    .gap_1()
+                    .gap_4()
                     .when(is_editor_expanded, |this| {
                         this.h(vh(0.8, window)).justify_between()
                     })
-                    .child({
-                        let settings = ThemeSettings::get_global(cx);
-                        let font_size = TextSize::Small
-                            .rems(cx)
-                            .to_pixels(settings.agent_font_size(cx));
-                        let line_height = settings.buffer_line_height.value() * font_size;
+                    .child(
+                        v_flex()
+                            .min_h_16()
+                            .when(is_editor_expanded, |this| this.h_full())
+                            .child({
+                                let settings = ThemeSettings::get_global(cx);
+                                let font_size = TextSize::Small
+                                    .rems(cx)
+                                    .to_pixels(settings.agent_font_size(cx));
+                                let line_height = settings.buffer_line_height.value() * font_size;
 
-                        let text_style = TextStyle {
-                            color: cx.theme().colors().text,
-                            font_family: settings.buffer_font.family.clone(),
-                            font_fallbacks: settings.buffer_font.fallbacks.clone(),
-                            font_features: settings.buffer_font.features.clone(),
-                            font_size: font_size.into(),
-                            line_height: line_height.into(),
-                            ..Default::default()
-                        };
+                                let text_style = TextStyle {
+                                    color: cx.theme().colors().text,
+                                    font_family: settings.buffer_font.family.clone(),
+                                    font_fallbacks: settings.buffer_font.fallbacks.clone(),
+                                    font_features: settings.buffer_font.features.clone(),
+                                    font_size: font_size.into(),
+                                    line_height: line_height.into(),
+                                    ..Default::default()
+                                };
 
-                        EditorElement::new(
-                            &self.editor,
-                            EditorStyle {
-                                background: editor_bg_color,
-                                local_player: cx.theme().players().local(),
-                                text: text_style,
-                                syntax: cx.theme().syntax().clone(),
-                                ..Default::default()
-                            },
-                        )
-                        .into_any()
-                    })
+                                EditorElement::new(
+                                    &self.editor,
+                                    EditorStyle {
+                                        background: editor_bg_color,
+                                        local_player: cx.theme().players().local(),
+                                        text: text_style,
+                                        syntax: cx.theme().syntax().clone(),
+                                        ..Default::default()
+                                    },
+                                )
+                                .into_any()
+                            }),
+                    )
                     .child(
                         h_flex()
                             .flex_none()
-                            .flex_wrap()
                             .justify_between()
                             .child(
                                 h_flex()
                                     .child(self.render_follow_toggle(cx))
-                                    .children(self.render_burn_mode_toggle(cx)),
+                                    .children(self.render_max_mode_toggle(cx)),
                             )
                             .child(
                                 h_flex()
                                     .gap_1()
-                                    .flex_wrap()
                                     .when(!incompatible_tools.is_empty(), |this| {
                                         this.child(
                                             IconButton::new(
@@ -907,7 +905,7 @@ impl MessageEditor {
             )
     }
 
-    fn render_edits_bar(
+    fn render_changed_buffers(
         &self,
         changed_buffers: &BTreeMap<Entity<Buffer>, Entity<BufferDiff>>,
         window: &mut Window,
@@ -1031,7 +1029,7 @@ impl MessageEditor {
                                         this.handle_review_click(window, cx)
                                     })),
                             )
-                            .child(Divider::vertical().color(DividerColor::Border))
+                            .child(ui::Divider::vertical().color(ui::DividerColor::Border))
                             .child(
                                 Button::new("reject-all-changes", "Reject All")
                                     .label_size(LabelSize::Small)
@@ -1081,7 +1079,7 @@ impl MessageEditor {
                             let file = buffer.read(cx).file()?;
                             let path = file.path();
 
-                            let file_path = path.parent().and_then(|parent| {
+                            let parent_label = path.parent().and_then(|parent| {
                                 let parent_str = parent.to_string_lossy();
 
                                 if parent_str.is_empty() {
@@ -1100,7 +1098,7 @@ impl MessageEditor {
                                 }
                             });
 
-                            let file_name = path.file_name().map(|name| {
+                            let name_label = path.file_name().map(|name| {
                                 Label::new(name.to_string_lossy().to_string())
                                     .size(LabelSize::XSmall)
                                     .buffer_font(cx)
@@ -1115,22 +1113,36 @@ impl MessageEditor {
                                         .size(IconSize::Small)
                                 });
 
+                            let hover_color = cx
+                                .theme()
+                                .colors()
+                                .element_background
+                                .blend(cx.theme().colors().editor_foreground.opacity(0.025));
+
                             let overlay_gradient = linear_gradient(
                                 90.,
                                 linear_color_stop(editor_bg_color, 1.),
                                 linear_color_stop(editor_bg_color.opacity(0.2), 0.),
                             );
 
+                            let overlay_gradient_hover = linear_gradient(
+                                90.,
+                                linear_color_stop(hover_color, 1.),
+                                linear_color_stop(hover_color.opacity(0.2), 0.),
+                            );
+
                             let element = h_flex()
                                 .group("edited-code")
                                 .id(("file-container", index))
+                                .cursor_pointer()
                                 .relative()
                                 .py_1()
                                 .pl_2()
                                 .pr_1()
                                 .gap_2()
                                 .justify_between()
-                                .bg(editor_bg_color)
+                                .bg(cx.theme().colors().editor_background)
+                                .hover(|style| style.bg(hover_color))
                                 .when(index < changed_buffers.len() - 1, |parent| {
                                     parent.border_color(border_color).border_b_1()
                                 })
@@ -1145,75 +1157,47 @@ impl MessageEditor {
                                         .child(
                                             h_flex()
                                                 .gap_0p5()
-                                                .children(file_name)
-                                                .children(file_path),
+                                                .children(name_label)
+                                                .children(parent_label),
                                         ), // TODO: Implement line diff
                                            // .child(Label::new("+").color(Color::Created))
                                            // .child(Label::new("-").color(Color::Deleted)),
                                 )
                                 .child(
-                                    h_flex()
-                                        .gap_1()
-                                        .visible_on_hover("edited-code")
-                                        .child(
-                                            Button::new("review", "Review")
-                                                .label_size(LabelSize::Small)
-                                                .on_click({
-                                                    let buffer = buffer.clone();
-                                                    cx.listener(move |this, _, window, cx| {
-                                                        this.handle_file_click(
-                                                            buffer.clone(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    })
-                                                }),
-                                        )
-                                        .child(
-                                            Divider::vertical().color(DividerColor::BorderVariant),
-                                        )
-                                        .child(
-                                            Button::new("reject-file", "Reject")
-                                                .label_size(LabelSize::Small)
-                                                .disabled(pending_edits)
-                                                .on_click({
-                                                    let buffer = buffer.clone();
-                                                    cx.listener(move |this, _, window, cx| {
-                                                        this.handle_reject_file_changes(
-                                                            buffer.clone(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    })
-                                                }),
-                                        )
-                                        .child(
-                                            Button::new("accept-file", "Accept")
-                                                .label_size(LabelSize::Small)
-                                                .disabled(pending_edits)
-                                                .on_click({
-                                                    let buffer = buffer.clone();
-                                                    cx.listener(move |this, _, window, cx| {
-                                                        this.handle_accept_file_changes(
-                                                            buffer.clone(),
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    })
-                                                }),
-                                        ),
+                                    div().visible_on_hover("edited-code").child(
+                                        Button::new("review", "Review")
+                                            .label_size(LabelSize::Small)
+                                            .on_click({
+                                                let buffer = buffer.clone();
+                                                cx.listener(move |this, _, window, cx| {
+                                                    this.handle_file_click(
+                                                        buffer.clone(),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })
+                                            }),
+                                    ),
                                 )
                                 .child(
                                     div()
                                         .id("gradient-overlay")
                                         .absolute()
-                                        .h_full()
+                                        .h_5_6()
                                         .w_12()
-                                        .top_0()
                                         .bottom_0()
-                                        .right(px(152.))
-                                        .bg(overlay_gradient),
-                                );
+                                        .right(px(52.))
+                                        .bg(overlay_gradient)
+                                        .group_hover("edited-code", |style| {
+                                            style.bg(overlay_gradient_hover)
+                                        }),
+                                )
+                                .on_click({
+                                    let buffer = buffer.clone();
+                                    cx.listener(move |this, _, window, cx| {
+                                        this.handle_file_click(buffer.clone(), window, cx);
+                                    })
+                                });
 
                             Some(element)
                         },
@@ -1230,7 +1214,6 @@ impl MessageEditor {
             .map_or(false, |model| {
                 model.provider.id().0 == ZED_CLOUD_PROVIDER_ID
             });
-
         if !is_using_zed_provider {
             return None;
         }
@@ -1285,6 +1268,14 @@ impl MessageEditor {
         token_usage_ratio: TokenUsageRatio,
         cx: &mut Context<Self>,
     ) -> Option<Div> {
+        let title = if token_usage_ratio == TokenUsageRatio::Exceeded {
+            "Thread reached the token limit"
+        } else {
+            "Thread reaching the token limit soon"
+        };
+
+        let message = "Start a new thread from a summary to continue the conversation.";
+
         let icon = if token_usage_ratio == TokenUsageRatio::Exceeded {
             Icon::new(IconName::X)
                 .color(Color::Error)
@@ -1295,43 +1286,19 @@ impl MessageEditor {
                 .size(IconSize::XSmall)
         };
 
-        let title = if token_usage_ratio == TokenUsageRatio::Exceeded {
-            "Thread reached the token limit"
-        } else {
-            "Thread reaching the token limit soon"
-        };
-
         Some(
             div()
-                .border_t_1()
-                .border_color(cx.theme().colors().border)
-                .child(
-                    Callout::new()
-                        .line_height(line_height)
-                        .icon(icon)
-                        .title(title)
-                        .description(
-                            "To continue, start a new thread from a summary or turn burn mode on.",
-                        )
-                        .primary_action(
-                            Button::new("start-new-thread", "Start New Thread")
-                                .label_size(LabelSize::Small)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    let from_thread_id = Some(this.thread.read(cx).id().clone());
-                                    window.dispatch_action(
-                                        Box::new(NewThread { from_thread_id }),
-                                        cx,
-                                    );
-                                })),
-                        )
-                        .secondary_action(
-                            IconButton::new("burn-mode-callout", IconName::ZedBurnMode)
-                                .icon_size(IconSize::XSmall)
-                                .on_click(cx.listener(|this, _event, window, cx| {
-                                    this.toggle_burn_mode(&ToggleBurnMode, window, cx);
-                                })),
-                        ),
-                ),
+                .child(ui::Callout::multi_line(
+                    title,
+                    message,
+                    icon,
+                    "Start New Thread",
+                    Box::new(cx.listener(|this, _, window, cx| {
+                        let from_thread_id = Some(this.thread.read(cx).id().clone());
+                        window.dispatch_action(Box::new(NewThread { from_thread_id }), cx);
+                    })),
+                ))
+                .line_height(line_height),
         )
     }
 
@@ -1511,7 +1478,6 @@ impl EventEmitter<MessageEditorEvent> for MessageEditor {}
 pub enum MessageEditorEvent {
     EstimatedTokenCount,
     Changed,
-    ScrollThreadToBottom,
 }
 
 impl Focusable for MessageEditor {
@@ -1529,8 +1495,6 @@ impl Render for MessageEditor {
                 total_token_usage.ratio()
             });
 
-        let burn_mode_enabled = thread.completion_mode() == CompletionMode::Burn;
-
         let action_log = self.thread.read(cx).action_log();
         let changed_buffers = action_log.read(cx).changed_buffers(cx);
 
@@ -1539,7 +1503,7 @@ impl Render for MessageEditor {
         v_flex()
             .size_full()
             .when(changed_buffers.len() > 0, |parent| {
-                parent.child(self.render_edits_bar(&changed_buffers, window, cx))
+                parent.child(self.render_changed_buffers(&changed_buffers, window, cx))
             })
             .child(self.render_editor(window, cx))
             .children({
@@ -1547,7 +1511,7 @@ impl Render for MessageEditor {
 
                 if usage_callout.is_some() {
                     usage_callout
-                } else if token_usage_ratio != TokenUsageRatio::Normal && !burn_mode_enabled {
+                } else if token_usage_ratio != TokenUsageRatio::Normal {
                     self.render_token_limit_callout(line_height, token_usage_ratio, cx)
                 } else {
                     None
