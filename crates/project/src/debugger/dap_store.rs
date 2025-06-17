@@ -49,7 +49,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Once},
 };
-use task::{DebugScenario, SpawnInTerminal, TaskContext, TaskTemplate};
+use task::{DebugScenario, SpawnInTerminal, TaskTemplate};
 use util::ResultExt as _;
 use worktree::Worktree;
 
@@ -362,7 +362,6 @@ impl DapStore {
         &mut self,
         label: SharedString,
         adapter: DebugAdapterName,
-        task_context: TaskContext,
         parent_session: Option<Entity<Session>>,
         cx: &mut Context<Self>,
     ) -> Entity<Session> {
@@ -380,7 +379,6 @@ impl DapStore {
             parent_session,
             label,
             adapter,
-            task_context,
             cx,
         );
 
@@ -891,9 +889,7 @@ impl dap::adapters::DapDelegate for DapAdapterDelegate {
     }
 
     async fn which(&self, command: &OsStr) -> Option<PathBuf> {
-        let worktree_abs_path = self.worktree.abs_path();
-        let shell_path = self.shell_env().await.get("PATH").cloned();
-        which::which_in(command, shell_path.as_ref(), worktree_abs_path).ok()
+        which::which(command).ok()
     }
 
     async fn shell_env(&self) -> HashMap<String, String> {

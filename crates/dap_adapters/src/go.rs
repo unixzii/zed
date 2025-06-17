@@ -1,5 +1,4 @@
 use anyhow::{Context as _, bail};
-use collections::HashMap;
 use dap::{
     StartDebuggingRequestArguments,
     adapters::{
@@ -10,7 +9,7 @@ use dap::{
 
 use gpui::{AsyncApp, SharedString};
 use language::LanguageName;
-use std::{env::consts, ffi::OsStr, path::PathBuf, sync::OnceLock};
+use std::{collections::HashMap, env::consts, ffi::OsStr, path::PathBuf, sync::OnceLock};
 use task::TcpArgumentsTemplate;
 use util;
 
@@ -96,7 +95,7 @@ impl DebugAdapter for GoDebugAdapter {
         Some(SharedString::new_static("Go").into())
     }
 
-    fn dap_schema(&self) -> serde_json::Value {
+    async fn dap_schema(&self) -> serde_json::Value {
         // Create common properties shared between launch and attach
         let common_properties = json!({
             "debugAdapter": {
@@ -352,7 +351,7 @@ impl DebugAdapter for GoDebugAdapter {
         })
     }
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
         let mut args = match &zed_scenario.request {
             dap::DebugRequest::Attach(attach_config) => {
                 json!({
@@ -495,7 +494,7 @@ impl DebugAdapter for GoDebugAdapter {
             connection,
             request_args: StartDebuggingRequestArguments {
                 configuration,
-                request: self.request_kind(&task_definition.config).await?,
+                request: self.request_kind(&task_definition.config)?,
             },
         })
     }

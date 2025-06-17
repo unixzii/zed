@@ -21,7 +21,7 @@ impl DebugAdapter for GdbDebugAdapter {
         DebugAdapterName(Self::ADAPTER_NAME.into())
     }
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
         let mut obj = serde_json::Map::default();
 
         match &zed_scenario.request {
@@ -63,7 +63,7 @@ impl DebugAdapter for GdbDebugAdapter {
         })
     }
 
-    fn dap_schema(&self) -> serde_json::Value {
+    async fn dap_schema(&self) -> serde_json::Value {
         json!({
             "oneOf": [
                 {
@@ -191,7 +191,7 @@ impl DebugAdapter for GdbDebugAdapter {
             cwd: Some(delegate.worktree_root_path().to_path_buf()),
             connection: None,
             request_args: StartDebuggingRequestArguments {
-                request: self.request_kind(&config.config).await?,
+                request: self.request_kind(&config.config)?,
                 configuration,
             },
         })

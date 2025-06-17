@@ -12,7 +12,7 @@ use text::ToOffset;
 use ui::{ButtonLike, KeyBinding, prelude::*};
 use workspace::{
     Item, ItemHandle as _, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView, Workspace,
-    item::SaveOptions, searchable::SearchableItemHandle,
+    searchable::SearchableItemHandle,
 };
 
 pub struct ProposedChangesEditor {
@@ -351,13 +351,13 @@ impl Item for ProposedChangesEditor {
 
     fn save(
         &mut self,
-        options: SaveOptions,
+        format: bool,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
         self.editor.update(cx, |editor, cx| {
-            Item::save(editor, options, project, window, cx)
+            Item::save(editor, format, project, window, cx)
         })
     }
 }

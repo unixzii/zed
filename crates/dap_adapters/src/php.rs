@@ -102,8 +102,7 @@ impl PhpDebugAdapter {
             envs: HashMap::default(),
             request_args: StartDebuggingRequestArguments {
                 configuration,
-                request: <Self as DebugAdapter>::request_kind(self, &task_definition.config)
-                    .await?,
+                request: <Self as DebugAdapter>::request_kind(self, &task_definition.config)?,
             },
         })
     }
@@ -111,7 +110,7 @@ impl PhpDebugAdapter {
 
 #[async_trait(?Send)]
 impl DebugAdapter for PhpDebugAdapter {
-    fn dap_schema(&self) -> serde_json::Value {
+    async fn dap_schema(&self) -> serde_json::Value {
         json!({
             "properties": {
                 "request": {
@@ -291,14 +290,11 @@ impl DebugAdapter for PhpDebugAdapter {
         Some(SharedString::new_static("PHP").into())
     }
 
-    async fn request_kind(
-        &self,
-        _: &serde_json::Value,
-    ) -> Result<StartDebuggingRequestArgumentsRequest> {
+    fn request_kind(&self, _: &serde_json::Value) -> Result<StartDebuggingRequestArgumentsRequest> {
         Ok(StartDebuggingRequestArgumentsRequest::Launch)
     }
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
         let obj = match &zed_scenario.request {
             dap::DebugRequest::Attach(_) => {
                 bail!("Php adapter doesn't support attaching")

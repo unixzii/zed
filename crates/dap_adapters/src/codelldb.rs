@@ -19,7 +19,7 @@ pub(crate) struct CodeLldbDebugAdapter {
 impl CodeLldbDebugAdapter {
     const ADAPTER_NAME: &'static str = "CodeLLDB";
 
-    async fn request_args(
+    fn request_args(
         &self,
         delegate: &Arc<dyn DapDelegate>,
         task_definition: &DebugTaskDefinition,
@@ -37,7 +37,7 @@ impl CodeLldbDebugAdapter {
         obj.entry("cwd")
             .or_insert(delegate.worktree_root_path().to_string_lossy().into());
 
-        let request = self.request_kind(&configuration).await?;
+        let request = self.request_kind(&configuration)?;
 
         Ok(dap::StartDebuggingRequestArguments {
             request,
@@ -89,7 +89,7 @@ impl DebugAdapter for CodeLldbDebugAdapter {
         DebugAdapterName(Self::ADAPTER_NAME.into())
     }
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
         let mut configuration = json!({
             "request": match zed_scenario.request {
                 DebugRequest::Launch(_) => "launch",
@@ -133,7 +133,7 @@ impl DebugAdapter for CodeLldbDebugAdapter {
         })
     }
 
-    fn dap_schema(&self) -> serde_json::Value {
+    async fn dap_schema(&self) -> serde_json::Value {
         json!({
             "properties": {
                 "request": {
@@ -368,7 +368,7 @@ impl DebugAdapter for CodeLldbDebugAdapter {
                 "--settings".into(),
                 json!({"sourceLanguages": ["cpp", "rust"]}).to_string(),
             ],
-            request_args: self.request_args(delegate, &config).await?,
+            request_args: self.request_args(delegate, &config)?,
             envs: HashMap::default(),
             connection: None,
         })

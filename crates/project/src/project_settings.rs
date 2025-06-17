@@ -55,7 +55,7 @@ pub struct ProjectSettings {
 
     /// Settings for context servers used for AI-related features.
     #[serde(default)]
-    pub context_servers: HashMap<Arc<str>, ContextServerSettings>,
+    pub context_servers: HashMap<Arc<str>, ContextServerConfiguration>,
 
     /// Configuration for Diagnostics-related features.
     #[serde(default)]
@@ -84,22 +84,17 @@ pub struct DapSettings {
     pub binary: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, Debug)]
-#[serde(tag = "source", rename_all = "snake_case")]
-pub enum ContextServerSettings {
-    Custom {
-        /// The command to run this context server.
-        ///
-        /// This will override the command set by an extension.
-        command: ContextServerCommand,
-    },
-    Extension {
-        /// The settings for this context server specified by the extension.
-        ///
-        /// Consult the documentation for the context server to see what settings
-        /// are supported.
-        settings: serde_json::Value,
-    },
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, Debug, Default)]
+pub struct ContextServerConfiguration {
+    /// The command to run this context server.
+    ///
+    /// This will override the command set by an extension.
+    pub command: Option<ContextServerCommand>,
+    /// The settings for this context server.
+    ///
+    /// Consult the documentation for the context server to see what settings
+    /// are supported.
+    pub settings: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -477,12 +472,13 @@ impl Settings for ProjectSettings {
                 .extend(mcp.iter().filter_map(|(k, v)| {
                     Some((
                         k.clone().into(),
-                        ContextServerSettings::Custom {
-                            command: serde_json::from_value::<VsCodeContextServerCommand>(
-                                v.clone(),
-                            )
-                            .ok()?
-                            .into(),
+                        ContextServerConfiguration {
+                            command: Some(
+                                serde_json::from_value::<VsCodeContextServerCommand>(v.clone())
+                                    .ok()?
+                                    .into(),
+                            ),
+                            settings: None,
                         },
                     ))
                 }));

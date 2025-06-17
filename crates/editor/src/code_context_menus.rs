@@ -1044,19 +1044,59 @@ impl CompletionsMenu {
         self.handle_selection_changed(provider.as_deref(), window, cx);
     }
 
-    pub fn sort_string_matches(
+    fn sort_string_matches(
         matches: Vec<StringMatch>,
         query: Option<&str>,
         snippet_sort_order: SnippetSortOrder,
         completions: &[Completion],
     ) -> Vec<StringMatch> {
-        let mut matches = matches;
+        let mut sortable_items: Vec<SortableMatch<'_>> = matches
+            .into_iter()
+            .map(|string_match| {
+                let completion = &completions[string_match.candidate_id];
 
+                let is_snippet = matches!(
+                    &completion.source,
+                    CompletionSource::Lsp { lsp_completion, .. }
+                    if lsp_completion.kind == Some(CompletionItemKind::SNIPPET)
+                );
+
+                let sort_text =
+                    if let CompletionSource::Lsp { lsp_completion, .. } = &completion.source {
+                        lsp_completion.sort_text.as_deref()
+                    } else {
+                        None
+                    };
+
+                let (sort_kind, sort_label) = completion.sort_key();
+
+                SortableMatch {
+                    string_match,
+                    is_snippet,
+                    sort_text,
+                    sort_kind,
+                    sort_label,
+                }
+            })
+            .collect();
+
+        Self::sort_matches(&mut sortable_items, query, snippet_sort_order);
+
+        sortable_items
+            .into_iter()
+            .map(|sortable| sortable.string_match)
+            .collect()
+    }
+
+    pub fn sort_matches(
+        matches: &mut Vec<SortableMatch<'_>>,
+        query: Option<&str>,
+        snippet_sort_order: SnippetSortOrder,
+    ) {
         #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
         enum MatchTier<'a> {
             WordStartMatch {
-                sort_capitalize: Reverse<usize>,
-                sort_positions: Vec<usize>,
+                sort_mixed_case_prefix_length: Reverse<usize>,
                 sort_snippet: Reverse<i32>,
                 sort_kind: usize,
                 sort_fuzzy_bracket: Reverse<usize>,
@@ -1074,7 +1114,10 @@ impl CompletionsMenu {
 
         // In a fuzzy bracket, matches with a score of 1.0 are prioritized.
         // The remaining matches are partitioned into two groups at 3/5 of the max_score.
-        let max_score = matches.iter().map(|mat| mat.score).fold(0.0, f64::max);
+        let max_score = matches
+            .iter()
+            .map(|mat| mat.string_match.score)
+            .fold(0.0, f64::max);
         let fuzzy_bracket_threshold = max_score * (3.0 / 5.0);
 
         let query_start_lower = query
@@ -1082,30 +1125,13 @@ impl CompletionsMenu {
             .and_then(|q| q.chars().next())
             .and_then(|c| c.to_lowercase().next());
 
-        matches.sort_unstable_by_key(|string_match| {
-            let completion = &completions[string_match.candidate_id];
-
-            let is_snippet = matches!(
-                &completion.source,
-                CompletionSource::Lsp { lsp_completion, .. }
-                if lsp_completion.kind == Some(CompletionItemKind::SNIPPET)
-            );
-
-            let sort_text = if let CompletionSource::Lsp { lsp_completion, .. } = &completion.source
-            {
-                lsp_completion.sort_text.as_deref()
-            } else {
-                None
-            };
-
-            let (sort_kind, sort_label) = completion.sort_key();
-
-            let score = string_match.score;
+        matches.sort_unstable_by_key(|mat| {
+            let score = mat.string_match.score;
             let sort_score = Reverse(OrderedFloat(score));
 
             let query_start_doesnt_match_split_words = query_start_lower
                 .map(|query_char| {
-                    !split_words(&string_match.string).any(|word| {
+                    !split_words(&mat.string_match.string).any(|word| {
                         word.chars()
                             .next()
                             .and_then(|c| c.to_lowercase().next())
@@ -1123,34 +1149,41 @@ impl CompletionsMenu {
                     0
                 });
                 let sort_snippet = match snippet_sort_order {
-                    SnippetSortOrder::Top => Reverse(if is_snippet { 1 } else { 0 }),
-                    SnippetSortOrder::Bottom => Reverse(if is_snippet { 0 } else { 1 }),
+                    SnippetSortOrder::Top => Reverse(if mat.is_snippet { 1 } else { 0 }),
+                    SnippetSortOrder::Bottom => Reverse(if mat.is_snippet { 0 } else { 1 }),
                     SnippetSortOrder::Inline => Reverse(0),
                 };
-                let sort_capitalize = Reverse(
+                let sort_mixed_case_prefix_length = Reverse(
                     query
                         .as_ref()
-                        .and_then(|q| q.chars().next())
-                        .zip(string_match.string.chars().next())
-                        .map(|(q_char, s_char)| if q_char == s_char { 1 } else { 0 })
+                        .map(|q| {
+                            q.chars()
+                                .zip(mat.string_match.string.chars())
+                                .enumerate()
+                                .take_while(|(i, (q_char, match_char))| {
+                                    if *i == 0 {
+                                        // Case-sensitive comparison for first character
+                                        q_char == match_char
+                                    } else {
+                                        // Case-insensitive comparison for other characters
+                                        q_char.to_lowercase().eq(match_char.to_lowercase())
+                                    }
+                                })
+                                .count()
+                        })
                         .unwrap_or(0),
                 );
-                let sort_positions = string_match.positions.clone();
-
                 MatchTier::WordStartMatch {
-                    sort_capitalize,
-                    sort_positions,
+                    sort_mixed_case_prefix_length,
                     sort_snippet,
-                    sort_kind,
+                    sort_kind: mat.sort_kind,
                     sort_fuzzy_bracket,
-                    sort_text,
+                    sort_text: mat.sort_text,
                     sort_score,
-                    sort_label,
+                    sort_label: mat.sort_label,
                 }
             }
         });
-
-        matches
     }
 
     pub fn preserve_markdown_cache(&mut self, prev_menu: CompletionsMenu) {
@@ -1180,6 +1213,15 @@ impl CompletionsMenu {
                 }
             });
     }
+}
+
+#[derive(Debug)]
+pub struct SortableMatch<'a> {
+    pub string_match: StringMatch,
+    pub is_snippet: bool,
+    pub sort_text: Option<&'a str>,
+    pub sort_kind: usize,
+    pub sort_label: &'a str,
 }
 
 #[derive(Clone)]

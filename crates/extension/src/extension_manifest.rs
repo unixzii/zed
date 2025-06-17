@@ -89,8 +89,6 @@ pub struct ExtensionManifest {
     pub capabilities: Vec<ExtensionCapability>,
     #[serde(default)]
     pub debug_adapters: Vec<Arc<str>>,
-    #[serde(default)]
-    pub debug_locators: Vec<Arc<str>>,
 }
 
 impl ExtensionManifest {
@@ -279,7 +277,6 @@ fn manifest_from_old_manifest(
         snippets: None,
         capabilities: Vec::new(),
         debug_adapters: vec![],
-        debug_locators: vec![],
     }
 }
 
@@ -308,7 +305,6 @@ mod tests {
             snippets: None,
             capabilities: vec![],
             debug_adapters: Default::default(),
-            debug_locators: Default::default(),
         }
     }
 

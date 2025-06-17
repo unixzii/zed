@@ -45,14 +45,11 @@ impl DebugAdapter for RubyDebugAdapter {
         Some(SharedString::new_static("Ruby").into())
     }
 
-    async fn request_kind(
-        &self,
-        _: &serde_json::Value,
-    ) -> Result<StartDebuggingRequestArgumentsRequest> {
+    fn request_kind(&self, _: &serde_json::Value) -> Result<StartDebuggingRequestArgumentsRequest> {
         Ok(StartDebuggingRequestArgumentsRequest::Launch)
     }
 
-    fn dap_schema(&self) -> serde_json::Value {
+    async fn dap_schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
             "properties": {
@@ -86,7 +83,7 @@ impl DebugAdapter for RubyDebugAdapter {
         })
     }
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
         match zed_scenario.request {
             DebugRequest::Launch(launch) => {
                 let config = RubyDebugConfig {
@@ -199,7 +196,7 @@ impl DebugAdapter for RubyDebugAdapter {
             ),
             envs: ruby_config.env.into_iter().collect(),
             request_args: StartDebuggingRequestArguments {
-                request: self.request_kind(&definition.config).await?,
+                request: self.request_kind(&definition.config)?,
                 configuration,
             },
         })

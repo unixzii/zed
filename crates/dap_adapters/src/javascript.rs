@@ -124,7 +124,7 @@ impl JsDebugAdapter {
             }),
             request_args: StartDebuggingRequestArguments {
                 configuration,
-                request: self.request_kind(&task_definition.config).await?,
+                request: self.request_kind(&task_definition.config)?,
             },
         })
     }
@@ -136,7 +136,7 @@ impl DebugAdapter for JsDebugAdapter {
         DebugAdapterName(Self::ADAPTER_NAME.into())
     }
 
-    async fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
+    fn config_from_zed_format(&self, zed_scenario: ZedDebugConfig) -> Result<DebugScenario> {
         let mut args = json!({
             "type": "pwa-node",
             "request": match zed_scenario.request {
@@ -182,7 +182,7 @@ impl DebugAdapter for JsDebugAdapter {
         })
     }
 
-    fn dap_schema(&self) -> serde_json::Value {
+    async fn dap_schema(&self) -> serde_json::Value {
         json!({
             "oneOf": [
                 {
