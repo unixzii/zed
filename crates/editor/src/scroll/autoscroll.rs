@@ -1,13 +1,12 @@
 use crate::{
-    DisplayRow, Editor, EditorMode, LineWithInvisibles, RowExt, SelectionEffects,
-    display_map::ToDisplayPoint,
+    DisplayRow, Editor, EditorMode, LineWithInvisibles, RowExt, display_map::ToDisplayPoint,
 };
 use gpui::{Bounds, Context, Pixels, Window, px};
 use language::Point;
 use multi_buffer::Anchor;
 use std::{cmp, f32};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Autoscroll {
     Next,
     Strategy(AutoscrollStrategy, Option<Anchor>),
@@ -67,16 +66,7 @@ impl Autoscroll {
     }
 }
 
-impl Into<SelectionEffects> for Option<Autoscroll> {
-    fn into(self) -> SelectionEffects {
-        match self {
-            Some(autoscroll) => SelectionEffects::scroll(autoscroll),
-            None => SelectionEffects::no_scroll(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
+#[derive(PartialEq, Eq, Default, Clone, Copy)]
 pub enum AutoscrollStrategy {
     Fit,
     Newest,

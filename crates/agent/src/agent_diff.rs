@@ -31,7 +31,7 @@ use util::ResultExt;
 use workspace::{
     Item, ItemHandle, ItemNavHistory, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView,
     Workspace,
-    item::{BreadcrumbText, ItemEvent, SaveOptions, TabContentParams},
+    item::{BreadcrumbText, ItemEvent, TabContentParams},
     searchable::SearchableItemHandle,
 };
 use zed_actions::assistant::ToggleFocus;
@@ -532,12 +532,12 @@ impl Item for AgentDiffPane {
 
     fn save(
         &mut self,
-        options: SaveOptions,
+        format: bool,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
-        self.editor.save(options, project, window, cx)
+        self.editor.save(format, project, window, cx)
     }
 
     fn save_as(

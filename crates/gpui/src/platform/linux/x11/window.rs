@@ -20,7 +20,7 @@ use x11rb::{
     protocol::{
         sync,
         xinput::{self, ConnectionExt as _},
-        xproto::{self, ClientMessageEvent, ConnectionExt, TranslateCoordinatesReply},
+        xproto::{self, ClientMessageEvent, ConnectionExt, EventMask, TranslateCoordinatesReply},
     },
     wrapper::ConnectionExt as _,
     xcb_ffi::XCBConnection,
@@ -407,8 +407,7 @@ impl X11WindowState {
                     | xproto::EventMask::FOCUS_CHANGE
                     | xproto::EventMask::KEY_PRESS
                     | xproto::EventMask::KEY_RELEASE
-                    | xproto::EventMask::PROPERTY_CHANGE
-                    | xproto::EventMask::VISIBILITY_CHANGE,
+                    | EventMask::PROPERTY_CHANGE,
             );
 
         let mut bounds = params.bounds.to_device_pixels(scale_factor);
@@ -786,7 +785,7 @@ impl X11Window {
             self.0.xcb.send_event(
                 false,
                 state.x_root_window,
-                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
         )
@@ -837,7 +836,7 @@ impl X11Window {
             self.0.xcb.send_event(
                 false,
                 state.x_root_window,
-                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
         )?;
@@ -922,7 +921,7 @@ impl X11WindowStatePtr {
         state.fullscreen = false;
         state.maximized_vertical = false;
         state.maximized_horizontal = false;
-        state.hidden = false;
+        state.hidden = true;
 
         for atom in atoms {
             if atom == state.atoms._NET_WM_STATE_FOCUSED {
@@ -1344,7 +1343,7 @@ impl PlatformWindow for X11Window {
             self.0.xcb.send_event(
                 false,
                 state.x_root_window,
-                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
         )
@@ -1453,7 +1452,7 @@ impl PlatformWindow for X11Window {
             self.0.xcb.send_event(
                 false,
                 state.x_root_window,
-                xproto::EventMask::SUBSTRUCTURE_REDIRECT | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
+                EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 message,
             ),
         )

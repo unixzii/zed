@@ -349,11 +349,4 @@ pub mod outline {
 actions!(zed_predict_onboarding, [OpenZedPredictOnboarding]);
 actions!(git_onboarding, [OpenGitIntegrationOnboarding]);
 
-actions!(
-    debugger,
-    [
-        ToggleEnableBreakpoint,
-        UnsetBreakpoint,
-        OpenProjectDebugTasks,
-    ]
-);
+actions!(debugger, [ToggleEnableBreakpoint, UnsetBreakpoint]);

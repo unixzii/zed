@@ -177,10 +177,7 @@ impl Cell {
 
                 let editor_view = cx.new(|cx| {
                     let mut editor = Editor::new(
-                        EditorMode::AutoHeight {
-                            min_lines: 1,
-                            max_lines: 1024,
-                        },
+                        EditorMode::AutoHeight { max_lines: 1024 },
                         multi_buffer,
                         None,
                         window,

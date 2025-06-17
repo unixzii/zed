@@ -10,8 +10,8 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install test runner
-      shell: powershell
+    - name: Install Rust
+      shell: pwsh
       working-directory: ${{ inputs.working-directory }}
       run: cargo install cargo-nextest --locked
 
@@ -21,6 +21,6 @@ runs:
         node-version: "18"
 
     - name: Run tests
-      shell: powershell
+      shell: pwsh
       working-directory: ${{ inputs.working-directory }}
-      run: cargo nextest run --workspace --no-fail-fast
+      run: cargo nextest run --workspace --no-fail-fast --config='profile.dev.debug="limited"'

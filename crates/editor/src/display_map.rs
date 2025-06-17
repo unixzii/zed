@@ -2014,11 +2014,11 @@ pub mod tests {
         map.update(cx, |map, cx| {
             map.splice_inlays(
                 &[],
-                vec![Inlay::inline_completion(
-                    0,
-                    buffer_snapshot.anchor_after(0),
-                    "\n",
-                )],
+                vec![Inlay {
+                    id: InlayId::InlineCompletion(0),
+                    position: buffer_snapshot.anchor_after(0),
+                    text: "\n".into(),
+                }],
                 cx,
             );
         });

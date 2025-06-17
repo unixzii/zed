@@ -768,21 +768,6 @@ pub struct DirectoryItem {
     pub is_dir: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct DocumentColor {
-    pub lsp_range: lsp::Range,
-    pub color: lsp::Color,
-    pub resolved: bool,
-    pub color_presentations: Vec<ColorPresentation>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ColorPresentation {
-    pub label: String,
-    pub text_edit: Option<lsp::TextEdit>,
-    pub additional_text_edits: Vec<lsp::TextEdit>,
-}
-
 #[derive(Clone)]
 pub enum DirectoryLister {
     Project(Entity<Project>),
@@ -2960,7 +2945,7 @@ impl Project {
             WorktreeStoreEvent::WorktreeUpdatedEntries(worktree_id, changes) => {
                 self.client()
                     .telemetry()
-                    .report_discovered_project_type_events(*worktree_id, changes);
+                    .report_discovered_project_events(*worktree_id, changes);
                 cx.emit(Event::WorktreeUpdatedEntries(*worktree_id, changes.clone()))
             }
             WorktreeStoreEvent::WorktreeDeletedEntry(worktree_id, id) => {
@@ -3733,6 +3718,16 @@ impl Project {
     ) -> Task<anyhow::Result<InlayHint>> {
         self.lsp_store.update(cx, |lsp_store, cx| {
             lsp_store.resolve_inlay_hint(hint, buffer_handle, server_id, cx)
+        })
+    }
+
+    pub fn document_diagnostics(
+        &mut self,
+        buffer_handle: Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Vec<LspPullDiagnostics>>> {
+        self.lsp_store.update(cx, |lsp_store, cx| {
+            lsp_store.pull_diagnostics(buffer_handle, cx)
         })
     }
 

@@ -82,7 +82,7 @@ impl UserBackfiller {
             {
                 Ok(github_user) => {
                     self.db
-                        .update_or_create_user_by_github_account(
+                        .get_or_create_user_by_github_account(
                             &user.github_login,
                             github_user.id,
                             user.email_address.as_deref(),

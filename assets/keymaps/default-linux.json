@@ -115,7 +115,6 @@
       "ctrl-\"": "editor::ExpandAllDiffHunks",
       "ctrl-i": "editor::ShowSignatureHelp",
       "alt-g b": "git::Blame",
-      "alt-g m": "git::OpenModifiedFiles",
       "menu": "editor::OpenContextMenu",
       "shift-f10": "editor::OpenContextMenu",
       "ctrl-shift-e": "editor::ToggleEditPrediction",
