@@ -122,7 +122,6 @@ impl<T> Outline<T> {
             },
             query,
             smart_case,
-            true,
             100,
             &Default::default(),
             executor.clone(),

@@ -147,7 +147,6 @@ impl PickerDelegate for BaseKeymapSelectorDelegate {
                     &candidates,
                     &query,
                     false,
-                    true,
                     100,
                     &Default::default(),
                     background,

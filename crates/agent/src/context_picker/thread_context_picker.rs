@@ -342,7 +342,6 @@ pub(crate) fn search_threads(
                 &candidates,
                 &query,
                 false,
-                true,
                 100,
                 &cancellation_flag,
                 executor,

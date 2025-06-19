@@ -44,9 +44,9 @@ pub struct OpenAiSettings {
 pub struct AvailableModel {
     pub name: String,
     pub display_name: Option<String>,
-    pub max_tokens: u64,
-    pub max_output_tokens: Option<u64>,
-    pub max_completion_tokens: Option<u64>,
+    pub max_tokens: usize,
+    pub max_output_tokens: Option<u32>,
+    pub max_completion_tokens: Option<u32>,
 }
 
 pub struct OpenAiLanguageModelProvider {
@@ -314,11 +314,11 @@ impl LanguageModel for OpenAiLanguageModel {
         format!("openai/{}", self.model.id())
     }
 
-    fn max_token_count(&self) -> u64 {
+    fn max_token_count(&self) -> usize {
         self.model.max_token_count()
     }
 
-    fn max_output_tokens(&self) -> Option<u64> {
+    fn max_output_tokens(&self) -> Option<u32> {
         self.model.max_output_tokens()
     }
 
@@ -326,7 +326,7 @@ impl LanguageModel for OpenAiLanguageModel {
         &self,
         request: LanguageModelRequest,
         cx: &App,
-    ) -> BoxFuture<'static, Result<u64>> {
+    ) -> BoxFuture<'static, Result<usize>> {
         count_open_ai_tokens(request, self.model.clone(), cx)
     }
 
@@ -357,7 +357,7 @@ impl LanguageModel for OpenAiLanguageModel {
 pub fn into_open_ai(
     request: LanguageModelRequest,
     model: &Model,
-    max_output_tokens: Option<u64>,
+    max_output_tokens: Option<u32>,
 ) -> open_ai::Request {
     let stream = !model.id().starts_with("o1-");
 
@@ -606,7 +606,7 @@ pub fn count_open_ai_tokens(
     request: LanguageModelRequest,
     model: Model,
     cx: &App,
-) -> BoxFuture<'static, Result<u64>> {
+) -> BoxFuture<'static, Result<usize>> {
     cx.background_spawn(async move {
         let messages = request
             .messages
@@ -652,7 +652,6 @@ pub fn count_open_ai_tokens(
             | Model::O3Mini
             | Model::O4Mini => tiktoken_rs::num_tokens_from_messages(model.id(), &messages),
         }
-        .map(|tokens| tokens as u64)
     })
     .boxed()
 }

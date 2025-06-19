@@ -750,7 +750,7 @@ struct EditingMessageState {
     editor: Entity<Editor>,
     context_strip: Entity<ContextStrip>,
     context_picker_menu_handle: PopoverMenuHandle<ContextPicker>,
-    last_estimated_token_count: Option<u64>,
+    last_estimated_token_count: Option<usize>,
     _subscriptions: [Subscription; 2],
     _update_token_count_task: Option<Task<()>>,
 }
@@ -857,7 +857,7 @@ impl ActiveThread {
     }
 
     /// Returns the editing message id and the estimated token count in the content
-    pub fn editing_message_id(&self) -> Option<(MessageId, u64)> {
+    pub fn editing_message_id(&self) -> Option<(MessageId, usize)> {
         self.editing_message
             .as_ref()
             .map(|(id, state)| (*id, state.last_estimated_token_count.unwrap_or(0)))
@@ -1681,10 +1681,7 @@ impl ActiveThread {
 
         let editor = cx.new(|cx| {
             let mut editor = Editor::new(
-                editor::EditorMode::AutoHeight {
-                    min_lines: 1,
-                    max_lines: 4,
-                },
+                editor::EditorMode::AutoHeight { max_lines: 4 },
                 buffer,
                 None,
                 window,

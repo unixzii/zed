@@ -132,7 +132,6 @@ pub enum Event {
     ExtensionsUpdated,
     StartedReloading,
     ExtensionInstalled(Arc<str>),
-    ExtensionUninstalled(Arc<str>),
     ExtensionFailedToLoad(Arc<str>),
 }
 
@@ -838,19 +837,13 @@ impl ExtensionStore {
         self.install_or_upgrade_extension_at_endpoint(extension_id, url, operation, cx)
     }
 
-    pub fn uninstall_extension(
-        &mut self,
-        extension_id: Arc<str>,
-        cx: &mut Context<Self>,
-    ) -> Task<Result<()>> {
+    pub fn uninstall_extension(&mut self, extension_id: Arc<str>, cx: &mut Context<Self>) {
         let extension_dir = self.installed_dir.join(extension_id.as_ref());
         let work_dir = self.wasm_host.work_dir.join(extension_id.as_ref());
         let fs = self.fs.clone();
 
-        let extension_manifest = self.extension_manifest_for_id(&extension_id).cloned();
-
         match self.outstanding_operations.entry(extension_id.clone()) {
-            btree_map::Entry::Occupied(_) => return Task::ready(Ok(())),
+            btree_map::Entry::Occupied(_) => return,
             btree_map::Entry::Vacant(e) => e.insert(ExtensionOperation::Remove),
         };
 
@@ -885,19 +878,9 @@ impl ExtensionStore {
             )
             .await?;
 
-            this.update(cx, |_, cx| {
-                cx.emit(Event::ExtensionUninstalled(extension_id.clone()));
-                if let Some(events) = ExtensionEvents::try_global(cx) {
-                    if let Some(manifest) = extension_manifest {
-                        events.update(cx, |this, cx| {
-                            this.emit(extension::Event::ExtensionUninstalled(manifest.clone()), cx)
-                        });
-                    }
-                }
-            })?;
-
             anyhow::Ok(())
         })
+        .detach_and_log_err(cx)
     }
 
     pub fn install_dev_extension(

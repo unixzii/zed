@@ -62,7 +62,6 @@ impl SlashCommandCompletionProvider {
                 &candidates,
                 &command_name,
                 true,
-                true,
                 usize::MAX,
                 &Default::default(),
                 cx.background_executor().clone(),

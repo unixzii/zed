@@ -15,7 +15,6 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use settings::{SettingsStore, VsCodeSettingsSource};
 use ui::prelude::*;
-use util::truncate_and_remove_front;
 use workspace::item::{Item, ItemEvent};
 use workspace::{Workspace, with_active_or_new_workspace};
 
@@ -130,32 +129,33 @@ async fn handle_import_vscode_settings(
     fs: Arc<dyn Fs>,
     cx: &mut AsyncWindowContext,
 ) {
-    let vscode_settings =
-        match settings::VsCodeSettings::load_user_settings(source, fs.clone()).await {
-            Ok(vscode_settings) => vscode_settings,
-            Err(err) => {
-                log::error!("{err}");
-                let _ = cx.prompt(
-                    gpui::PromptLevel::Info,
-                    &format!("Could not find or load a {source} settings file"),
-                    None,
-                    &["Ok"],
-                );
-                return;
-            }
-        };
+    let vscode = match settings::VsCodeSettings::load_user_settings(source, fs.clone()).await {
+        Ok(vscode) => vscode,
+        Err(err) => {
+            println!(
+                "Failed to load {source} settings: {}",
+                err.context(format!(
+                    "Loading {source} settings from path: {:?}",
+                    paths::vscode_settings_file()
+                ))
+            );
+
+            let _ = cx.prompt(
+                gpui::PromptLevel::Info,
+                &format!("Could not find or load a {source} settings file"),
+                None,
+                &["Ok"],
+            );
+            return;
+        }
+    };
 
     let prompt = if skip_prompt {
         Task::ready(Some(0))
     } else {
         let prompt = cx.prompt(
             gpui::PromptLevel::Warning,
-            &format!(
-                "Importing {} settings may overwrite your existing settings. \
-                Will import settings from {}",
-                vscode_settings.source,
-                truncate_and_remove_front(&vscode_settings.path.to_string_lossy(), 128),
-            ),
+            "Importing settings may overwrite your existing settings",
             None,
             &["Ok", "Cancel"],
         );
@@ -166,11 +166,9 @@ async fn handle_import_vscode_settings(
     }
 
     cx.update(|_, cx| {
-        let source = vscode_settings.source;
-        let path = vscode_settings.path.clone();
         cx.global::<SettingsStore>()
-            .import_vscode_settings(fs, vscode_settings);
-        log::info!("Imported {source} settings from {}", path.display());
+            .import_vscode_settings(fs, vscode);
+        log::info!("Imported settings from {source}");
     })
     .ok();
 }

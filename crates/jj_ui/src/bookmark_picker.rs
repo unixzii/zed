@@ -144,7 +144,6 @@ impl PickerDelegate for BookmarkPickerDelegate {
                     &candidates,
                     &query,
                     false,
-                    true,
                     100,
                     &Default::default(),
                     background,

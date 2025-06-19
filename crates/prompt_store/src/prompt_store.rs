@@ -356,7 +356,6 @@ impl PromptStore {
                     &candidates,
                     &query,
                     false,
-                    true,
                     100,
                     &cancellation_flag,
                     executor,
