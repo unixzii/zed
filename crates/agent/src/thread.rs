@@ -22,7 +22,7 @@ use language_model::{
     ConfiguredModel, LanguageModel, LanguageModelCompletionError, LanguageModelCompletionEvent,
     LanguageModelId, LanguageModelKnownError, LanguageModelRegistry, LanguageModelRequest,
     LanguageModelRequestMessage, LanguageModelRequestTool, LanguageModelToolResult,
-    LanguageModelToolResultContent, LanguageModelToolUseId, MessageContent,
+    LanguageModelToolResultContent, LanguageModelToolUse, LanguageModelToolUseId, MessageContent,
     ModelRequestLimitReachedError, PaymentRequiredError, RequestUsage, Role, SelectedModel,
     StopReason, TokenUsage,
 };
@@ -1474,11 +1474,40 @@ impl Thread {
 
         // NOTE: Changes to this prompt require a symmetric update in the LLM Worker
         const STALE_FILES_HEADER: &str = include_str!("./prompts/stale_files_prompt_header.txt");
-        let content = MessageContent::Text(
-            format!("{STALE_FILES_HEADER}{stale_files}").replace("\r\n", "\n"),
-        );
+        let notification_text = format!("{STALE_FILES_HEADER}{stale_files}").replace("\r\n", "\n");
 
-        // Insert our message before the last Assistant message.
+        let tool_use_id =
+            LanguageModelToolUseId::from(format!("project_updates_{}", messages.len()));
+
+        let tool_use = LanguageModelToolUse {
+            id: tool_use_id.clone(),
+            name: Arc::from("project_updates"),
+            raw_input: "{}".to_string(),
+            input: serde_json::json!({}),
+            is_input_complete: true,
+        };
+
+        let assistant_message = LanguageModelRequestMessage {
+            role: Role::Assistant,
+            content: vec![MessageContent::ToolUse(tool_use)],
+            cache: false,
+        };
+
+        let tool_result = LanguageModelToolResult {
+            tool_use_id,
+            tool_name: Arc::from("project_updates"),
+            is_error: false,
+            content: LanguageModelToolResultContent::Text(Arc::from(notification_text)),
+            output: None,
+        };
+
+        let user_message = LanguageModelRequestMessage {
+            role: Role::User,
+            content: vec![MessageContent::ToolResult(tool_result)],
+            cache: false,
+        };
+
+        // Insert our messages before the last Assistant message.
         // Inserting it to the tail distracts the agent too much
         let insert_position = messages
             .iter()
@@ -1486,25 +1515,8 @@ impl Thread {
             .rfind(|(_, message)| message.role == Role::Assistant)
             .map_or(messages.len(), |(i, _)| i);
 
-        let request_message = LanguageModelRequestMessage {
-            role: Role::User,
-            content: vec![content],
-            cache: false,
-        };
-
-        messages.insert(insert_position, request_message);
-
-        // It makes no sense to cache messages after this one because
-        // the cache is invalidated when this message is gone.
-        // Move the cache marker before this message.
-        let has_cached_messages_after = messages
-            .iter()
-            .skip(insert_position + 1)
-            .any(|message| message.cache);
-
-        if has_cached_messages_after {
-            messages[insert_position - 1].cache = true;
-        }
+        messages.insert(insert_position, assistant_message);
+        messages.insert(insert_position + 1, user_message);
     }
 
     pub fn stream_completion(
@@ -3299,34 +3311,54 @@ fn main() {{
             thread.to_completion_request(model.clone(), CompletionIntent::UserPrompt, cx)
         });
 
-        // We should have a stale file warning as the last message
-        let last_message = new_request
-            .messages
-            .last()
-            .expect("Request should have messages");
+        // Find the fake project_updates tool use and result
+        let mut found_tool_use = false;
+        let mut found_tool_result = false;
 
-        // The last message should be the stale buffer notification
-        assert_eq!(last_message.role, Role::User);
+        for (i, message) in new_request.messages.iter().enumerate() {
+            if message.role == Role::Assistant {
+                for content in &message.content {
+                    if let MessageContent::ToolUse(tool_use) = content {
+                        if tool_use.name.as_ref() == "project_updates" {
+                            found_tool_use = true;
+                            // The next message should be the tool result
+                            if let Some(next_msg) = new_request.messages.get(i + 1) {
+                                assert_eq!(next_msg.role, Role::User);
+                                for result_content in &next_msg.content {
+                                    if let MessageContent::ToolResult(tool_result) = result_content
+                                    {
+                                        assert_eq!(
+                                            tool_result.tool_name.as_ref(),
+                                            "project_updates"
+                                        );
+                                        assert!(!tool_result.is_error);
 
-        // Check the exact content of the message
-        let expected_content = "[The following is an auto-generated notification; do not reply]
+                                        if let LanguageModelToolResultContent::Text(text) =
+                                            &tool_result.content
+                                        {
+                                            let expected_content = "[The following is an auto-generated notification; do not reply]
 
 These files have changed since the last read:
 - code.rs
 ";
-        assert_eq!(
-            last_message.string_contents(),
-            expected_content,
-            "Last message should be exactly the stale buffer notification"
-        );
+                                            assert_eq!(
+                                                text.as_ref(),
+                                                expected_content,
+                                                "Tool result should contain the stale buffer notification"
+                                            );
+                                            found_tool_result = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-        // The message before the notification should be cached
-        let index = new_request.messages.len() - 2;
-        let previous_message = new_request.messages.get(index).unwrap();
-        assert!(
-            previous_message.cache,
-            "Message before the stale buffer notification should be cached"
-        );
+        assert!(found_tool_use, "Should find project_updates tool use");
+        assert!(found_tool_result, "Should find project_updates tool result");
     }
 
     #[gpui::test]
