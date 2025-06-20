@@ -63,8 +63,6 @@ use std::{
     rc::Rc,
 };
 
-/// ID of a node within `DispatchTree`. Note that these are **not** stable between frames, and so a
-/// `DispatchNodeId` should only be used with the `DispatchTree` that provided it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct DispatchNodeId(usize);
 

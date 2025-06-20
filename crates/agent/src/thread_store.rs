@@ -305,19 +305,17 @@ impl ThreadStore {
         project: Entity<Project>,
         cx: &mut App,
     ) -> Task<(WorktreeContext, Option<RulesLoadingError>)> {
-        let tree = worktree.read(cx);
-        let root_name = tree.root_name().into();
-        let abs_path = tree.abs_path();
-
-        let mut context = WorktreeContext {
-            root_name,
-            abs_path,
-            rules_file: None,
-        };
+        let root_name = worktree.read(cx).root_name().into();
 
         let rules_task = Self::load_worktree_rules_file(worktree, project, cx);
         let Some(rules_task) = rules_task else {
-            return Task::ready((context, None));
+            return Task::ready((
+                WorktreeContext {
+                    root_name,
+                    rules_file: None,
+                },
+                None,
+            ));
         };
 
         cx.spawn(async move |_| {
@@ -330,8 +328,11 @@ impl ThreadStore {
                     }),
                 ),
             };
-            context.rules_file = rules_file;
-            (context, rules_file_error)
+            let worktree_info = WorktreeContext {
+                root_name,
+                rules_file,
+            };
+            (worktree_info, rules_file_error)
         })
     }
 
@@ -340,12 +341,12 @@ impl ThreadStore {
         project: Entity<Project>,
         cx: &mut App,
     ) -> Option<Task<Result<RulesFileContext>>> {
-        let worktree = worktree.read(cx);
-        let worktree_id = worktree.id();
+        let worktree_ref = worktree.read(cx);
+        let worktree_id = worktree_ref.id();
         let selected_rules_file = RULES_FILE_NAMES
             .into_iter()
             .filter_map(|name| {
-                worktree
+                worktree_ref
                     .entry_for_path(name)
                     .filter(|entry| entry.is_file())
                     .map(|entry| entry.path.clone())

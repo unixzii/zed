@@ -3,9 +3,7 @@ use gpui::{Context, Window, impl_actions};
 use language::{Bias, SelectionGoal};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use settings::Settings;
 use std::cmp;
-use vim_mode_setting::HelixModeSetting;
 
 use crate::{
     Vim,
@@ -220,11 +218,7 @@ impl Vim {
             });
         });
 
-        if HelixModeSetting::get_global(cx).0 {
-            self.switch_mode(Mode::HelixNormal, true, window, cx);
-        } else {
-            self.switch_mode(Mode::Normal, true, window, cx);
-        }
+        self.switch_mode(self.default_mode(cx), true, window, cx);
     }
 
     pub fn replace_with_register_object(

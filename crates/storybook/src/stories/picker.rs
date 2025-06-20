@@ -98,7 +98,6 @@ impl PickerDelegate for Delegate {
                 &candidates,
                 &query,
                 true,
-                true,
                 100,
                 &Default::default(),
                 cx.background_executor().clone(),

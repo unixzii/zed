@@ -527,7 +527,6 @@ impl ConsoleQueryBarCompletionProvider {
                 &string_matches,
                 &query,
                 true,
-                true,
                 LIMIT,
                 &Default::default(),
                 cx.background_executor().clone(),

@@ -11,7 +11,7 @@ use stripe::{
     CreateCheckoutSessionSubscriptionDataTrialSettingsEndBehavior,
     CreateCheckoutSessionSubscriptionDataTrialSettingsEndBehaviorMissingPaymentMethod,
     CreateCustomer, Customer, CustomerId, ListCustomers, Price, PriceId, Recurring, Subscription,
-    SubscriptionId, SubscriptionItem, SubscriptionItemId, UpdateCustomer, UpdateSubscriptionItems,
+    SubscriptionId, SubscriptionItem, SubscriptionItemId, UpdateSubscriptionItems,
     UpdateSubscriptionTrialSettings, UpdateSubscriptionTrialSettingsEndBehavior,
     UpdateSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod,
 };
@@ -25,8 +25,7 @@ use crate::stripe_client::{
     StripePriceId, StripePriceRecurring, StripeSubscription, StripeSubscriptionId,
     StripeSubscriptionItem, StripeSubscriptionItemId, StripeSubscriptionTrialSettings,
     StripeSubscriptionTrialSettingsEndBehavior,
-    StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, UpdateCustomerParams,
-    UpdateSubscriptionParams,
+    StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, UpdateSubscriptionParams,
 };
 
 pub struct RealStripeClient {
@@ -70,24 +69,6 @@ impl StripeClient for RealStripeClient {
         let customer = Customer::create(
             &self.client,
             CreateCustomer {
-                email: params.email,
-                ..Default::default()
-            },
-        )
-        .await?;
-
-        Ok(StripeCustomer::from(customer))
-    }
-
-    async fn update_customer(
-        &self,
-        customer_id: &StripeCustomerId,
-        params: UpdateCustomerParams<'_>,
-    ) -> Result<StripeCustomer> {
-        let customer = Customer::update(
-            &self.client,
-            &customer_id.try_into()?,
-            UpdateCustomer {
                 email: params.email,
                 ..Default::default()
             },
