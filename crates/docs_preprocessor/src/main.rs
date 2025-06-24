@@ -171,7 +171,7 @@ fn find_action_by_name(name: &str) -> Option<&ActionDef> {
 fn find_binding(os: &str, action: &str) -> Option<String> {
     let keymap = match os {
         "macos" => &KEYMAP_MACOS,
-        "linux" | "freebsd" => &KEYMAP_LINUX,
+        "linux" => &KEYMAP_LINUX,
         _ => unreachable!("Not a valid OS: {}", os),
     };
 

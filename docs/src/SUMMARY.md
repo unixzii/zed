@@ -19,7 +19,6 @@
 - [Snippets](./snippets.md)
 - [Themes](./themes.md)
 - [Icon Themes](./icon-themes.md)
-- [Visual Customization](./visual-customization.md)
 - [Vim Mode](./vim.md)
 
 <!-- - [Globs](./globs.md) -->

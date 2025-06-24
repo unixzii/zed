@@ -864,10 +864,7 @@
       "right": "variable_list::ExpandSelectedEntry",
       "enter": "variable_list::EditVariable",
       "cmd-c": "variable_list::CopyVariableValue",
-      "cmd-alt-c": "variable_list::CopyVariableName",
-      "delete": "variable_list::RemoveWatch",
-      "backspace": "variable_list::RemoveWatch",
-      "alt-enter": "variable_list::AddWatch"
+      "cmd-alt-c": "variable_list::CopyVariableName"
     }
   },
   {
@@ -1138,8 +1135,7 @@
     "context": "DebugConsole > Editor",
     "use_key_equivalents": true,
     "bindings": {
-      "enter": "menu::Confirm",
-      "alt-enter": "console::WatchExpression"
+      "enter": "menu::Confirm"
     }
   },
   {

@@ -29,7 +29,8 @@ use gpui::{
 };
 use language::LanguageRegistry;
 use language_model::{
-    ConfigurationError, LanguageModelProviderTosView, LanguageModelRegistry, ZED_CLOUD_PROVIDER_ID,
+    ConfigurationError, LanguageModelProviderTosView, LanguageModelRegistry, RequestUsage,
+    ZED_CLOUD_PROVIDER_ID,
 };
 use project::{Project, ProjectPath, Worktree};
 use prompt_store::{PromptBuilder, PromptStore, UserPromptId};
@@ -44,7 +45,7 @@ use ui::{
     Banner, CheckboxWithLabel, ContextMenu, ElevationIndex, KeyBinding, PopoverMenu,
     PopoverMenuHandle, ProgressBar, Tab, Tooltip, Vector, VectorName, prelude::*,
 };
-use util::ResultExt as _;
+use util::{ResultExt as _, maybe};
 use workspace::dock::{DockPosition, Panel, PanelEvent};
 use workspace::{
     CollaboratorId, DraggedSelection, DraggedTab, ToggleZoom, ToolbarItemView, Workspace,
@@ -1183,17 +1184,8 @@ impl AgentPanel {
         let fs = self.fs.clone();
 
         self.set_active_view(ActiveView::Configuration, window, cx);
-        self.configuration = Some(cx.new(|cx| {
-            AgentConfiguration::new(
-                fs,
-                context_server_store,
-                tools,
-                self.language_registry.clone(),
-                self.workspace.clone(),
-                window,
-                cx,
-            )
-        }));
+        self.configuration =
+            Some(cx.new(|cx| AgentConfiguration::new(fs, context_server_store, tools, window, cx)));
 
         if let Some(configuration) = self.configuration.as_ref() {
             self.configuration_subscription = Some(cx.subscribe_in(
@@ -1681,7 +1673,24 @@ impl AgentPanel {
         let thread_id = thread.id().clone();
         let is_empty = active_thread.is_empty();
         let editor_empty = self.message_editor.read(cx).is_editor_fully_empty(cx);
-        let usage = user_store.model_request_usage();
+        let last_usage = active_thread.thread().read(cx).last_usage().or_else(|| {
+            maybe!({
+                let amount = user_store.model_request_usage_amount()?;
+                let limit = user_store.model_request_usage_limit()?.variant?;
+
+                Some(RequestUsage {
+                    amount: amount as i32,
+                    limit: match limit {
+                        proto::usage_limit::Variant::Limited(limited) => {
+                            zed_llm_client::UsageLimit::Limited(limited.limit as i32)
+                        }
+                        proto::usage_limit::Variant::Unlimited(_) => {
+                            zed_llm_client::UsageLimit::Unlimited
+                        }
+                    },
+                })
+            })
+        });
 
         let account_url = zed_urls::account_url(cx);
 
@@ -1802,7 +1811,7 @@ impl AgentPanel {
                         .action("Add Custom Server…", Box::new(AddContextServer))
                         .separator();
 
-                    if let Some(usage) = usage {
+                    if let Some(usage) = last_usage {
                         menu = menu
                             .header_with_link("Prompt Usage", "Manage", account_url.clone())
                             .custom_entry(

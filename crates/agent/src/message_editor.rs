@@ -29,7 +29,8 @@ use gpui::{
 };
 use language::{Buffer, Language, Point};
 use language_model::{
-    ConfiguredModel, LanguageModelRequestMessage, MessageContent, ZED_CLOUD_PROVIDER_ID,
+    ConfiguredModel, LanguageModelRequestMessage, MessageContent, RequestUsage,
+    ZED_CLOUD_PROVIDER_ID,
 };
 use multi_buffer;
 use project::Project;
@@ -41,7 +42,7 @@ use theme::ThemeSettings;
 use ui::{
     Callout, Disclosure, Divider, DividerColor, KeyBinding, PopoverMenuHandle, Tooltip, prelude::*,
 };
-use util::ResultExt as _;
+use util::{ResultExt as _, maybe};
 use workspace::{CollaboratorId, Workspace};
 use zed_llm_client::CompletionIntent;
 
@@ -88,8 +89,6 @@ pub(crate) fn create_editor(
     context_store: WeakEntity<ContextStore>,
     thread_store: WeakEntity<ThreadStore>,
     text_thread_store: WeakEntity<TextThreadStore>,
-    min_lines: usize,
-    max_lines: usize,
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<Editor> {
@@ -106,8 +105,8 @@ pub(crate) fn create_editor(
         let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
         let mut editor = Editor::new(
             editor::EditorMode::AutoHeight {
-                min_lines,
-                max_lines,
+                min_lines: MIN_EDITOR_LINES,
+                max_lines: MAX_EDITOR_LINES,
             },
             buffer,
             None,
@@ -162,8 +161,6 @@ impl MessageEditor {
             context_store.downgrade(),
             thread_store.clone(),
             text_thread_store.clone(),
-            MIN_EDITOR_LINES,
-            MAX_EDITOR_LINES,
             window,
             cx,
         );
@@ -1256,8 +1253,24 @@ impl MessageEditor {
                 Plan::ZedProTrial => zed_llm_client::Plan::ZedProTrial,
             })
             .unwrap_or(zed_llm_client::Plan::ZedFree);
+        let usage = self.thread.read(cx).last_usage().or_else(|| {
+            maybe!({
+                let amount = user_store.model_request_usage_amount()?;
+                let limit = user_store.model_request_usage_limit()?.variant?;
 
-        let usage = user_store.model_request_usage()?;
+                Some(RequestUsage {
+                    amount: amount as i32,
+                    limit: match limit {
+                        proto::usage_limit::Variant::Limited(limited) => {
+                            zed_llm_client::UsageLimit::Limited(limited.limit as i32)
+                        }
+                        proto::usage_limit::Variant::Unlimited(_) => {
+                            zed_llm_client::UsageLimit::Unlimited
+                        }
+                    },
+                })
+            })
+        })?;
 
         Some(
             div()
