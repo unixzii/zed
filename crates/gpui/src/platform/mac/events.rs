@@ -1,5 +1,5 @@
 use crate::{
-    Capslock, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers, ModifiersChangedEvent, MouseButton,
+    KeyDownEvent, KeyUpEvent, Keystroke, Modifiers, ModifiersChangedEvent, MouseButton,
     MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels,
     PlatformInput, ScrollDelta, ScrollWheelEvent, TouchPhase,
     platform::mac::{
@@ -121,11 +121,6 @@ impl PlatformInput {
                 NSEventType::NSFlagsChanged => {
                     Some(Self::ModifiersChanged(ModifiersChangedEvent {
                         modifiers: read_modifiers(native_event),
-                        capslock: Capslock {
-                            on: native_event
-                                .modifierFlags()
-                                .contains(NSEventModifierFlags::NSAlphaShiftKeyMask),
-                        },
                     }))
                 }
                 NSEventType::NSKeyDown => Some(Self::KeyDown(KeyDownEvent {

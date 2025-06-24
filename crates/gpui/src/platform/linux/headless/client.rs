@@ -52,7 +52,7 @@ impl LinuxClient for HeadlessClient {
     }
 
     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout> {
-        Box::new(LinuxKeyboardLayout::new("unknown".into()))
+        Box::new(LinuxKeyboardLayout::new("unknown".to_string()))
     }
 
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {

@@ -13,6 +13,7 @@ use crate::provider::{
     anthropic::AnthropicSettings,
     bedrock::AmazonBedrockSettings,
     cloud::{self, ZedDotDevSettings},
+    copilot_chat::CopilotChatSettings,
     deepseek::DeepSeekSettings,
     google::GoogleSettings,
     lmstudio::LmStudioSettings,
@@ -20,7 +21,6 @@ use crate::provider::{
     ollama::OllamaSettings,
     open_ai::OpenAiSettings,
     open_router::OpenRouterSettings,
-    vercel::VercelSettings,
 };
 
 /// Initializes the language model settings.
@@ -65,8 +65,7 @@ pub struct AllLanguageModelSettings {
     pub open_router: OpenRouterSettings,
     pub zed_dot_dev: ZedDotDevSettings,
     pub google: GoogleSettings,
-    pub vercel: VercelSettings,
-
+    pub copilot_chat: CopilotChatSettings,
     pub lmstudio: LmStudioSettings,
     pub deepseek: DeepSeekSettings,
     pub mistral: MistralSettings,
@@ -84,8 +83,7 @@ pub struct AllLanguageModelSettingsContent {
     pub zed_dot_dev: Option<ZedDotDevSettingsContent>,
     pub google: Option<GoogleSettingsContent>,
     pub deepseek: Option<DeepseekSettingsContent>,
-    pub vercel: Option<VercelSettingsContent>,
-
+    pub copilot_chat: Option<CopilotChatSettingsContent>,
     pub mistral: Option<MistralSettingsContent>,
 }
 
@@ -263,12 +261,6 @@ pub struct OpenAiSettingsContentV1 {
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
-pub struct VercelSettingsContent {
-    pub api_url: Option<String>,
-    pub available_models: Option<Vec<provider::vercel::AvailableModel>>,
-}
-
-#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct GoogleSettingsContent {
     pub api_url: Option<String>,
     pub available_models: Option<Vec<provider::google::AvailableModel>>,
@@ -277,6 +269,13 @@ pub struct GoogleSettingsContent {
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct ZedDotDevSettingsContent {
     available_models: Option<Vec<cloud::AvailableModel>>,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
+pub struct CopilotChatSettingsContent {
+    pub api_url: Option<String>,
+    pub auth_url: Option<String>,
+    pub models_url: Option<String>,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
@@ -394,18 +393,6 @@ impl settings::Settings for AllLanguageModelSettings {
                 &mut settings.openai.available_models,
                 openai.as_ref().and_then(|s| s.available_models.clone()),
             );
-
-            // Vercel
-            let vercel = value.vercel.clone();
-            merge(
-                &mut settings.vercel.api_url,
-                vercel.as_ref().and_then(|s| s.api_url.clone()),
-            );
-            merge(
-                &mut settings.vercel.available_models,
-                vercel.as_ref().and_then(|s| s.available_models.clone()),
-            );
-
             merge(
                 &mut settings.zed_dot_dev.available_models,
                 value
@@ -447,6 +434,24 @@ impl settings::Settings for AllLanguageModelSettings {
                 open_router
                     .as_ref()
                     .and_then(|s| s.available_models.clone()),
+            );
+
+            // Copilot Chat
+            let copilot_chat = value.copilot_chat.clone().unwrap_or_default();
+
+            settings.copilot_chat.api_url = copilot_chat.api_url.map_or_else(
+                || Arc::from("https://api.githubcopilot.com/chat/completions"),
+                Arc::from,
+            );
+
+            settings.copilot_chat.auth_url = copilot_chat.auth_url.map_or_else(
+                || Arc::from("https://api.github.com/copilot_internal/v2/token"),
+                Arc::from,
+            );
+
+            settings.copilot_chat.models_url = copilot_chat.models_url.map_or_else(
+                || Arc::from("https://api.githubcopilot.com/models"),
+                Arc::from,
             );
         }
 

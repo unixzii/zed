@@ -162,7 +162,22 @@ fn fail_to_open_window(e: anyhow::Error, _cx: &mut App) {
 
 pub fn main() {
     #[cfg(unix)]
-    util::prevent_root_execution();
+    {
+        let is_root = nix::unistd::geteuid().is_root();
+        let allow_root = env::var("ZED_ALLOW_ROOT").is_ok_and(|val| val == "true");
+
+        // Prevent running Zed with root privileges on Unix systems unless explicitly allowed
+        if is_root && !allow_root {
+            eprintln!(
+                "\
+Error: Running Zed as root or via sudo is unsupported.
+       Doing so (even once) may subtly break things for all subsequent non-root usage of Zed.
+       It is untested and not recommended, don't complain when things break.
+       If you wish to proceed anyways, set `ZED_ALLOW_ROOT=true` in your environment."
+            );
+            process::exit(1);
+        }
+    }
 
     // Check if there is a pending installer
     // If there is, run the installer and exit
@@ -176,15 +191,8 @@ pub fn main() {
 
     let args = Args::parse();
 
-    // `zed --askpass` Makes zed operate in nc/netcat mode for use with askpass
     if let Some(socket) = &args.askpass {
         askpass::main(socket);
-        return;
-    }
-
-    // `zed --printenv` Outputs environment variables as JSON to stdout
-    if args.printenv {
-        util::shell_env::print_env();
         return;
     }
 
@@ -531,7 +539,7 @@ pub fn main() {
             cx,
         );
         let prompt_builder = PromptBuilder::load(app_state.fs.clone(), stdout_is_a_pty(), cx);
-        agent_ui::init(
+        agent::init(
             app_state.fs.clone(),
             app_state.client.clone(),
             prompt_builder.clone(),
@@ -1079,10 +1087,6 @@ struct Args {
 
     #[arg(long, hide = true)]
     dump_all_actions: bool,
-
-    /// Output current environment variables as JSON to stdout
-    #[arg(long, hide = true)]
-    printenv: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1308,7 +1312,7 @@ fn dump_all_gpui_actions() {
         .map(|action| ActionDef {
             name: action.name,
             human_name: command_palette::humanize_action_name(action.name),
-            aliases: action.deprecated_aliases,
+            aliases: action.aliases,
         })
         .collect::<Vec<ActionDef>>();
 

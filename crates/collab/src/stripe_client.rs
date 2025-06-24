@@ -27,11 +27,6 @@ pub struct CreateCustomerParams<'a> {
     pub email: Option<&'a str>,
 }
 
-#[derive(Debug)]
-pub struct UpdateCustomerParams<'a> {
-    pub email: Option<&'a str>,
-}
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone, derive_more::Display)]
 pub struct StripeSubscriptionId(pub Arc<str>);
 
@@ -148,12 +143,6 @@ pub struct StripeCreateMeterEventPayload<'a> {
     pub stripe_customer_id: &'a StripeCustomerId,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum StripeBillingAddressCollection {
-    Auto,
-    Required,
-}
-
 #[derive(Debug, Default)]
 pub struct StripeCreateCheckoutSessionParams<'a> {
     pub customer: Option<&'a StripeCustomerId>,
@@ -163,7 +152,6 @@ pub struct StripeCreateCheckoutSessionParams<'a> {
     pub payment_method_collection: Option<StripeCheckoutSessionPaymentMethodCollection>,
     pub subscription_data: Option<StripeCreateCheckoutSessionSubscriptionData>,
     pub success_url: Option<&'a str>,
-    pub billing_address_collection: Option<StripeBillingAddressCollection>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -204,12 +192,6 @@ pub trait StripeClient: Send + Sync {
     async fn get_customer(&self, customer_id: &StripeCustomerId) -> Result<StripeCustomer>;
 
     async fn create_customer(&self, params: CreateCustomerParams<'_>) -> Result<StripeCustomer>;
-
-    async fn update_customer(
-        &self,
-        customer_id: &StripeCustomerId,
-        params: UpdateCustomerParams<'_>,
-    ) -> Result<StripeCustomer>;
 
     async fn list_subscriptions_for_customer(
         &self,

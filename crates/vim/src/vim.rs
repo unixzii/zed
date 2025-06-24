@@ -27,7 +27,7 @@ use editor::{
 };
 use gpui::{
     Action, App, AppContext, Axis, Context, Entity, EventEmitter, KeyContext, KeystrokeEvent,
-    Render, Subscription, Task, WeakEntity, Window, actions,
+    Render, Subscription, Task, WeakEntity, Window, actions, impl_actions,
 };
 use insert::{NormalBefore, TemporaryNormal};
 use language::{CharKind, CursorShape, Point, Selection, SelectionGoal, TransactionId};
@@ -44,7 +44,6 @@ use std::{mem, ops::Range, sync::Arc};
 use surrounds::SurroundsType;
 use theme::ThemeSettings;
 use ui::{IntoElement, SharedString, px};
-use vim_mode_setting::HelixModeSetting;
 use vim_mode_setting::VimModeSetting;
 use workspace::{self, Pane, Workspace};
 
@@ -52,77 +51,65 @@ use crate::state::ReplayableAction;
 
 /// Number is used to manage vim's count. Pushing a digit
 /// multiplies the current value by 10 and adds the digit.
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 struct Number(usize);
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 struct SelectRegister(String);
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushObject {
     around: bool,
 }
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushFindForward {
     before: bool,
 }
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushFindBackward {
     after: bool,
 }
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushSneak {
     first_char: Option<char>,
 }
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushSneakBackward {
     first_char: Option<char>,
 }
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
-struct PushAddSurrounds;
+struct PushAddSurrounds {}
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushChangeSurrounds {
     target: Option<Object>,
 }
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushJump {
     line: bool,
 }
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushDigraph {
     first_char: Option<char>,
 }
 
-#[derive(Clone, Deserialize, JsonSchema, PartialEq, Action)]
-#[action(namespace = vim)]
+#[derive(Clone, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct PushLiteral {
     prefix: Option<String>,
@@ -180,6 +167,24 @@ actions!(
 
 // in the workspace namespace so it's not filtered out when vim is disabled.
 actions!(workspace, [ToggleVimMode,]);
+
+impl_actions!(
+    vim,
+    [
+        Number,
+        SelectRegister,
+        PushObject,
+        PushFindForward,
+        PushFindBackward,
+        PushSneak,
+        PushSneakBackward,
+        PushAddSurrounds,
+        PushChangeSurrounds,
+        PushJump,
+        PushDigraph,
+        PushLiteral
+    ]
+);
 
 /// Initializes the `vim` crate.
 pub fn init(cx: &mut App) {
@@ -354,13 +359,8 @@ impl Vim {
     pub fn new(window: &mut Window, cx: &mut Context<Editor>) -> Entity<Self> {
         let editor = cx.entity().clone();
 
-        let mut initial_mode = VimSettings::get_global(cx).default_mode;
-        if initial_mode == Mode::Normal && HelixModeSetting::get_global(cx).0 {
-            initial_mode = Mode::HelixNormal;
-        }
-
         cx.new(|cx| Vim {
-            mode: initial_mode,
+            mode: VimSettings::get_global(cx).default_mode,
             last_mode: Mode::Normal,
             temp_mode: false,
             exit_temporary_mode: false,
@@ -445,11 +445,7 @@ impl Vim {
 
         vim.update(cx, |_, cx| {
             Vim::action(editor, cx, |vim, _: &SwitchToNormalMode, window, cx| {
-                if HelixModeSetting::get_global(cx).0 {
-                    vim.switch_mode(Mode::HelixNormal, false, window, cx)
-                } else {
-                    vim.switch_mode(Mode::Normal, false, window, cx)
-                }
+                vim.switch_mode(vim.default_mode(cx), false, window, cx)
             });
 
             Vim::action(editor, cx, |vim, _: &SwitchToInsertMode, window, cx| {
@@ -752,6 +748,10 @@ impl Vim {
         cx.on_release(|_, _| drop(subscription)).detach();
     }
 
+    pub fn default_mode(&self, cx: &App) -> Mode {
+        VimSettings::get_global(cx).default_mode
+    }
+
     pub fn editor(&self) -> Option<Entity<Editor>> {
         self.editor.upgrade()
     }
@@ -766,7 +766,7 @@ impl Vim {
     }
 
     pub fn enabled(cx: &mut App) -> bool {
-        VimModeSetting::get_global(cx).0 || HelixModeSetting::get_global(cx).0
+        VimModeSetting::get_global(cx).0
     }
 
     /// Called whenever an keystroke is typed so vim can observe all actions
@@ -790,8 +790,8 @@ impl Vim {
         if let Some(action) = keystroke_event.action.as_ref() {
             // Keystroke is handled by the vim system, so continue forward
             if action.name().starts_with("vim::") {
-                self.update_editor(window, cx, |_, editor, _, cx| {
-                    editor.hide_mouse_cursor(HideMouseCursorOrigin::MovementAction, cx)
+                self.update_editor(window, cx, |_, editor, _, _| {
+                    editor.hide_mouse_cursor(&HideMouseCursorOrigin::MovementAction)
                 });
                 return;
             }

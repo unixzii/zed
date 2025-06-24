@@ -11,23 +11,21 @@ use stripe::{
     CreateCheckoutSessionSubscriptionDataTrialSettingsEndBehavior,
     CreateCheckoutSessionSubscriptionDataTrialSettingsEndBehaviorMissingPaymentMethod,
     CreateCustomer, Customer, CustomerId, ListCustomers, Price, PriceId, Recurring, Subscription,
-    SubscriptionId, SubscriptionItem, SubscriptionItemId, UpdateCustomer, UpdateSubscriptionItems,
+    SubscriptionId, SubscriptionItem, SubscriptionItemId, UpdateSubscriptionItems,
     UpdateSubscriptionTrialSettings, UpdateSubscriptionTrialSettingsEndBehavior,
     UpdateSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod,
 };
 
 use crate::stripe_client::{
-    CreateCustomerParams, StripeBillingAddressCollection, StripeCancellationDetails,
-    StripeCancellationDetailsReason, StripeCheckoutSession, StripeCheckoutSessionMode,
-    StripeCheckoutSessionPaymentMethodCollection, StripeClient,
-    StripeCreateCheckoutSessionLineItems, StripeCreateCheckoutSessionParams,
+    CreateCustomerParams, StripeCancellationDetails, StripeCancellationDetailsReason,
+    StripeCheckoutSession, StripeCheckoutSessionMode, StripeCheckoutSessionPaymentMethodCollection,
+    StripeClient, StripeCreateCheckoutSessionLineItems, StripeCreateCheckoutSessionParams,
     StripeCreateCheckoutSessionSubscriptionData, StripeCreateMeterEventParams,
     StripeCreateSubscriptionParams, StripeCustomer, StripeCustomerId, StripeMeter, StripePrice,
     StripePriceId, StripePriceRecurring, StripeSubscription, StripeSubscriptionId,
     StripeSubscriptionItem, StripeSubscriptionItemId, StripeSubscriptionTrialSettings,
     StripeSubscriptionTrialSettingsEndBehavior,
-    StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, UpdateCustomerParams,
-    UpdateSubscriptionParams,
+    StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, UpdateSubscriptionParams,
 };
 
 pub struct RealStripeClient {
@@ -71,24 +69,6 @@ impl StripeClient for RealStripeClient {
         let customer = Customer::create(
             &self.client,
             CreateCustomer {
-                email: params.email,
-                ..Default::default()
-            },
-        )
-        .await?;
-
-        Ok(StripeCustomer::from(customer))
-    }
-
-    async fn update_customer(
-        &self,
-        customer_id: &StripeCustomerId,
-        params: UpdateCustomerParams<'_>,
-    ) -> Result<StripeCustomer> {
-        let customer = Customer::update(
-            &self.client,
-            &customer_id.try_into()?,
-            UpdateCustomer {
                 email: params.email,
                 ..Default::default()
             },
@@ -445,7 +425,6 @@ impl<'a> TryFrom<StripeCreateCheckoutSessionParams<'a>> for CreateCheckoutSessio
             payment_method_collection: value.payment_method_collection.map(Into::into),
             subscription_data: value.subscription_data.map(Into::into),
             success_url: value.success_url,
-            billing_address_collection: value.billing_address_collection.map(Into::into),
             ..Default::default()
         })
     }
@@ -526,18 +505,5 @@ impl From<StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod>
 impl From<CheckoutSession> for StripeCheckoutSession {
     fn from(value: CheckoutSession) -> Self {
         Self { url: value.url }
-    }
-}
-
-impl From<StripeBillingAddressCollection> for stripe::CheckoutSessionBillingAddressCollection {
-    fn from(value: StripeBillingAddressCollection) -> Self {
-        match value {
-            StripeBillingAddressCollection::Auto => {
-                stripe::CheckoutSessionBillingAddressCollection::Auto
-            }
-            StripeBillingAddressCollection::Required => {
-                stripe::CheckoutSessionBillingAddressCollection::Required
-            }
-        }
     }
 }

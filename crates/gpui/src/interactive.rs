@@ -1,6 +1,6 @@
 use crate::{
-    Capslock, Context, Empty, IntoElement, Keystroke, Modifiers, Pixels, Point, Render, Window,
-    point, seal::Sealed,
+    Context, Empty, IntoElement, Keystroke, Modifiers, Pixels, Point, Render, Window, point,
+    seal::Sealed,
 };
 use smallvec::SmallVec;
 use std::{any::Any, fmt::Debug, ops::Deref, path::PathBuf};
@@ -55,8 +55,6 @@ impl KeyEvent for KeyUpEvent {}
 pub struct ModifiersChangedEvent {
     /// The new state of the modifier keys
     pub modifiers: Modifiers,
-    /// The new state of the capslock key
-    pub capslock: Capslock,
 }
 
 impl Sealed for ModifiersChangedEvent {}
@@ -493,7 +491,7 @@ mod test {
         focus_handle: FocusHandle,
     }
 
-    actions!(test_only, [TestAction]);
+    actions!(test, [TestAction]);
 
     impl Render for TestView {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

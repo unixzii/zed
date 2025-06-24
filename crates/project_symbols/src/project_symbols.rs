@@ -66,7 +66,6 @@ impl ProjectSymbolsDelegate {
             &self.visible_match_candidates,
             query,
             false,
-            true,
             MAX_MATCHES,
             &Default::default(),
             cx.background_executor().clone(),
@@ -75,7 +74,6 @@ impl ProjectSymbolsDelegate {
             &self.external_match_candidates,
             query,
             false,
-            true,
             MAX_MATCHES - visible_matches.len().min(MAX_MATCHES),
             &Default::default(),
             cx.background_executor().clone(),
@@ -343,7 +341,6 @@ mod tests {
                         fuzzy::match_strings(
                             &candidates,
                             &params.query,
-                            true,
                             true,
                             100,
                             &Default::default(),

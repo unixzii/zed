@@ -169,12 +169,6 @@ impl EditorLspTestContext {
                 .expect("Opened test file wasn't an editor")
         });
         editor.update_in(&mut cx, |editor, window, cx| {
-            let nav_history = workspace
-                .read(cx)
-                .active_pane()
-                .read(cx)
-                .nav_history_for_item(&cx.entity());
-            editor.set_nav_history(Some(nav_history));
             window.focus(&editor.focus_handle(cx))
         });
 
@@ -351,7 +345,7 @@ impl EditorLspTestContext {
         T: 'static + request::Request,
         T::Params: 'static + Send,
         F: 'static + Send + FnMut(lsp::Url, T::Params, gpui::AsyncApp) -> Fut,
-        Fut: 'static + Future<Output = Result<T::Result>>,
+        Fut: 'static + Send + Future<Output = Result<T::Result>>,
     {
         let url = self.buffer_lsp_url.clone();
         self.lsp.set_request_handler::<T, _, _>(move |params, cx| {

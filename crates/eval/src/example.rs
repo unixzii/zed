@@ -100,7 +100,7 @@ impl ExampleContext {
     pub fn new(
         meta: ExampleMetadata,
         log_prefix: String,
-        agent_thread: Entity<Thread>,
+        agent_thread: Entity<agent::Thread>,
         model: Arc<dyn LanguageModel>,
         app: AsyncApp,
     ) -> Self {

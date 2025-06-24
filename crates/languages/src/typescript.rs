@@ -668,15 +668,11 @@ impl LspAdapter for TypeScriptLspAdapter {
         } else {
             item.label.clone()
         };
-        let filter_range = item
-            .filter_text
-            .as_deref()
-            .and_then(|filter| text.find(filter).map(|ix| ix..ix + filter.len()))
-            .unwrap_or(0..len);
+
         Some(language::CodeLabel {
             text,
             runs: vec![(0..len, highlight_id)],
-            filter_range,
+            filter_range: 0..len,
         })
     }
 
@@ -767,8 +763,8 @@ pub struct EsLintLspAdapter {
 }
 
 impl EsLintLspAdapter {
-    const CURRENT_VERSION: &'static str = "3.0.10";
-    const CURRENT_VERSION_TAG_NAME: &'static str = "release/3.0.10";
+    const CURRENT_VERSION: &'static str = "2.4.4";
+    const CURRENT_VERSION_TAG_NAME: &'static str = "release/2.4.4";
 
     #[cfg(not(windows))]
     const GITHUB_ASSET_KIND: AssetKind = AssetKind::TarGz;
@@ -846,7 +842,9 @@ impl LspAdapter for EsLintLspAdapter {
                     "enable": true
                 }
             },
-            "useFlatConfig": use_flat_config,
+            "experimental": {
+                "useFlatConfig": use_flat_config,
+            },
         });
 
         let override_options = cx.update(|cx| {

@@ -130,11 +130,8 @@ fn parse_path_with_position(argument_str: &str) -> anyhow::Result<String> {
 }
 
 fn main() -> Result<()> {
-    #[cfg(unix)]
-    util::prevent_root_execution();
-
     // Exit flatpak sandbox if needed
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     {
         flatpak::try_restart_to_host();
         flatpak::ld_extra_libs();
@@ -158,7 +155,7 @@ fn main() -> Result<()> {
         paths::set_custom_data_dir(dir);
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     let args = flatpak::set_bin_if_no_escape(args);
 
     let app = Detect::detect(args.zed.as_deref()).context("Bundle detection")?;
@@ -374,7 +371,7 @@ fn anonymous_fd(path: &str) -> Option<fs::File> {
         let file = unsafe { fs::File::from_raw_fd(fd) };
         return Some(file);
     }
-    #[cfg(any(target_os = "macos", target_os = "freebsd"))]
+    #[cfg(target_os = "macos")]
     {
         use std::os::{
             fd::{self, FromRawFd},
@@ -392,7 +389,7 @@ fn anonymous_fd(path: &str) -> Option<fs::File> {
         let file = unsafe { fs::File::from_raw_fd(fd) };
         return Some(file);
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "freebsd")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         _ = path;
         // not implemented for bsd, windows. Could be, but isn't yet
@@ -537,7 +534,7 @@ mod linux {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod flatpak {
     use std::ffi::OsString;
     use std::path::PathBuf;

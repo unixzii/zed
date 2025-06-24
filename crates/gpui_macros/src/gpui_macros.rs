@@ -1,4 +1,3 @@
-mod derive_action;
 mod derive_app_context;
 mod derive_into_element;
 mod derive_render;
@@ -13,18 +12,12 @@ mod derive_inspector_reflection;
 use proc_macro::TokenStream;
 use syn::{DeriveInput, Ident};
 
-/// `Action` derive macro - see the trait documentation for details.
-#[proc_macro_derive(Action, attributes(action))]
-pub fn derive_action(input: TokenStream) -> TokenStream {
-    derive_action::derive_action(input)
-}
-
-/// This can be used to register an action with the GPUI runtime when you want to manually implement
-/// the `Action` trait. Typically you should use the `Action` derive macro or `actions!` macro
-/// instead.
+/// register_action! can be used to register an action with the GPUI runtime.
+/// You should typically use `gpui::actions!` or `gpui::impl_actions!` instead,
+/// but this can be used for fine grained customization.
 #[proc_macro]
 pub fn register_action(ident: TokenStream) -> TokenStream {
-    register_action::register_action(ident)
+    register_action::register_action_macro(ident)
 }
 
 /// #[derive(IntoElement)] is used to create a Component out of anything that implements

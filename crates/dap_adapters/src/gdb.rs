@@ -159,7 +159,6 @@ impl DebugAdapter for GdbDebugAdapter {
         delegate: &Arc<dyn DapDelegate>,
         config: &DebugTaskDefinition,
         user_installed_path: Option<std::path::PathBuf>,
-        user_args: Option<Vec<String>>,
         _: &mut AsyncApp,
     ) -> Result<DebugAdapterBinary> {
         let user_setting_path = user_installed_path
@@ -187,7 +186,7 @@ impl DebugAdapter for GdbDebugAdapter {
 
         Ok(DebugAdapterBinary {
             command: Some(gdb_path),
-            arguments: user_args.unwrap_or_else(|| vec!["-i=dap".into()]),
+            arguments: vec!["-i=dap".into()],
             envs: HashMap::default(),
             cwd: Some(delegate.worktree_root_path().to_path_buf()),
             connection: None,

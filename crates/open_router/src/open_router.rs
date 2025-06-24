@@ -50,21 +50,9 @@ impl From<Role> for String {
 pub struct Model {
     pub name: String,
     pub display_name: Option<String>,
-    pub max_tokens: u64,
+    pub max_tokens: usize,
     pub supports_tools: Option<bool>,
     pub supports_images: Option<bool>,
-    #[serde(default)]
-    pub mode: ModelMode,
-}
-
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub enum ModelMode {
-    #[default]
-    Default,
-    Thinking {
-        budget_tokens: Option<u32>,
-    },
 }
 
 impl Model {
@@ -75,7 +63,6 @@ impl Model {
             Some(2000000),
             Some(true),
             Some(false),
-            Some(ModelMode::Default),
         )
     }
 
@@ -86,10 +73,9 @@ impl Model {
     pub fn new(
         name: &str,
         display_name: Option<&str>,
-        max_tokens: Option<u64>,
+        max_tokens: Option<usize>,
         supports_tools: Option<bool>,
         supports_images: Option<bool>,
-        mode: Option<ModelMode>,
     ) -> Self {
         Self {
             name: name.to_owned(),
@@ -97,7 +83,6 @@ impl Model {
             max_tokens: max_tokens.unwrap_or(2000000),
             supports_tools,
             supports_images,
-            mode: mode.unwrap_or(ModelMode::Default),
         }
     }
 
@@ -109,11 +94,11 @@ impl Model {
         self.display_name.as_ref().unwrap_or(&self.name)
     }
 
-    pub fn max_token_count(&self) -> u64 {
+    pub fn max_token_count(&self) -> usize {
         self.max_tokens
     }
 
-    pub fn max_output_tokens(&self) -> Option<u64> {
+    pub fn max_output_tokens(&self) -> Option<u32> {
         None
     }
 
@@ -132,7 +117,7 @@ pub struct Request {
     pub messages: Vec<RequestMessage>,
     pub stream: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u64>,
+    pub max_tokens: Option<u32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
     pub temperature: f32,
@@ -142,14 +127,6 @@ pub struct Request {
     pub parallel_tool_calls: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<Reasoning>,
-    pub usage: RequestUsage,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct RequestUsage {
-    pub include: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -175,18 +152,6 @@ pub struct FunctionDefinition {
     pub name: String,
     pub description: Option<String>,
     pub parameters: Option<Value>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Reasoning {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub effort: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub exclude: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -328,7 +293,6 @@ pub struct FunctionContent {
 pub struct ResponseMessageDelta {
     pub role: Option<Role>,
     pub content: Option<String>,
-    pub reasoning: Option<String>,
     #[serde(default, skip_serializing_if = "is_none_or_empty")]
     pub tool_calls: Option<Vec<ToolCallChunk>>,
 }
@@ -348,9 +312,9 @@ pub struct FunctionChunk {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Usage {
-    pub prompt_tokens: u64,
-    pub completion_tokens: u64,
-    pub total_tokens: u64,
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -399,7 +363,7 @@ pub struct ModelEntry {
     pub created: usize,
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context_length: Option<u64>,
+    pub context_length: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supported_parameters: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -621,16 +585,6 @@ pub async fn list_models(client: &dyn HttpClient, api_url: &str) -> Result<Vec<M
                         .map(|arch| arch.input_modalities.contains(&"image".to_string()))
                         .unwrap_or(false),
                 ),
-                mode: if entry
-                    .supported_parameters
-                    .contains(&"reasoning".to_string())
-                {
-                    ModelMode::Thinking {
-                        budget_tokens: Some(4_096),
-                    }
-                } else {
-                    ModelMode::Default
-                },
             })
             .collect();
 

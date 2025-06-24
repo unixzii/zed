@@ -16,7 +16,7 @@ use ui::{ActiveTheme as _, Context, ParentElement as _, Styled as _, div};
 use util::ResultExt as _;
 use workspace::{
     Item, ItemHandle as _, ItemNavHistory, ToolbarItemLocation, Workspace,
-    item::{BreadcrumbText, ItemEvent, SaveOptions},
+    item::{BreadcrumbText, ItemEvent},
     searchable::SearchableItemHandle,
 };
 
@@ -386,12 +386,12 @@ impl Item for StackTraceView {
 
     fn save(
         &mut self,
-        options: SaveOptions,
+        format: bool,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
-        self.editor.save(options, project, window, cx)
+        self.editor.save(format, project, window, cx)
     }
 
     fn save_as(

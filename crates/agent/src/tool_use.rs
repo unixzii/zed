@@ -1,22 +1,23 @@
-use crate::{
-    thread::{MessageId, PromptId, ThreadId},
-    thread_store::SerializedMessage,
-};
+use std::sync::Arc;
+
 use anyhow::Result;
 use assistant_tool::{
     AnyToolCard, Tool, ToolResultContent, ToolResultOutput, ToolUseStatus, ToolWorkingSet,
 };
 use collections::HashMap;
-use futures::{FutureExt as _, future::Shared};
-use gpui::{App, Entity, SharedString, Task, Window};
-use icons::IconName;
+use futures::FutureExt as _;
+use futures::future::Shared;
+use gpui::{App, Entity, SharedString, Task};
 use language_model::{
     ConfiguredModel, LanguageModel, LanguageModelRequest, LanguageModelToolResult,
     LanguageModelToolResultContent, LanguageModelToolUse, LanguageModelToolUseId, Role,
 };
 use project::Project;
-use std::sync::Arc;
+use ui::{IconName, Window};
 use util::truncate_lines_to_byte_limit;
+
+use crate::thread::{MessageId, PromptId, ThreadId};
+use crate::thread_store::SerializedMessage;
 
 #[derive(Debug)]
 pub struct ToolUse {
@@ -25,7 +26,7 @@ pub struct ToolUse {
     pub ui_text: SharedString,
     pub status: ToolUseStatus,
     pub input: serde_json::Value,
-    pub icon: icons::IconName,
+    pub icon: ui::IconName,
     pub needs_confirmation: bool,
 }
 
@@ -426,7 +427,7 @@ impl ToolUseState {
 
                 // Protect from overly large output
                 let tool_output_limit = configured_model
-                    .map(|model| model.model.max_token_count() as usize * BYTES_PER_TOKEN_ESTIMATE)
+                    .map(|model| model.model.max_token_count() * BYTES_PER_TOKEN_ESTIMATE)
                     .unwrap_or(usize::MAX);
 
                 let content = match tool_result {
