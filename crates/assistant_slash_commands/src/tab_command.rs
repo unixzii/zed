@@ -261,7 +261,6 @@ fn tab_items_for_queries(
                         &match_candidates,
                         query,
                         true,
-                        true,
                         usize::MAX,
                         &cancel,
                         background_executor.clone(),

@@ -57,10 +57,6 @@ use workspace::{CollaboratorId, Workspace};
 use zed_actions::assistant::OpenRulesLibrary;
 use zed_llm_client::CompletionIntent;
 
-const CODEBLOCK_CONTAINER_GROUP: &str = "codeblock_container";
-const EDIT_PREVIOUS_MESSAGE_MIN_LINES: usize = 1;
-const EDIT_PREVIOUS_MESSAGE_MAX_LINES: usize = 6;
-
 pub struct ActiveThread {
     context_store: Entity<ContextStore>,
     language_registry: Arc<LanguageRegistry>,
@@ -337,6 +333,8 @@ fn tool_use_markdown_style(window: &Window, cx: &mut App) -> MarkdownStyle {
         ..Default::default()
     }
 }
+
+const CODEBLOCK_CONTAINER_GROUP: &str = "codeblock_container";
 
 fn render_markdown_code_block(
     message_id: MessageId,
@@ -752,7 +750,7 @@ struct EditingMessageState {
     editor: Entity<Editor>,
     context_strip: Entity<ContextStrip>,
     context_picker_menu_handle: PopoverMenuHandle<ContextPicker>,
-    last_estimated_token_count: Option<u64>,
+    last_estimated_token_count: Option<usize>,
     _subscriptions: [Subscription; 2],
     _update_token_count_task: Option<Task<()>>,
 }
@@ -859,7 +857,7 @@ impl ActiveThread {
     }
 
     /// Returns the editing message id and the estimated token count in the content
-    pub fn editing_message_id(&self) -> Option<(MessageId, u64)> {
+    pub fn editing_message_id(&self) -> Option<(MessageId, usize)> {
         self.editing_message
             .as_ref()
             .map(|(id, state)| (*id, state.last_estimated_token_count.unwrap_or(0)))
@@ -1329,8 +1327,6 @@ impl ActiveThread {
             self.context_store.downgrade(),
             self.thread_store.downgrade(),
             self.text_thread_store.downgrade(),
-            EDIT_PREVIOUS_MESSAGE_MIN_LINES,
-            EDIT_PREVIOUS_MESSAGE_MAX_LINES,
             window,
             cx,
         );
@@ -1622,14 +1618,6 @@ impl ActiveThread {
                     })
                     .log_err();
             }));
-
-        if let Some(workspace) = self.workspace.upgrade() {
-            workspace.update(cx, |workspace, cx| {
-                if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
-                    panel.focus_handle(cx).focus(window);
-                }
-            });
-        }
     }
 
     fn messages_after(&self, message_id: MessageId) -> &[MessageId] {
@@ -1693,10 +1681,7 @@ impl ActiveThread {
 
         let editor = cx.new(|cx| {
             let mut editor = Editor::new(
-                editor::EditorMode::AutoHeight {
-                    min_lines: 1,
-                    max_lines: 4,
-                },
+                editor::EditorMode::AutoHeight { max_lines: 4 },
                 buffer,
                 None,
                 window,
@@ -3100,7 +3085,6 @@ impl ActiveThread {
                                 .pr_1()
                                 .gap_1()
                                 .justify_between()
-                                .flex_wrap()
                                 .bg(cx.theme().colors().editor_background)
                                 .border_t_1()
                                 .border_color(self.tool_card_border_color(cx))

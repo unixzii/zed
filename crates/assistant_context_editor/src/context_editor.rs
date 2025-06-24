@@ -39,7 +39,7 @@ use language::{
     language_settings::{SoftWrap, all_language_settings},
 };
 use language_model::{
-    ConfigurationError, LanguageModelImage, LanguageModelProviderTosView, LanguageModelRegistry,
+    LanguageModelImage, LanguageModelProvider, LanguageModelProviderTosView, LanguageModelRegistry,
     Role,
 };
 use multi_buffer::MultiBufferRow;
@@ -1887,8 +1887,6 @@ impl ContextEditor {
         // value to not show the nudge.
         let nudge = Some(false);
 
-        let model_registry = LanguageModelRegistry::read_global(cx);
-
         if nudge.map_or(false, |value| value) {
             Some(
                 h_flex()
@@ -1937,9 +1935,14 @@ impl ContextEditor {
                     )
                     .into_any_element(),
             )
-        } else if let Some(configuration_error) =
-            model_registry.configuration_error(model_registry.default_model(), cx)
-        {
+        } else if let Some(configuration_error) = configuration_error(cx) {
+            let label = match configuration_error {
+                ConfigurationError::NoProvider => "No LLM provider selected.",
+                ConfigurationError::ProviderNotAuthenticated => "LLM provider is not configured.",
+                ConfigurationError::ProviderPendingTermsAcceptance(_) => {
+                    "LLM provider requires accepting the Terms of Service."
+                }
+            };
             Some(
                 h_flex()
                     .px_3()
@@ -1956,7 +1959,7 @@ impl ContextEditor {
                                     .size(IconSize::Small)
                                     .color(Color::Warning),
                             )
-                            .child(Label::new(configuration_error.to_string())),
+                            .child(Label::new(label)),
                     )
                     .child(
                         Button::new("open-configuration", "Configure Providers")
@@ -2031,19 +2034,14 @@ impl ContextEditor {
     /// Will return false if the selected provided has a configuration error or
     /// if the user has not accepted the terms of service for this provider.
     fn sending_disabled(&self, cx: &mut Context<'_, ContextEditor>) -> bool {
-        let model_registry = LanguageModelRegistry::read_global(cx);
-        let Some(configuration_error) =
-            model_registry.configuration_error(model_registry.default_model(), cx)
-        else {
-            return false;
-        };
+        let model = LanguageModelRegistry::read_global(cx).default_model();
 
-        match configuration_error {
-            ConfigurationError::NoProvider
-            | ConfigurationError::ModelNotFound
-            | ConfigurationError::ProviderNotAuthenticated(_) => true,
-            ConfigurationError::ProviderPendingTermsAcceptance(_) => self.show_accept_terms,
-        }
+        let has_configuration_error = configuration_error(cx).is_some();
+        let needs_to_accept_terms = self.show_accept_terms
+            && model
+                .as_ref()
+                .map_or(false, |model| model.provider.must_accept_terms(cx));
+        has_configuration_error || needs_to_accept_terms
     }
 
     fn render_inject_context_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -3121,12 +3119,12 @@ fn invoked_slash_command_fold_placeholder(
 
 enum TokenState {
     NoTokensLeft {
-        max_token_count: u64,
-        token_count: u64,
+        max_token_count: usize,
+        token_count: usize,
     },
     HasMoreTokens {
-        max_token_count: u64,
-        token_count: u64,
+        max_token_count: usize,
+        token_count: usize,
         over_warn_threshold: bool,
     },
 }
@@ -3139,7 +3137,9 @@ fn token_state(context: &Entity<AssistantContext>, cx: &App) -> Option<TokenStat
         .model;
     let token_count = context.read(cx).token_count()?;
     let max_token_count = model.max_token_count();
-    let token_state = if max_token_count.saturating_sub(token_count) == 0 {
+
+    let remaining_tokens = max_token_count as isize - token_count as isize;
+    let token_state = if remaining_tokens <= 0 {
         TokenState::NoTokensLeft {
             max_token_count,
             token_count,
@@ -3180,7 +3180,34 @@ fn size_for_image(data: &RenderImage, max_size: Size<Pixels>) -> Size<Pixels> {
     }
 }
 
-pub fn humanize_token_count(count: u64) -> String {
+pub enum ConfigurationError {
+    NoProvider,
+    ProviderNotAuthenticated,
+    ProviderPendingTermsAcceptance(Arc<dyn LanguageModelProvider>),
+}
+
+fn configuration_error(cx: &App) -> Option<ConfigurationError> {
+    let model = LanguageModelRegistry::read_global(cx).default_model();
+    let is_authenticated = model
+        .as_ref()
+        .map_or(false, |model| model.provider.is_authenticated(cx));
+
+    if model.is_some() && is_authenticated {
+        return None;
+    }
+
+    if model.is_none() {
+        return Some(ConfigurationError::NoProvider);
+    }
+
+    if !is_authenticated {
+        return Some(ConfigurationError::ProviderNotAuthenticated);
+    }
+
+    None
+}
+
+pub fn humanize_token_count(count: usize) -> String {
     match count {
         0..=999 => count.to_string(),
         1000..=9999 => {

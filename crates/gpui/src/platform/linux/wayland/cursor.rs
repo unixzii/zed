@@ -1,6 +1,6 @@
 use crate::Globals;
 use crate::platform::linux::{DEFAULT_CURSOR_ICON_NAME, log_cursor_icon_warning};
-use anyhow::{Context as _, anyhow};
+use anyhow::anyhow;
 use util::ResultExt;
 
 use wayland_client::Connection;
@@ -9,85 +9,75 @@ use wayland_client::protocol::{wl_pointer::WlPointer, wl_shm::WlShm};
 use wayland_cursor::{CursorImageBuffer, CursorTheme};
 
 pub(crate) struct Cursor {
-    loaded_theme: Option<LoadedTheme>,
-    size: u32,
-    scaled_size: u32,
+    theme: Option<CursorTheme>,
+    theme_name: Option<String>,
+    theme_size: u32,
     surface: WlSurface,
+    size: u32,
     shm: WlShm,
     connection: Connection,
 }
 
-pub(crate) struct LoadedTheme {
-    theme: CursorTheme,
-    name: Option<String>,
-    scaled_size: u32,
-}
-
 impl Drop for Cursor {
     fn drop(&mut self) {
-        self.loaded_theme.take();
+        self.theme.take();
         self.surface.destroy();
     }
 }
 
 impl Cursor {
     pub fn new(connection: &Connection, globals: &Globals, size: u32) -> Self {
-        let mut this = Self {
-            loaded_theme: None,
-            size,
-            scaled_size: size,
+        Self {
+            theme: CursorTheme::load(&connection, globals.shm.clone(), size).log_err(),
+            theme_name: None,
+            theme_size: size,
             surface: globals.compositor.create_surface(&globals.qh, ()),
             shm: globals.shm.clone(),
             connection: connection.clone(),
-        };
-        this.set_theme_internal(None);
-        this
+            size,
+        }
     }
 
-    fn set_theme_internal(&mut self, theme_name: Option<String>) {
-        if let Some(loaded_theme) = self.loaded_theme.as_ref() {
-            if loaded_theme.name == theme_name && loaded_theme.scaled_size == self.scaled_size {
-                return;
-            }
-        }
-        let result = if let Some(theme_name) = theme_name.as_ref() {
-            CursorTheme::load_from_name(
-                &self.connection,
-                self.shm.clone(),
-                theme_name,
-                self.scaled_size,
-            )
-        } else {
-            CursorTheme::load(&self.connection, self.shm.clone(), self.scaled_size)
-        };
-        if let Some(theme) = result
-            .context("Wayland: Failed to load cursor theme")
-            .log_err()
+    pub fn set_theme(&mut self, theme_name: &str) {
+        if let Some(theme) = CursorTheme::load_from_name(
+            &self.connection,
+            self.shm.clone(),
+            theme_name,
+            self.theme_size,
+        )
+        .log_err()
         {
-            self.loaded_theme = Some(LoadedTheme {
-                theme,
-                name: theme_name.map(|name| name.to_string()),
-                scaled_size: self.scaled_size,
-            });
+            self.theme = Some(theme);
+            self.theme_name = Some(theme_name.to_string());
+        } else if let Some(theme) =
+            CursorTheme::load(&self.connection, self.shm.clone(), self.theme_size).log_err()
+        {
+            self.theme = Some(theme);
+            self.theme_name = None;
         }
     }
 
-    pub fn set_theme(&mut self, theme_name: String) {
-        self.set_theme_internal(Some(theme_name));
-    }
-
-    fn set_scaled_size(&mut self, scaled_size: u32) {
-        self.scaled_size = scaled_size;
-        let theme_name = self
-            .loaded_theme
+    fn set_theme_size(&mut self, theme_size: u32) {
+        self.theme = self
+            .theme_name
             .as_ref()
-            .and_then(|loaded_theme| loaded_theme.name.clone());
-        self.set_theme_internal(theme_name);
+            .and_then(|name| {
+                CursorTheme::load_from_name(
+                    &self.connection,
+                    self.shm.clone(),
+                    name.as_str(),
+                    theme_size,
+                )
+                .log_err()
+            })
+            .or_else(|| {
+                CursorTheme::load(&self.connection, self.shm.clone(), theme_size).log_err()
+            });
     }
 
     pub fn set_size(&mut self, size: u32) {
         self.size = size;
-        self.set_scaled_size(size);
+        self.set_theme_size(size);
     }
 
     pub fn set_icon(
@@ -97,13 +87,12 @@ impl Cursor {
         mut cursor_icon_names: &[&str],
         scale: i32,
     ) {
-        self.set_scaled_size(self.size * scale as u32);
+        self.set_theme_size(self.size * scale as u32);
 
-        let Some(loaded_theme) = &mut self.loaded_theme else {
+        let Some(theme) = &mut self.theme else {
             log::warn!("Wayland: Unable to load cursor themes");
             return;
         };
-        let mut theme = &mut loaded_theme.theme;
 
         let mut buffer: &CursorImageBuffer;
         'outer: {
@@ -126,7 +115,7 @@ impl Cursor {
                 log_cursor_icon_warning(anyhow!(
                     "wayland: Unable to fallback on default cursor icon '{}' for theme '{}'",
                     DEFAULT_CURSOR_ICON_NAME,
-                    loaded_theme.name.as_deref().unwrap_or("default")
+                    self.theme_name.as_deref().unwrap_or("default")
                 ));
                 return;
             }
