@@ -1,19 +1,18 @@
 use std::sync::Arc;
 
+use anyhow::Context as _;
 use context_server::ContextServerId;
-use extension::ExtensionManifest;
-use fs::Fs;
-use gpui::WeakEntity;
+use extension::{ContextServerConfiguration, ExtensionManifest};
+use gpui::Task;
 use language::LanguageRegistry;
-use project::project_settings::ProjectSettings;
-use settings::update_settings_file;
+use project::context_server_store::registry::ContextServerDescriptorRegistry;
 use ui::prelude::*;
 use util::ResultExt;
 use workspace::Workspace;
 
 use crate::agent_configuration::ConfigureContextServerModal;
 
-pub(crate) fn init(language_registry: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, cx: &mut App) {
+pub(crate) fn init(language_registry: Arc<LanguageRegistry>, cx: &mut App) {
     cx.observe_new(move |_: &mut Workspace, window, cx| {
         let Some(window) = window else {
             return;
@@ -22,21 +21,13 @@ pub(crate) fn init(language_registry: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, cx
         if let Some(extension_events) = extension::ExtensionEvents::try_global(cx).as_ref() {
             cx.subscribe_in(extension_events, window, {
                 let language_registry = language_registry.clone();
-                let fs = fs.clone();
-                move |_, _, event, window, cx| match event {
+                move |workspace, _, event, window, cx| match event {
                     extension::Event::ExtensionInstalled(manifest) => {
                         show_configure_mcp_modal(
                             language_registry.clone(),
                             manifest,
-                            cx.weak_entity(),
+                            workspace,
                             window,
-                            cx,
-                        );
-                    }
-                    extension::Event::ExtensionUninstalled(manifest) => {
-                        remove_context_server_settings(
-                            manifest.context_servers.keys().cloned().collect(),
-                            fs.clone(),
                             cx,
                         );
                     }
@@ -45,7 +36,7 @@ pub(crate) fn init(language_registry: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, cx
                             show_configure_mcp_modal(
                                 language_registry.clone(),
                                 manifest,
-                                cx.weak_entity(),
+                                workspace,
                                 window,
                                 cx,
                             );
@@ -64,22 +55,19 @@ pub(crate) fn init(language_registry: Arc<LanguageRegistry>, fs: Arc<dyn Fs>, cx
     .detach();
 }
 
-fn remove_context_server_settings(
-    context_server_ids: Vec<Arc<str>>,
-    fs: Arc<dyn Fs>,
-    cx: &mut App,
-) {
-    update_settings_file::<ProjectSettings>(fs, cx, move |settings, _| {
-        settings
-            .context_servers
-            .retain(|server_id, _| !context_server_ids.contains(server_id));
-    });
+pub enum Configuration {
+    NotAvailable(ContextServerId, Option<SharedString>),
+    Required(
+        ContextServerId,
+        Option<SharedString>,
+        ContextServerConfiguration,
+    ),
 }
 
 fn show_configure_mcp_modal(
     language_registry: Arc<LanguageRegistry>,
     manifest: &Arc<ExtensionManifest>,
-    workspace: WeakEntity<Workspace>,
+    workspace: &mut Workspace,
     window: &mut Window,
     cx: &mut Context<'_, Workspace>,
 ) {
@@ -87,30 +75,70 @@ fn show_configure_mcp_modal(
         return;
     }
 
-    let ids = manifest.context_servers.keys().cloned().collect::<Vec<_>>();
-    if ids.is_empty() {
-        return;
-    }
+    let context_server_store = workspace.project().read(cx).context_server_store();
+    let repository: Option<SharedString> = manifest.repository.as_ref().map(|s| s.clone().into());
 
-    window
-        .spawn(cx, async move |cx| {
-            for id in ids {
-                let Some(task) = cx
-                    .update(|window, cx| {
-                        ConfigureContextServerModal::show_modal_for_existing_server(
-                            ContextServerId(id.clone()),
-                            language_registry.clone(),
-                            workspace.clone(),
-                            window,
-                            cx,
-                        )
-                    })
-                    .ok()
-                else {
-                    continue;
+    let registry = ContextServerDescriptorRegistry::default_global(cx).read(cx);
+    let worktree_store = workspace.project().read(cx).worktree_store();
+    let configuration_tasks = manifest
+        .context_servers
+        .keys()
+        .cloned()
+        .map({
+            |key| {
+                let Some(descriptor) = registry.context_server_descriptor(&key) else {
+                    return Task::ready(Configuration::NotAvailable(
+                        ContextServerId(key),
+                        repository.clone(),
+                    ));
                 };
-                task.await.log_err();
+                cx.spawn({
+                    let repository_url = repository.clone();
+                    let worktree_store = worktree_store.clone();
+                    async move |_, cx| {
+                        let configuration = descriptor
+                            .configuration(worktree_store.clone(), &cx)
+                            .await
+                            .context("Failed to resolve context server configuration")
+                            .log_err()
+                            .flatten();
+
+                        match configuration {
+                            Some(config) => Configuration::Required(
+                                ContextServerId(key),
+                                repository_url,
+                                config,
+                            ),
+                            None => {
+                                Configuration::NotAvailable(ContextServerId(key), repository_url)
+                            }
+                        }
+                    }
+                })
             }
         })
-        .detach();
+        .collect::<Vec<_>>();
+
+    let jsonc_language = language_registry.language_for_name("jsonc");
+
+    cx.spawn_in(window, async move |this, cx| {
+        let configurations = futures::future::join_all(configuration_tasks).await;
+        let jsonc_language = jsonc_language.await.ok();
+
+        this.update_in(cx, |this, window, cx| {
+            let workspace = cx.entity().downgrade();
+            this.toggle_modal(window, cx, |window, cx| {
+                ConfigureContextServerModal::new(
+                    configurations.into_iter(),
+                    context_server_store,
+                    jsonc_language,
+                    language_registry,
+                    workspace,
+                    window,
+                    cx,
+                )
+            });
+        })
+    })
+    .detach();
 }

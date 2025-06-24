@@ -295,7 +295,6 @@ impl PickerDelegate for ChannelModalDelegate {
                         &self.match_candidates,
                         &query,
                         true,
-                        true,
                         usize::MAX,
                         &Default::default(),
                         cx.background_executor().clone(),

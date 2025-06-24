@@ -1,7 +1,7 @@
 use super::*;
 use collections::{HashMap, HashSet};
 use editor::{
-    DisplayPoint, EditorSettings,
+    DisplayPoint, EditorSettings, InlayId,
     actions::{GoToDiagnostic, GoToPreviousDiagnostic, Hover, MoveToBeginning},
     display_map::{DisplayRow, Inlay},
     test::{
@@ -870,11 +870,11 @@ async fn test_random_diagnostics_with_inlays(cx: &mut TestAppContext, mut rng: S
 
                         editor.splice_inlays(
                             &[],
-                            vec![Inlay::inline_completion(
-                                post_inc(&mut next_inlay_id),
-                                snapshot.buffer_snapshot.anchor_before(position),
-                                format!("Test inlay {next_inlay_id}"),
-                            )],
+                            vec![Inlay {
+                                id: InlayId::InlineCompletion(post_inc(&mut next_inlay_id)),
+                                position: snapshot.buffer_snapshot.anchor_before(position),
+                                text: Rope::from(format!("Test inlay {next_inlay_id}")),
+                            }],
                             cx,
                         );
                     }

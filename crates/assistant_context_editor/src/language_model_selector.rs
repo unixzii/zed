@@ -310,7 +310,6 @@ impl ModelMatcher {
             &self.candidates,
             &query,
             false,
-            true,
             100,
             &Default::default(),
             self.bg_executor.clone(),
@@ -665,7 +664,7 @@ mod tests {
             format!("{}/{}", self.provider_id.0, self.name.0)
         }
 
-        fn max_token_count(&self) -> u64 {
+        fn max_token_count(&self) -> usize {
             1000
         }
 
@@ -673,7 +672,7 @@ mod tests {
             &self,
             _: LanguageModelRequest,
             _: &App,
-        ) -> BoxFuture<'static, http_client::Result<u64>> {
+        ) -> BoxFuture<'static, http_client::Result<usize>> {
             unimplemented!()
         }
 

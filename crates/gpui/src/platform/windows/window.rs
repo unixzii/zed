@@ -43,7 +43,6 @@ pub struct WindowsWindowState {
     pub callbacks: Callbacks,
     pub input_handler: Option<PlatformInputHandler>,
     pub last_reported_modifiers: Option<Modifiers>,
-    pub last_reported_capslock: Option<Capslock>,
     pub system_key_handled: bool,
     pub hovered: bool,
 
@@ -103,7 +102,6 @@ impl WindowsWindowState {
         let callbacks = Callbacks::default();
         let input_handler = None;
         let last_reported_modifiers = None;
-        let last_reported_capslock = None;
         let system_key_handled = false;
         let hovered = false;
         let click_state = ClickState::new();
@@ -123,7 +121,6 @@ impl WindowsWindowState {
             callbacks,
             input_handler,
             last_reported_modifiers,
-            last_reported_capslock,
             system_key_handled,
             hovered,
             renderer,
@@ -560,10 +557,6 @@ impl PlatformWindow for WindowsWindow {
 
     fn modifiers(&self) -> Modifiers {
         current_modifiers()
-    }
-
-    fn capslock(&self) -> Capslock {
-        current_capslock()
     }
 
     fn set_input_handler(&mut self, input_handler: PlatformInputHandler) {

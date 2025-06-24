@@ -88,9 +88,9 @@ pub enum BedrockAuthMethod {
 pub struct AvailableModel {
     pub name: String,
     pub display_name: Option<String>,
-    pub max_tokens: u64,
+    pub max_tokens: usize,
     pub cache_configuration: Option<LanguageModelCacheConfiguration>,
-    pub max_output_tokens: Option<u64>,
+    pub max_output_tokens: Option<u32>,
     pub default_temperature: Option<f32>,
     pub mode: Option<ModelMode>,
 }
@@ -229,17 +229,6 @@ impl State {
             Ok(())
         })
     }
-
-    fn get_region(&self) -> String {
-        // Get region - from credentials or directly from settings
-        let credentials_region = self.credentials.as_ref().map(|s| s.region.clone());
-        let settings_region = self.settings.as_ref().and_then(|s| s.region.clone());
-
-        // Use credentials region if available, otherwise use settings region, finally fall back to default
-        credentials_region
-            .or(settings_region)
-            .unwrap_or(String::from("us-east-1"))
-    }
 }
 
 pub struct BedrockLanguageModelProvider {
@@ -300,9 +289,8 @@ impl LanguageModelProvider for BedrockLanguageModelProvider {
         Some(self.create_language_model(bedrock::Model::default()))
     }
 
-    fn default_fast_model(&self, cx: &App) -> Option<Arc<dyn LanguageModel>> {
-        let region = self.state.read(cx).get_region();
-        Some(self.create_language_model(bedrock::Model::default_fast(region.as_str())))
+    fn default_fast_model(&self, _cx: &App) -> Option<Arc<dyn LanguageModel>> {
+        Some(self.create_language_model(bedrock::Model::default_fast()))
     }
 
     fn provided_models(&self, cx: &App) -> Vec<Arc<dyn LanguageModel>> {
@@ -389,7 +377,11 @@ impl BedrockModel {
 
                         let endpoint = state.settings.as_ref().and_then(|s| s.endpoint.clone());
 
-                        let region = state.get_region();
+                        let region = state
+                            .settings
+                            .as_ref()
+                            .and_then(|s| s.region.clone())
+                            .unwrap_or(String::from("us-east-1"));
 
                         (
                             auth_method,
@@ -511,11 +503,11 @@ impl LanguageModel for BedrockModel {
         format!("bedrock/{}", self.model.id())
     }
 
-    fn max_token_count(&self) -> u64 {
+    fn max_token_count(&self) -> usize {
         self.model.max_token_count()
     }
 
-    fn max_output_tokens(&self) -> Option<u64> {
+    fn max_output_tokens(&self) -> Option<u32> {
         Some(self.model.max_output_tokens())
     }
 
@@ -523,7 +515,7 @@ impl LanguageModel for BedrockModel {
         &self,
         request: LanguageModelRequest,
         cx: &App,
-    ) -> BoxFuture<'static, Result<u64>> {
+    ) -> BoxFuture<'static, Result<usize>> {
         get_bedrock_tokens(request, cx)
     }
 
@@ -538,7 +530,16 @@ impl LanguageModel for BedrockModel {
             LanguageModelCompletionError,
         >,
     > {
-        let Ok(region) = cx.read_entity(&self.state, |state, _cx| state.get_region()) else {
+        let Ok(region) = cx.read_entity(&self.state, |state, _cx| {
+            // Get region - from credentials or directly from settings
+            let credentials_region = state.credentials.as_ref().map(|s| s.region.clone());
+            let settings_region = state.settings.as_ref().and_then(|s| s.region.clone());
+
+            // Use credentials region if available, otherwise use settings region, finally fall back to default
+            credentials_region
+                .or(settings_region)
+                .unwrap_or(String::from("us-east-1"))
+        }) else {
             return async move { Err(anyhow::anyhow!("App State Dropped").into()) }.boxed();
         };
 
@@ -582,7 +583,7 @@ pub fn into_bedrock(
     request: LanguageModelRequest,
     model: String,
     default_temperature: f32,
-    max_output_tokens: u64,
+    max_output_tokens: u32,
     mode: BedrockModelMode,
 ) -> Result<bedrock::Request> {
     let mut new_messages: Vec<BedrockMessage> = Vec::new();
@@ -746,7 +747,7 @@ pub fn into_bedrock(
 pub fn get_bedrock_tokens(
     request: LanguageModelRequest,
     cx: &App,
-) -> BoxFuture<'static, Result<u64>> {
+) -> BoxFuture<'static, Result<usize>> {
     cx.background_executor()
         .spawn(async move {
             let messages = request.messages;
@@ -798,7 +799,7 @@ pub fn get_bedrock_tokens(
             // Tiktoken doesn't yet support these models, so we manually use the
             // same tokenizer as GPT-4.
             tiktoken_rs::num_tokens_from_messages("gpt-4", &string_messages)
-                .map(|tokens| (tokens + tokens_from_images) as u64)
+                .map(|tokens| tokens + tokens_from_images)
         })
         .boxed()
 }
@@ -946,9 +947,9 @@ pub fn map_to_language_model_completion_events(
                                             let completion_event =
                                                 LanguageModelCompletionEvent::UsageUpdate(
                                                     TokenUsage {
-                                                        input_tokens: metadata.input_tokens as u64,
+                                                        input_tokens: metadata.input_tokens as u32,
                                                         output_tokens: metadata.output_tokens
-                                                            as u64,
+                                                            as u32,
                                                         cache_creation_input_tokens: default(),
                                                         cache_read_input_tokens: default(),
                                                     },

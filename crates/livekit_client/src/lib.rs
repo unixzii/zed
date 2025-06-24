@@ -6,32 +6,32 @@ pub use remote_video_track_view::{RemoteVideoTrackView, RemoteVideoTrackViewEven
 #[cfg(not(any(
     test,
     feature = "test-support",
-    any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")
+    all(target_os = "windows", target_env = "gnu")
 )))]
 mod livekit_client;
 #[cfg(not(any(
     test,
     feature = "test-support",
-    any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")
+    all(target_os = "windows", target_env = "gnu")
 )))]
 pub use livekit_client::*;
 
 #[cfg(any(
     test,
     feature = "test-support",
-    any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")
+    all(target_os = "windows", target_env = "gnu")
 ))]
 mod mock_client;
 #[cfg(any(
     test,
     feature = "test-support",
-    any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")
+    all(target_os = "windows", target_env = "gnu")
 ))]
 pub mod test;
 #[cfg(any(
     test,
     feature = "test-support",
-    any(all(target_os = "windows", target_env = "gnu"), target_os = "freebsd")
+    all(target_os = "windows", target_env = "gnu")
 ))]
 pub use mock_client::*;
 

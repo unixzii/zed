@@ -276,17 +276,17 @@ pub struct PromptFeedback {
 #[serde(rename_all = "camelCase")]
 pub struct UsageMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub prompt_token_count: Option<u64>,
+    pub prompt_token_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cached_content_token_count: Option<u64>,
+    pub cached_content_token_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub candidates_token_count: Option<u64>,
+    pub candidates_token_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_use_prompt_token_count: Option<u64>,
+    pub tool_use_prompt_token_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub thoughts_token_count: Option<u64>,
+    pub thoughts_token_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_token_count: Option<u64>,
+    pub total_token_count: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -395,7 +395,7 @@ pub struct CountTokensRequest {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CountTokensResponse {
-    pub total_tokens: u64,
+    pub total_tokens: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -531,7 +531,7 @@ pub enum Model {
         name: String,
         /// The name displayed in the UI, such as in the assistant panel model dropdown menu.
         display_name: Option<String>,
-        max_tokens: u64,
+        max_tokens: usize,
         #[serde(default)]
         mode: GoogleModelMode,
     },
@@ -585,7 +585,7 @@ impl Model {
         }
     }
 
-    pub fn max_token_count(&self) -> u64 {
+    pub fn max_token_count(&self) -> usize {
         match self {
             Self::Gemini15Pro => 2_097_152,
             Self::Gemini15Flash8b => 1_048_576,
@@ -599,7 +599,7 @@ impl Model {
         }
     }
 
-    pub fn max_output_tokens(&self) -> Option<u64> {
+    pub fn max_output_tokens(&self) -> Option<u32> {
         match self {
             Model::Gemini15Pro => Some(8_192),
             Model::Gemini15Flash8b => Some(8_192),

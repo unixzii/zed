@@ -1,17 +1,18 @@
-use client::{ModelRequestUsage, RequestUsage, zed_urls};
+use client::zed_urls;
 use component::{empty_example, example_group_with_title, single_example};
 use gpui::{AnyElement, App, IntoElement, RenderOnce, Window};
-use ui::{Callout, prelude::*};
+use language_model::RequestUsage;
+use ui::{Callout, Color, Icon, IconName, IconSize, prelude::*};
 use zed_llm_client::{Plan, UsageLimit};
 
 #[derive(IntoElement, RegisterComponent)]
 pub struct UsageCallout {
     plan: Plan,
-    usage: ModelRequestUsage,
+    usage: RequestUsage,
 }
 
 impl UsageCallout {
-    pub fn new(plan: Plan, usage: ModelRequestUsage) -> Self {
+    pub fn new(plan: Plan, usage: RequestUsage) -> Self {
         Self { plan, usage }
     }
 }
@@ -90,23 +91,16 @@ impl RenderOnce for UsageCallout {
                 .size(IconSize::XSmall)
         };
 
-        div()
-            .border_t_1()
-            .border_color(cx.theme().colors().border)
-            .child(
-                Callout::new()
-                    .icon(icon)
-                    .title(title)
-                    .description(message)
-                    .primary_action(
-                        Button::new("upgrade", button_text)
-                            .label_size(LabelSize::Small)
-                            .on_click(move |_, _, cx| {
-                                cx.open_url(&url);
-                            }),
-                    ),
-            )
-            .into_any_element()
+        Callout::multi_line(
+            title,
+            message,
+            icon,
+            button_text,
+            Box::new(move |_, _, cx| {
+                cx.open_url(&url);
+            }),
+        )
+        .into_any_element()
     }
 }
 
@@ -127,10 +121,10 @@ impl Component for UsageCallout {
                     "Approaching limit (90%)",
                     UsageCallout::new(
                         Plan::ZedFree,
-                        ModelRequestUsage(RequestUsage {
+                        RequestUsage {
                             limit: UsageLimit::Limited(50),
                             amount: 45, // 90% of limit
-                        }),
+                        },
                     )
                     .into_any_element(),
                 ),
@@ -138,10 +132,10 @@ impl Component for UsageCallout {
                     "Limit reached (100%)",
                     UsageCallout::new(
                         Plan::ZedFree,
-                        ModelRequestUsage(RequestUsage {
+                        RequestUsage {
                             limit: UsageLimit::Limited(50),
                             amount: 50, // 100% of limit
-                        }),
+                        },
                     )
                     .into_any_element(),
                 ),
@@ -155,10 +149,10 @@ impl Component for UsageCallout {
                     "Approaching limit (90%)",
                     UsageCallout::new(
                         Plan::ZedProTrial,
-                        ModelRequestUsage(RequestUsage {
+                        RequestUsage {
                             limit: UsageLimit::Limited(150),
                             amount: 135, // 90% of limit
-                        }),
+                        },
                     )
                     .into_any_element(),
                 ),
@@ -166,10 +160,10 @@ impl Component for UsageCallout {
                     "Limit reached (100%)",
                     UsageCallout::new(
                         Plan::ZedProTrial,
-                        ModelRequestUsage(RequestUsage {
+                        RequestUsage {
                             limit: UsageLimit::Limited(150),
                             amount: 150, // 100% of limit
-                        }),
+                        },
                     )
                     .into_any_element(),
                 ),
@@ -183,10 +177,10 @@ impl Component for UsageCallout {
                     "Limit reached (100%)",
                     UsageCallout::new(
                         Plan::ZedPro,
-                        ModelRequestUsage(RequestUsage {
+                        RequestUsage {
                             limit: UsageLimit::Limited(500),
                             amount: 500, // 100% of limit
-                        }),
+                        },
                     )
                     .into_any_element(),
                 ),
@@ -195,8 +189,10 @@ impl Component for UsageCallout {
         );
 
         Some(
-            v_flex()
+            div()
                 .p_4()
+                .flex()
+                .flex_col()
                 .gap_4()
                 .child(free_examples)
                 .child(trial_examples)

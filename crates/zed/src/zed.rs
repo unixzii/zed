@@ -944,23 +944,12 @@ fn about(
     let message = format!("{release_channel} {version} {debug}");
     let detail = AppCommitSha::try_global(cx).map(|sha| sha.full());
 
-    let prompt = window.prompt(
-        PromptLevel::Info,
-        &message,
-        detail.as_deref(),
-        &["Copy", "OK"],
-        cx,
-    );
-    cx.spawn(async move |_, cx| {
-        if let Ok(0) = prompt.await {
-            let content = format!("{}\n{}", message, detail.as_deref().unwrap_or(""));
-            cx.update(|cx| {
-                cx.write_to_clipboard(gpui::ClipboardItem::new_string(content));
-            })
-            .ok();
-        }
-    })
-    .detach();
+    let prompt = window.prompt(PromptLevel::Info, &message, detail.as_deref(), &["OK"], cx);
+    cx.foreground_executor()
+        .spawn(async {
+            prompt.await.ok();
+        })
+        .detach();
 }
 
 fn test_panic(_: &TestPanic, _: &mut App) {
@@ -1221,27 +1210,19 @@ pub fn handle_keymap_file_changes(
     cx: &mut App,
 ) {
     BaseKeymap::register(cx);
-    vim_mode_setting::init(cx);
+    VimModeSetting::register(cx);
 
     let (base_keymap_tx, mut base_keymap_rx) = mpsc::unbounded();
     let (keyboard_layout_tx, mut keyboard_layout_rx) = mpsc::unbounded();
     let mut old_base_keymap = *BaseKeymap::get_global(cx);
     let mut old_vim_enabled = VimModeSetting::get_global(cx).0;
-    let mut old_helix_enabled = vim_mode_setting::HelixModeSetting::get_global(cx).0;
-
     cx.observe_global::<SettingsStore>(move |cx| {
         let new_base_keymap = *BaseKeymap::get_global(cx);
         let new_vim_enabled = VimModeSetting::get_global(cx).0;
-        let new_helix_enabled = vim_mode_setting::HelixModeSetting::get_global(cx).0;
 
-        if new_base_keymap != old_base_keymap
-            || new_vim_enabled != old_vim_enabled
-            || new_helix_enabled != old_helix_enabled
-        {
+        if new_base_keymap != old_base_keymap || new_vim_enabled != old_vim_enabled {
             old_base_keymap = new_base_keymap;
             old_vim_enabled = new_vim_enabled;
-            old_helix_enabled = new_helix_enabled;
-
             base_keymap_tx.unbounded_send(()).unwrap();
         }
     })
@@ -1429,7 +1410,7 @@ pub fn load_default_keymap(cx: &mut App) {
         cx.bind_keys(KeymapFile::load_asset(asset_path, cx).unwrap());
     }
 
-    if VimModeSetting::get_global(cx).0 || vim_mode_setting::HelixModeSetting::get_global(cx).0 {
+    if VimModeSetting::get_global(cx).0 {
         cx.bind_keys(KeymapFile::load_asset(VIM_KEYMAP_PATH, cx).unwrap());
     }
 }
@@ -1770,11 +1751,10 @@ mod tests {
         time::Duration,
     };
     use theme::{ThemeRegistry, ThemeSettings};
-    use util::path;
+    use util::{path, separator};
     use workspace::{
         NewFile, OpenOptions, OpenVisible, SERIALIZATION_THROTTLE_TIME, SaveIntent, SplitDirection,
         WorkspaceHandle,
-        item::SaveOptions,
         item::{Item, ItemHandle},
         open_new, open_paths, pane,
     };
@@ -2874,8 +2854,8 @@ mod tests {
             opened_paths,
             vec![
                 None,
-                Some(path!(".git/HEAD").to_string()),
-                Some(path!("excluded_dir/file").to_string()),
+                Some(separator!(".git/HEAD").to_string()),
+                Some(separator!("excluded_dir/file").to_string()),
             ],
             "Excluded files should get opened, excluded dir should not get opened"
         );
@@ -2901,7 +2881,7 @@ mod tests {
                 opened_buffer_paths.sort();
                 assert_eq!(
                     opened_buffer_paths,
-                    vec![path!(".git/HEAD").to_string(), path!("excluded_dir/file").to_string()],
+                    vec![separator!(".git/HEAD").to_string(), separator!("excluded_dir/file").to_string()],
                     "Despite not being present in the worktrees, buffers for excluded files are opened and added to the pane"
                 );
             });
@@ -3367,15 +3347,7 @@ mod tests {
                     editor.newline(&Default::default(), window, cx);
                     editor.move_down(&Default::default(), window, cx);
                     editor.move_down(&Default::default(), window, cx);
-                    editor.save(
-                        SaveOptions {
-                            format: true,
-                            autosave: false,
-                        },
-                        project.clone(),
-                        window,
-                        cx,
-                    )
+                    editor.save(true, project.clone(), window, cx)
                 })
             })
             .unwrap()
@@ -4303,12 +4275,7 @@ mod tests {
             project_panel::init(cx);
             outline_panel::init(cx);
             terminal_view::init(cx);
-            copilot::copilot_chat::init(
-                app_state.fs.clone(),
-                app_state.client.http_client(),
-                copilot::copilot_chat::CopilotChatConfiguration::default(),
-                cx,
-            );
+            copilot::copilot_chat::init(app_state.fs.clone(), app_state.client.http_client(), cx);
             image_viewer::init(cx);
             language_model::init(app_state.client.clone(), cx);
             language_models::init(

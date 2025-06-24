@@ -318,7 +318,6 @@ impl TabSwitcherDelegate {
                 &candidates,
                 &query,
                 true,
-                true,
                 10000,
                 &Default::default(),
                 cx.background_executor().clone(),

@@ -32,9 +32,7 @@ use futures::Future;
 use gpui::{App, AsyncApp, Entity, SharedString, Task};
 pub use highlight_map::HighlightMap;
 use http_client::HttpClient;
-pub use language_registry::{
-    LanguageName, LanguageServerStatusUpdate, LoadedLanguage, ServerHealth,
-};
+pub use language_registry::{LanguageName, LoadedLanguage};
 use lsp::{CodeActionKind, InitializeParams, LanguageServerBinary, LanguageServerBinaryOptions};
 pub use manifest::{ManifestDelegate, ManifestName, ManifestProvider, ManifestQuery};
 use parking_lot::Mutex;
@@ -1982,27 +1980,25 @@ impl CodeLabel {
         } else {
             label.clone()
         };
-        let filter_range = item
-            .filter_text
-            .as_deref()
-            .and_then(|filter| text.find(filter).map(|ix| ix..ix + filter.len()))
-            .unwrap_or(0..label_length);
         Self {
             text,
             runs,
-            filter_range,
+            filter_range: 0..label_length,
         }
     }
 
     pub fn plain(text: String, filter_text: Option<&str>) -> Self {
-        let filter_range = filter_text
-            .and_then(|filter| text.find(filter).map(|ix| ix..ix + filter.len()))
-            .unwrap_or(0..text.len());
-        Self {
+        let mut result = Self {
             runs: Vec::new(),
-            filter_range,
+            filter_range: 0..text.len(),
             text,
+        };
+        if let Some(filter_text) = filter_text {
+            if let Some(ix) = result.text.find(filter_text) {
+                result.filter_range = ix..ix + filter_text.len();
+            }
         }
+        result
     }
 
     pub fn push_str(&mut self, text: &str, highlight: Option<HighlightId>) {

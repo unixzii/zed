@@ -678,7 +678,7 @@ pub struct AssistantContext {
     summary_task: Task<Option<()>>,
     completion_count: usize,
     pending_completions: Vec<PendingCompletion>,
-    token_count: Option<u64>,
+    token_count: Option<usize>,
     pending_token_count: Task<Option<()>>,
     pending_save: Task<Result<()>>,
     pending_cache_warming_task: Task<Option<()>>,
@@ -1250,7 +1250,7 @@ impl AssistantContext {
         }
     }
 
-    pub fn token_count(&self) -> Option<u64> {
+    pub fn token_count(&self) -> Option<usize> {
         self.token_count
     }
 

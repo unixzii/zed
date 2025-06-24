@@ -31,7 +31,7 @@ use crate::llm::{AGENT_EXTENDED_TRIAL_FEATURE_FLAG, DEFAULT_MAX_MONTHLY_SPEND};
 use crate::rpc::{ResultExt as _, Server};
 use crate::stripe_client::{
     StripeCancellationDetailsReason, StripeClient, StripeCustomerId, StripeSubscription,
-    StripeSubscriptionId, UpdateCustomerParams,
+    StripeSubscriptionId,
 };
 use crate::{AppState, Error, Result};
 use crate::{db::UserId, llm::db::LlmDatabase};
@@ -353,17 +353,7 @@ async fn create_billing_subscription(
     }
 
     let customer_id = if let Some(existing_customer) = &existing_billing_customer {
-        let customer_id = StripeCustomerId(existing_customer.stripe_customer_id.clone().into());
-        if let Some(email) = user.email_address.as_deref() {
-            stripe_billing
-                .client()
-                .update_customer(&customer_id, UpdateCustomerParams { email: Some(email) })
-                .await
-                // Update of email address is best-effort - continue checkout even if it fails
-                .context("error updating stripe customer email address")
-                .log_err();
-        }
-        customer_id
+        StripeCustomerId(existing_customer.stripe_customer_id.clone().into())
     } else {
         stripe_billing
             .find_or_create_customer_by_email(user.email_address.as_deref())
