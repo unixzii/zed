@@ -20,7 +20,7 @@ use gpui::{
     DragMoveEvent, Entity, EntityId, EventEmitter, ExternalPaths, FocusHandle, FocusOutEvent,
     Focusable, KeyContext, MouseButton, MouseDownEvent, NavigationDirection, Pixels, Point,
     PromptLevel, Render, ScrollHandle, Subscription, Task, WeakEntity, WeakFocusHandle, Window,
-    actions, anchored, deferred, prelude::*,
+    actions, anchored, deferred, impl_actions, prelude::*,
 };
 use itertools::Itertools;
 use language::DiagnosticSeverity;
@@ -95,12 +95,10 @@ pub enum SaveIntent {
     Skip,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 pub struct ActivateItem(pub usize);
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct CloseActiveItem {
     pub save_intent: Option<SaveIntent>,
@@ -108,8 +106,7 @@ pub struct CloseActiveItem {
     pub close_pinned: bool,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct CloseInactiveItems {
     pub save_intent: Option<SaveIntent>,
@@ -117,8 +114,7 @@ pub struct CloseInactiveItems {
     pub close_pinned: bool,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct CloseAllItems {
     pub save_intent: Option<SaveIntent>,
@@ -126,40 +122,35 @@ pub struct CloseAllItems {
     pub close_pinned: bool,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct CloseCleanItems {
     #[serde(default)]
     pub close_pinned: bool,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct CloseItemsToTheRight {
     #[serde(default)]
     pub close_pinned: bool,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct CloseItemsToTheLeft {
     #[serde(default)]
     pub close_pinned: bool,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct RevealInProjectPanel {
     #[serde(skip)]
     pub entry_id: Option<u64>,
 }
 
-#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default, Action)]
-#[action(namespace = pane)]
+#[derive(Clone, PartialEq, Debug, Deserialize, JsonSchema, Default)]
 #[serde(deny_unknown_fields)]
 pub struct DeploySearch {
     #[serde(default)]
@@ -169,6 +160,21 @@ pub struct DeploySearch {
     #[serde(default)]
     pub excluded_files: Option<String>,
 }
+
+impl_actions!(
+    pane,
+    [
+        CloseAllItems,
+        CloseActiveItem,
+        CloseCleanItems,
+        CloseItemsToTheLeft,
+        CloseItemsToTheRight,
+        CloseInactiveItems,
+        ActivateItem,
+        RevealInProjectPanel,
+        DeploySearch,
+    ]
+);
 
 actions!(
     pane,

@@ -50,7 +50,6 @@ impl JsDebugAdapter {
         delegate: &Arc<dyn DapDelegate>,
         task_definition: &DebugTaskDefinition,
         user_installed_path: Option<PathBuf>,
-        user_args: Option<Vec<String>>,
         _: &mut AsyncApp,
     ) -> Result<DebugAdapterBinary> {
         let adapter_path = if let Some(user_installed_path) = user_installed_path {
@@ -110,26 +109,6 @@ impl JsDebugAdapter {
                 .or_insert(true.into());
         }
 
-        let arguments = if let Some(mut args) = user_args {
-            args.insert(
-                0,
-                adapter_path
-                    .join(Self::ADAPTER_PATH)
-                    .to_string_lossy()
-                    .to_string(),
-            );
-            args
-        } else {
-            vec![
-                adapter_path
-                    .join(Self::ADAPTER_PATH)
-                    .to_string_lossy()
-                    .to_string(),
-                port.to_string(),
-                host.to_string(),
-            ]
-        };
-
         Ok(DebugAdapterBinary {
             command: Some(
                 delegate
@@ -139,7 +118,14 @@ impl JsDebugAdapter {
                     .to_string_lossy()
                     .into_owned(),
             ),
-            arguments,
+            arguments: vec![
+                adapter_path
+                    .join(Self::ADAPTER_PATH)
+                    .to_string_lossy()
+                    .to_string(),
+                port.to_string(),
+                host.to_string(),
+            ],
             cwd: Some(delegate.worktree_root_path().to_path_buf()),
             envs: HashMap::default(),
             connection: Some(adapters::TcpArguments {
@@ -478,7 +464,6 @@ impl DebugAdapter for JsDebugAdapter {
         delegate: &Arc<dyn DapDelegate>,
         config: &DebugTaskDefinition,
         user_installed_path: Option<PathBuf>,
-        user_args: Option<Vec<String>>,
         cx: &mut AsyncApp,
     ) -> Result<DebugAdapterBinary> {
         if self.checked.set(()).is_ok() {
@@ -496,7 +481,7 @@ impl DebugAdapter for JsDebugAdapter {
             }
         }
 
-        self.get_installed_binary(delegate, &config, user_installed_path, user_args, cx)
+        self.get_installed_binary(delegate, &config, user_installed_path, cx)
             .await
     }
 

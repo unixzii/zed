@@ -133,7 +133,7 @@ impl Display for SystemSpecs {
 }
 
 fn try_determine_available_gpus() -> Option<String> {
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[cfg(target_os = "linux")]
     {
         return std::process::Command::new("vulkaninfo")
             .args(&["--summary"])
@@ -152,7 +152,7 @@ fn try_determine_available_gpus() -> Option<String> {
             })
             .or(Some("Failed to run `vulkaninfo --summary`".to_string()));
     }
-    #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+    #[cfg(not(target_os = "linux"))]
     {
         return None;
     }

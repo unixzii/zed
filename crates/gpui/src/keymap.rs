@@ -261,10 +261,10 @@ impl Keymap {
 mod tests {
     use super::*;
     use crate as gpui;
-    use gpui::NoAction;
+    use gpui::{NoAction, actions};
 
     actions!(
-        test_only,
+        keymap_test,
         [ActionAlpha, ActionBeta, ActionGamma, ActionDelta,]
     );
 

@@ -96,7 +96,7 @@ use gpui::{
     MouseButton, MouseDownEvent, PaintQuad, ParentElement, Pixels, Render, ScrollHandle,
     SharedString, Size, Stateful, Styled, Subscription, Task, TextStyle, TextStyleRefinement,
     UTF16Selection, UnderlineStyle, UniformListScrollHandle, WeakEntity, WeakFocusHandle, Window,
-    div, point, prelude::*, pulsating_between, px, relative, size,
+    div, impl_actions, point, prelude::*, pulsating_between, px, relative, size,
 };
 use highlight_matching_bracket::refresh_matching_bracket_highlights;
 use hover_links::{HoverLink, HoveredLinkState, InlayHighlight, find_file};
@@ -487,7 +487,7 @@ pub enum EditorMode {
     },
     AutoHeight {
         min_lines: usize,
-        max_lines: Option<usize>,
+        max_lines: usize,
     },
     Full {
         /// When set to `true`, the editor will scale its UI elements with the buffer font size.
@@ -511,17 +511,10 @@ impl EditorMode {
         }
     }
 
-    #[inline]
     pub fn is_full(&self) -> bool {
         matches!(self, Self::Full { .. })
     }
 
-    #[inline]
-    pub fn is_single_line(&self) -> bool {
-        matches!(self, Self::SingleLine { .. })
-    }
-
-    #[inline]
     fn is_minimap(&self) -> bool {
         matches!(self, Self::Minimap { .. })
     }
@@ -993,7 +986,6 @@ pub struct Editor {
     show_inline_diagnostics: bool,
     inline_diagnostics_update: Task<()>,
     inline_diagnostics_enabled: bool,
-    diagnostics_enabled: bool,
     inline_diagnostics: Vec<(Anchor, InlineDiagnostic)>,
     soft_wrap_mode_override: Option<language_settings::SoftWrap>,
     hard_wrap: Option<usize>,
@@ -1651,28 +1643,7 @@ impl Editor {
         Self::new(
             EditorMode::AutoHeight {
                 min_lines,
-                max_lines: Some(max_lines),
-            },
-            buffer,
-            None,
-            window,
-            cx,
-        )
-    }
-
-    /// Creates a new auto-height editor with a minimum number of lines but no maximum.
-    /// The editor grows as tall as needed to fit its content.
-    pub fn auto_height_unbounded(
-        min_lines: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let buffer = cx.new(|cx| Buffer::local("", cx));
-        let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
-        Self::new(
-            EditorMode::AutoHeight {
-                min_lines,
-                max_lines: None,
+                max_lines,
             },
             buffer,
             None,
@@ -2064,7 +2035,6 @@ impl Editor {
                 released_too_fast: false,
             },
             inline_diagnostics_enabled: mode.is_full(),
-            diagnostics_enabled: mode.is_full(),
             inline_value_cache: InlineValueCache::new(inlay_hint_settings.show_value_hints),
             inlay_hint_cache: InlayHintCache::new(inlay_hint_settings),
 
@@ -9565,11 +9535,6 @@ impl Editor {
     }
 
     pub fn backtab(&mut self, _: &Backtab, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
         if self.move_to_prev_snippet_tabstop(window, cx) {
             return;
@@ -9578,11 +9543,6 @@ impl Editor {
     }
 
     pub fn tab(&mut self, _: &Tab, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         if self.move_to_next_snippet_tabstop(window, cx) {
             self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
             return;
@@ -9703,11 +9663,6 @@ impl Editor {
         if self.read_only(cx) {
             return;
         }
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
         let mut selections = self.selections.all::<Point>(cx);
         let mut prev_edited_row = 0;
@@ -9813,11 +9768,6 @@ impl Editor {
         if self.read_only(cx) {
             return;
         }
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
         let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let selections = self.selections.all::<Point>(cx);
@@ -9892,11 +9842,6 @@ impl Editor {
         if self.read_only(cx) {
             return;
         }
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
         let selections = self
             .selections
@@ -10977,10 +10922,6 @@ impl Editor {
 
     pub fn move_line_up(&mut self, _: &MoveLineUp, window: &mut Window, cx: &mut Context<Self>) {
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
 
         let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let buffer = self.buffer.read(cx).snapshot(cx);
@@ -11088,10 +11029,6 @@ impl Editor {
         cx: &mut Context<Self>,
     ) {
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
 
         let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let buffer = self.buffer.read(cx).snapshot(cx);
@@ -11242,11 +11179,6 @@ impl Editor {
 
     pub fn rewrap(&mut self, _: &Rewrap, _: &mut Window, cx: &mut Context<Self>) {
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.rewrap_impl(RewrapOptions::default(), cx)
     }
 
@@ -11856,7 +11788,7 @@ impl Editor {
             return;
         }
 
-        if self.mode.is_single_line() {
+        if matches!(self.mode, EditorMode::SingleLine { .. }) {
             cx.propagate();
             return;
         }
@@ -11899,7 +11831,7 @@ impl Editor {
             return;
         }
 
-        if self.mode.is_single_line() {
+        if matches!(self.mode, EditorMode::SingleLine { .. }) {
             cx.propagate();
             return;
         }
@@ -11936,7 +11868,7 @@ impl Editor {
             return;
         }
 
-        if self.mode.is_single_line() {
+        if matches!(self.mode, EditorMode::SingleLine { .. }) {
             cx.propagate();
             return;
         }
@@ -12084,7 +12016,7 @@ impl Editor {
     pub fn move_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
         self.take_rename(true, window, cx);
 
-        if self.mode.is_single_line() {
+        if matches!(self.mode, EditorMode::SingleLine { .. }) {
             cx.propagate();
             return;
         }
@@ -14641,9 +14573,6 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.diagnostics_enabled() {
-            return;
-        }
         self.hide_mouse_cursor(HideMouseCursorOrigin::MovementAction, cx);
         self.go_to_diagnostic_impl(Direction::Next, window, cx)
     }
@@ -14654,9 +14583,6 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.diagnostics_enabled() {
-            return;
-        }
         self.hide_mouse_cursor(HideMouseCursorOrigin::MovementAction, cx);
         self.go_to_diagnostic_impl(Direction::Prev, window, cx)
     }
@@ -16078,7 +16004,7 @@ impl Editor {
     }
 
     fn refresh_active_diagnostics(&mut self, cx: &mut Context<Editor>) {
-        if !self.diagnostics_enabled() {
+        if self.mode.is_minimap() {
             return;
         }
 
@@ -16109,9 +16035,6 @@ impl Editor {
     }
 
     pub fn set_all_diagnostics_active(&mut self, cx: &mut Context<Self>) {
-        if !self.diagnostics_enabled() {
-            return;
-        }
         self.dismiss_diagnostics(cx);
         self.active_diagnostics = ActiveDiagnostic::All;
     }
@@ -16123,7 +16046,7 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.diagnostics_enabled() || matches!(self.active_diagnostics, ActiveDiagnostic::All) {
+        if matches!(self.active_diagnostics, ActiveDiagnostic::All) {
             return;
         }
         self.dismiss_diagnostics(cx);
@@ -16174,19 +16097,12 @@ impl Editor {
         self.inline_diagnostics.clear();
     }
 
-    pub fn disable_diagnostics(&mut self, cx: &mut Context<Self>) {
-        self.diagnostics_enabled = false;
-        self.dismiss_diagnostics(cx);
-        self.inline_diagnostics_update = Task::ready(());
-        self.inline_diagnostics.clear();
-    }
-
     pub fn diagnostics_enabled(&self) -> bool {
-        self.diagnostics_enabled && self.mode.is_full()
+        self.mode.is_full()
     }
 
     pub fn inline_diagnostics_enabled(&self) -> bool {
-        self.inline_diagnostics_enabled && self.diagnostics_enabled()
+        self.diagnostics_enabled() && self.inline_diagnostics_enabled
     }
 
     pub fn show_inline_diagnostics(&self) -> bool {
@@ -19409,9 +19325,6 @@ impl Editor {
     }
 
     fn update_diagnostics_state(&mut self, window: &mut Window, cx: &mut Context<'_, Editor>) {
-        if !self.diagnostics_enabled() {
-            return;
-        }
         self.refresh_active_diagnostics(cx);
         self.refresh_inline_diagnostics(true, window, cx);
         self.scrollbar_marker_state.dirty = true;
@@ -22118,7 +22031,7 @@ impl Render for Editor {
                 inlay_hints_style: make_inlay_hints_style(cx),
                 inline_completion_styles: make_suggestion_styles(cx),
                 unnecessary_code_fade: ThemeSettings::get_global(cx).unnecessary_code_fade,
-                show_underlines: self.diagnostics_enabled(),
+                show_underlines: !self.mode.is_minimap(),
             },
         )
     }
@@ -22760,7 +22673,7 @@ impl BreakpointPromptEditor {
             let mut prompt = Editor::new(
                 EditorMode::AutoHeight {
                     min_lines: 1,
-                    max_lines: Some(Self::MAX_LINES as usize),
+                    max_lines: Self::MAX_LINES as usize,
                 },
                 buffer,
                 None,

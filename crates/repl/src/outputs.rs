@@ -221,9 +221,7 @@ impl Output {
         };
 
         h_flex()
-            .id("output-content")
             .w_full()
-            .overflow_x_scroll()
             .items_start()
             .child(div().flex_1().children(content))
             .children(match self {

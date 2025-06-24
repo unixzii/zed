@@ -531,7 +531,7 @@ pub fn main() {
             cx,
         );
         let prompt_builder = PromptBuilder::load(app_state.fs.clone(), stdout_is_a_pty(), cx);
-        agent_ui::init(
+        agent::init(
             app_state.fs.clone(),
             app_state.client.clone(),
             prompt_builder.clone(),
@@ -1308,7 +1308,7 @@ fn dump_all_gpui_actions() {
         .map(|action| ActionDef {
             name: action.name,
             human_name: command_palette::humanize_action_name(action.name),
-            aliases: action.deprecated_aliases,
+            aliases: action.aliases,
         })
         .collect::<Vec<ActionDef>>();
 

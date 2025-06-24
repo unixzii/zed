@@ -1,25 +1,22 @@
-use crate::{
-    context_server_tool::ContextServerTool,
-    thread::{
-        DetailedSummaryState, ExceededWindowError, MessageId, ProjectSnapshot, Thread, ThreadId,
-    },
-};
+use std::cell::{Ref, RefCell};
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+
 use agent_settings::{AgentProfileId, CompletionMode};
 use anyhow::{Context as _, Result, anyhow};
 use assistant_tool::{ToolId, ToolWorkingSet};
 use chrono::{DateTime, Utc};
 use collections::HashMap;
 use context_server::ContextServerId;
-use futures::{
-    FutureExt as _, StreamExt as _,
-    channel::{mpsc, oneshot},
-    future::{self, BoxFuture, Shared},
-};
+use futures::channel::{mpsc, oneshot};
+use futures::future::{self, BoxFuture, Shared};
+use futures::{FutureExt as _, StreamExt as _};
 use gpui::{
     App, BackgroundExecutor, Context, Entity, EventEmitter, Global, ReadGlobal, SharedString,
-    Subscription, Task, Window, prelude::*,
+    Subscription, Task, prelude::*,
 };
-use indoc::indoc;
+
 use language_model::{LanguageModelToolResultContent, LanguageModelToolUseId, Role, TokenUsage};
 use project::context_server_store::{ContextServerStatus, ContextServerStore};
 use project::{Project, ProjectItem, ProjectPath, Worktree};
@@ -28,18 +25,19 @@ use prompt_store::{
     UserRulesContext, WorktreeContext,
 };
 use serde::{Deserialize, Serialize};
+use ui::Window;
+use util::ResultExt as _;
+
+use crate::context_server_tool::ContextServerTool;
+use crate::thread::{
+    DetailedSummaryState, ExceededWindowError, MessageId, ProjectSnapshot, Thread, ThreadId,
+};
+use indoc::indoc;
 use sqlez::{
     bindable::{Bind, Column},
     connection::Connection,
     statement::Statement,
 };
-use std::{
-    cell::{Ref, RefCell},
-    path::{Path, PathBuf},
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
-use util::ResultExt as _;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataType {
@@ -96,7 +94,7 @@ impl SharedProjectContext {
     }
 }
 
-pub type TextThreadStore = assistant_context::ContextStore;
+pub type TextThreadStore = assistant_context_editor::ContextStore;
 
 pub struct ThreadStore {
     project: Entity<Project>,
