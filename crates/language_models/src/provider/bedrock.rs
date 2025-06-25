@@ -229,17 +229,6 @@ impl State {
             Ok(())
         })
     }
-
-    fn get_region(&self) -> String {
-        // Get region - from credentials or directly from settings
-        let credentials_region = self.credentials.as_ref().map(|s| s.region.clone());
-        let settings_region = self.settings.as_ref().and_then(|s| s.region.clone());
-
-        // Use credentials region if available, otherwise use settings region, finally fall back to default
-        credentials_region
-            .or(settings_region)
-            .unwrap_or(String::from("us-east-1"))
-    }
 }
 
 pub struct BedrockLanguageModelProvider {
@@ -300,9 +289,8 @@ impl LanguageModelProvider for BedrockLanguageModelProvider {
         Some(self.create_language_model(bedrock::Model::default()))
     }
 
-    fn default_fast_model(&self, cx: &App) -> Option<Arc<dyn LanguageModel>> {
-        let region = self.state.read(cx).get_region();
-        Some(self.create_language_model(bedrock::Model::default_fast(region.as_str())))
+    fn default_fast_model(&self, _cx: &App) -> Option<Arc<dyn LanguageModel>> {
+        Some(self.create_language_model(bedrock::Model::default_fast()))
     }
 
     fn provided_models(&self, cx: &App) -> Vec<Arc<dyn LanguageModel>> {
@@ -389,7 +377,11 @@ impl BedrockModel {
 
                         let endpoint = state.settings.as_ref().and_then(|s| s.endpoint.clone());
 
-                        let region = state.get_region();
+                        let region = state
+                            .settings
+                            .as_ref()
+                            .and_then(|s| s.region.clone())
+                            .unwrap_or(String::from("us-east-1"));
 
                         (
                             auth_method,
@@ -503,8 +495,7 @@ impl LanguageModel for BedrockModel {
             LanguageModelToolChoice::Auto | LanguageModelToolChoice::Any => {
                 self.model.supports_tool_use()
             }
-            // Add support for None - we'll filter tool calls at response
-            LanguageModelToolChoice::None => self.model.supports_tool_use(),
+            LanguageModelToolChoice::None => false,
         }
     }
 
@@ -539,7 +530,16 @@ impl LanguageModel for BedrockModel {
             LanguageModelCompletionError,
         >,
     > {
-        let Ok(region) = cx.read_entity(&self.state, |state, _cx| state.get_region()) else {
+        let Ok(region) = cx.read_entity(&self.state, |state, _cx| {
+            // Get region - from credentials or directly from settings
+            let credentials_region = state.credentials.as_ref().map(|s| s.region.clone());
+            let settings_region = state.settings.as_ref().and_then(|s| s.region.clone());
+
+            // Use credentials region if available, otherwise use settings region, finally fall back to default
+            credentials_region
+                .or(settings_region)
+                .unwrap_or(String::from("us-east-1"))
+        }) else {
             return async move { Err(anyhow::anyhow!("App State Dropped").into()) }.boxed();
         };
 
@@ -549,8 +549,6 @@ impl LanguageModel for BedrockModel {
                 return async move { Err(e.into()) }.boxed();
             }
         };
-
-        let deny_tool_calls = request.tool_choice == Some(LanguageModelToolChoice::None);
 
         let request = match into_bedrock(
             request,
@@ -568,38 +566,17 @@ impl LanguageModel for BedrockModel {
         let request = self.stream_completion(request, cx);
         let future = self.request_limiter.stream(async move {
             let response = request.map_err(|err| anyhow!(err))?.await;
-            let events = map_to_language_model_completion_events(response, owned_handle);
-
-            if deny_tool_calls {
-                Ok(deny_tool_use_events(events).boxed())
-            } else {
-                Ok(events.boxed())
-            }
+            Ok(map_to_language_model_completion_events(
+                response,
+                owned_handle,
+            ))
         });
-
         async move { Ok(future.await?.boxed()) }.boxed()
     }
 
     fn cache_configuration(&self) -> Option<LanguageModelCacheConfiguration> {
         None
     }
-}
-
-fn deny_tool_use_events(
-    events: impl Stream<Item = Result<LanguageModelCompletionEvent, LanguageModelCompletionError>>,
-) -> impl Stream<Item = Result<LanguageModelCompletionEvent, LanguageModelCompletionError>> {
-    events.map(|event| {
-        match event {
-            Ok(LanguageModelCompletionEvent::ToolUse(tool_use)) => {
-                // Convert tool use to an error message if model decided to call it
-                Ok(LanguageModelCompletionEvent::Text(format!(
-                    "\n\n[Error: Tool calls are disabled in this context. Attempted to call '{}']",
-                    tool_use.name
-                )))
-            }
-            other => other,
-        }
-    })
 }
 
 pub fn into_bedrock(
@@ -738,8 +715,7 @@ pub fn into_bedrock(
             BedrockToolChoice::Any(BedrockAnyToolChoice::builder().build())
         }
         Some(LanguageModelToolChoice::None) => {
-            // For None, we still use Auto but will filter out tool calls in the response
-            BedrockToolChoice::Auto(BedrockAutoToolChoice::builder().build())
+            anyhow::bail!("LanguageModelToolChoice::None is not supported");
         }
     };
     let tool_config: BedrockToolConfig = BedrockToolConfig::builder()

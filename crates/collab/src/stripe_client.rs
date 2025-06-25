@@ -148,12 +148,6 @@ pub struct StripeCreateMeterEventPayload<'a> {
     pub stripe_customer_id: &'a StripeCustomerId,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum StripeBillingAddressCollection {
-    Auto,
-    Required,
-}
-
 #[derive(Debug, Default)]
 pub struct StripeCreateCheckoutSessionParams<'a> {
     pub customer: Option<&'a StripeCustomerId>,
@@ -163,7 +157,6 @@ pub struct StripeCreateCheckoutSessionParams<'a> {
     pub payment_method_collection: Option<StripeCheckoutSessionPaymentMethodCollection>,
     pub subscription_data: Option<StripeCreateCheckoutSessionSubscriptionData>,
     pub success_url: Option<&'a str>,
-    pub billing_address_collection: Option<StripeBillingAddressCollection>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

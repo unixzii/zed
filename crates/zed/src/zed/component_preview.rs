@@ -5,14 +5,20 @@
 mod persistence;
 mod preview_support;
 
-use agent::{TextThreadStore, ThreadStore};
-use agent_ui::ActiveThread;
+use std::ops::Range;
+use std::sync::Arc;
+
+use std::iter::Iterator;
+
+use agent::{ActiveThread, TextThreadStore, ThreadStore};
 use client::UserStore;
-use collections::HashMap;
 use component::{ComponentId, ComponentMetadata, ComponentStatus, components};
 use gpui::{
     App, Entity, EventEmitter, FocusHandle, Focusable, Task, WeakEntity, Window, list, prelude::*,
 };
+
+use collections::HashMap;
+
 use gpui::{ListState, ScrollHandle, ScrollStrategy, UniformListScrollHandle};
 use languages::LanguageRegistry;
 use notifications::status_toast::{StatusToast, ToastIcon};
@@ -21,14 +27,11 @@ use preview_support::active_thread::{
     load_preview_text_thread_store, load_preview_thread_store, static_active_thread,
 };
 use project::Project;
-use std::{iter::Iterator, ops::Range, sync::Arc};
 use ui::{ButtonLike, Divider, HighlightedLabel, ListItem, ListSubHeader, Tooltip, prelude::*};
 use ui_input::SingleLineInput;
 use util::ResultExt as _;
-use workspace::{
-    AppState, Item, ItemId, SerializableItem, Workspace, WorkspaceId, delete_unloaded_items,
-    item::ItemEvent,
-};
+use workspace::{AppState, ItemId, SerializableItem, delete_unloaded_items};
+use workspace::{Item, Workspace, WorkspaceId, item::ItemEvent};
 
 pub fn init(app_state: Arc<AppState>, cx: &mut App) {
     workspace::register_serializable_item::<ComponentPreview>(cx);
@@ -639,7 +642,7 @@ impl ComponentPreview {
         // Check if the component's scope is Agent
         if scope == ComponentScope::Agent {
             if let Some(active_thread) = self.active_thread.clone() {
-                if let Some(element) = agent_ui::get_agent_preview(
+                if let Some(element) = agent::get_agent_preview(
                     &component.id(),
                     self.workspace.clone(),
                     active_thread,
@@ -1137,7 +1140,7 @@ impl ComponentPreviewPage {
     fn render_preview(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         // Try to get agent preview first if we have an active thread
         let maybe_agent_preview = if let Some(active_thread) = self.active_thread.as_ref() {
-            agent_ui::get_agent_preview(
+            agent::get_agent_preview(
                 &self.component.id(),
                 self.workspace.clone(),
                 active_thread.clone(),

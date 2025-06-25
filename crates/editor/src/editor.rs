@@ -96,7 +96,7 @@ use gpui::{
     MouseButton, MouseDownEvent, PaintQuad, ParentElement, Pixels, Render, ScrollHandle,
     SharedString, Size, Stateful, Styled, Subscription, Task, TextStyle, TextStyleRefinement,
     UTF16Selection, UnderlineStyle, UniformListScrollHandle, WeakEntity, WeakFocusHandle, Window,
-    div, point, prelude::*, pulsating_between, px, relative, size,
+    div, impl_actions, point, prelude::*, pulsating_between, px, relative, size,
 };
 use highlight_matching_bracket::refresh_matching_bracket_highlights;
 use hover_links::{HoverLink, HoveredLinkState, InlayHighlight, find_file};
@@ -487,7 +487,7 @@ pub enum EditorMode {
     },
     AutoHeight {
         min_lines: usize,
-        max_lines: Option<usize>,
+        max_lines: usize,
     },
     Full {
         /// When set to `true`, the editor will scale its UI elements with the buffer font size.
@@ -511,17 +511,10 @@ impl EditorMode {
         }
     }
 
-    #[inline]
     pub fn is_full(&self) -> bool {
         matches!(self, Self::Full { .. })
     }
 
-    #[inline]
-    pub fn is_single_line(&self) -> bool {
-        matches!(self, Self::SingleLine { .. })
-    }
-
-    #[inline]
     fn is_minimap(&self) -> bool {
         matches!(self, Self::Minimap { .. })
     }
@@ -993,7 +986,6 @@ pub struct Editor {
     show_inline_diagnostics: bool,
     inline_diagnostics_update: Task<()>,
     inline_diagnostics_enabled: bool,
-    diagnostics_enabled: bool,
     inline_diagnostics: Vec<(Anchor, InlineDiagnostic)>,
     soft_wrap_mode_override: Option<language_settings::SoftWrap>,
     hard_wrap: Option<usize>,
@@ -1651,28 +1643,7 @@ impl Editor {
         Self::new(
             EditorMode::AutoHeight {
                 min_lines,
-                max_lines: Some(max_lines),
-            },
-            buffer,
-            None,
-            window,
-            cx,
-        )
-    }
-
-    /// Creates a new auto-height editor with a minimum number of lines but no maximum.
-    /// The editor grows as tall as needed to fit its content.
-    pub fn auto_height_unbounded(
-        min_lines: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let buffer = cx.new(|cx| Buffer::local("", cx));
-        let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
-        Self::new(
-            EditorMode::AutoHeight {
-                min_lines,
-                max_lines: None,
+                max_lines,
             },
             buffer,
             None,
@@ -2064,7 +2035,6 @@ impl Editor {
                 released_too_fast: false,
             },
             inline_diagnostics_enabled: mode.is_full(),
-            diagnostics_enabled: mode.is_full(),
             inline_value_cache: InlineValueCache::new(inlay_hint_settings.show_value_hints),
             inlay_hint_cache: InlayHintCache::new(inlay_hint_settings),
 
@@ -3388,12 +3358,9 @@ impl Editor {
                 auto_scroll = true;
             }
             2 => {
-                let position = display_map
-                    .clip_point(position, Bias::Left)
-                    .to_offset(&display_map, Bias::Left);
-                let (range, _) = buffer.surrounding_word(position, false);
-                start = buffer.anchor_before(range.start);
-                end = buffer.anchor_before(range.end);
+                let range = movement::surrounding_word(&display_map, position);
+                start = buffer.anchor_before(range.start.to_point(&display_map));
+                end = buffer.anchor_before(range.end.to_point(&display_map));
                 mode = SelectMode::Word(start..end);
                 auto_scroll = true;
             }
@@ -3526,39 +3493,37 @@ impl Editor {
         if self.columnar_selection_state.is_some() {
             self.select_columns(position, goal_column, &display_map, window, cx);
         } else if let Some(mut pending) = self.selections.pending_anchor() {
-            let buffer = &display_map.buffer_snapshot;
+            let buffer = self.buffer.read(cx).snapshot(cx);
             let head;
             let tail;
             let mode = self.selections.pending_mode().unwrap();
             match &mode {
                 SelectMode::Character => {
                     head = position.to_point(&display_map);
-                    tail = pending.tail().to_point(buffer);
+                    tail = pending.tail().to_point(&buffer);
                 }
                 SelectMode::Word(original_range) => {
-                    let offset = display_map
-                        .clip_point(position, Bias::Left)
-                        .to_offset(&display_map, Bias::Left);
-                    let original_range = original_range.to_offset(buffer);
-
-                    let head_offset = if buffer.is_inside_word(offset, false)
-                        || original_range.contains(&offset)
+                    let original_display_range = original_range.start.to_display_point(&display_map)
+                        ..original_range.end.to_display_point(&display_map);
+                    let original_buffer_range = original_display_range.start.to_point(&display_map)
+                        ..original_display_range.end.to_point(&display_map);
+                    if movement::is_inside_word(&display_map, position)
+                        || original_display_range.contains(&position)
                     {
-                        let (word_range, _) = buffer.surrounding_word(offset, false);
-                        if word_range.start < original_range.start {
-                            word_range.start
+                        let word_range = movement::surrounding_word(&display_map, position);
+                        if word_range.start < original_display_range.start {
+                            head = word_range.start.to_point(&display_map);
                         } else {
-                            word_range.end
+                            head = word_range.end.to_point(&display_map);
                         }
                     } else {
-                        offset
-                    };
+                        head = position.to_point(&display_map);
+                    }
 
-                    head = head_offset.to_point(buffer);
-                    if head_offset <= original_range.start {
-                        tail = original_range.end.to_point(buffer);
+                    if head <= original_buffer_range.start {
+                        tail = original_buffer_range.end;
                     } else {
-                        tail = original_range.start.to_point(buffer);
+                        tail = original_buffer_range.start;
                     }
                 }
                 SelectMode::Line(original_range) => {
@@ -9570,11 +9535,6 @@ impl Editor {
     }
 
     pub fn backtab(&mut self, _: &Backtab, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
         if self.move_to_prev_snippet_tabstop(window, cx) {
             return;
@@ -9583,11 +9543,6 @@ impl Editor {
     }
 
     pub fn tab(&mut self, _: &Tab, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         if self.move_to_next_snippet_tabstop(window, cx) {
             self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
             return;
@@ -9708,11 +9663,6 @@ impl Editor {
         if self.read_only(cx) {
             return;
         }
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
         let mut selections = self.selections.all::<Point>(cx);
         let mut prev_edited_row = 0;
@@ -9818,11 +9768,6 @@ impl Editor {
         if self.read_only(cx) {
             return;
         }
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
         let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let selections = self.selections.all::<Point>(cx);
@@ -9897,11 +9842,6 @@ impl Editor {
         if self.read_only(cx) {
             return;
         }
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
         let selections = self
             .selections
@@ -10799,6 +10739,7 @@ impl Editor {
     where
         Fn: FnMut(&str) -> String,
     {
+        let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let buffer = self.buffer.read(cx).snapshot(cx);
 
         let mut new_selections = Vec::new();
@@ -10809,8 +10750,13 @@ impl Editor {
             let selection_is_empty = selection.is_empty();
 
             let (start, end) = if selection_is_empty {
-                let (word_range, _) = buffer.surrounding_word(selection.start, false);
-                (word_range.start, word_range.end)
+                let word_range = movement::surrounding_word(
+                    &display_map,
+                    selection.start.to_display_point(&display_map),
+                );
+                let start = word_range.start.to_offset(&display_map, Bias::Left);
+                let end = word_range.end.to_offset(&display_map, Bias::Left);
+                (start, end)
             } else {
                 (selection.start, selection.end)
             };
@@ -10976,10 +10922,6 @@ impl Editor {
 
     pub fn move_line_up(&mut self, _: &MoveLineUp, window: &mut Window, cx: &mut Context<Self>) {
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
 
         let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let buffer = self.buffer.read(cx).snapshot(cx);
@@ -11087,10 +11029,6 @@ impl Editor {
         cx: &mut Context<Self>,
     ) {
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
 
         let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let buffer = self.buffer.read(cx).snapshot(cx);
@@ -11241,11 +11179,6 @@ impl Editor {
 
     pub fn rewrap(&mut self, _: &Rewrap, _: &mut Window, cx: &mut Context<Self>) {
         self.hide_mouse_cursor(HideMouseCursorOrigin::TypingAction, cx);
-        if self.mode.is_single_line() {
-            cx.propagate();
-            return;
-        }
-
         self.rewrap_impl(RewrapOptions::default(), cx)
     }
 
@@ -11855,7 +11788,7 @@ impl Editor {
             return;
         }
 
-        if self.mode.is_single_line() {
+        if matches!(self.mode, EditorMode::SingleLine { .. }) {
             cx.propagate();
             return;
         }
@@ -11898,7 +11831,7 @@ impl Editor {
             return;
         }
 
-        if self.mode.is_single_line() {
+        if matches!(self.mode, EditorMode::SingleLine { .. }) {
             cx.propagate();
             return;
         }
@@ -11935,7 +11868,7 @@ impl Editor {
             return;
         }
 
-        if self.mode.is_single_line() {
+        if matches!(self.mode, EditorMode::SingleLine { .. }) {
             cx.propagate();
             return;
         }
@@ -12083,7 +12016,7 @@ impl Editor {
     pub fn move_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
         self.take_rename(true, window, cx);
 
-        if self.mode.is_single_line() {
+        if matches!(self.mode, EditorMode::SingleLine { .. }) {
             cx.propagate();
             return;
         }
@@ -13254,10 +13187,12 @@ impl Editor {
                     let query_match = query_match.unwrap(); // can only fail due to I/O
                     let offset_range =
                         start_offset + query_match.start()..start_offset + query_match.end();
+                    let display_range = offset_range.start.to_display_point(display_map)
+                        ..offset_range.end.to_display_point(display_map);
 
                     if !select_next_state.wordwise
-                        || (!buffer.is_inside_word(offset_range.start, false)
-                            && !buffer.is_inside_word(offset_range.end, false))
+                        || (!movement::is_inside_word(display_map, display_range.start)
+                            && !movement::is_inside_word(display_map, display_range.end))
                     {
                         // TODO: This is n^2, because we might check all the selections
                         if !selections
@@ -13321,9 +13256,12 @@ impl Editor {
 
             if only_carets {
                 for selection in &mut selections {
-                    let (word_range, _) = buffer.surrounding_word(selection.start, false);
-                    selection.start = word_range.start;
-                    selection.end = word_range.end;
+                    let word_range = movement::surrounding_word(
+                        display_map,
+                        selection.start.to_display_point(display_map),
+                    );
+                    selection.start = word_range.start.to_offset(display_map, Bias::Left);
+                    selection.end = word_range.end.to_offset(display_map, Bias::Left);
                     selection.goal = SelectionGoal::None;
                     selection.reversed = false;
                     self.select_match_ranges(
@@ -13404,22 +13342,18 @@ impl Editor {
             } else {
                 query_match.start()..query_match.end()
             };
+            let display_range = offset_range.start.to_display_point(&display_map)
+                ..offset_range.end.to_display_point(&display_map);
 
             if !select_next_state.wordwise
-                || (!buffer.is_inside_word(offset_range.start, false)
-                    && !buffer.is_inside_word(offset_range.end, false))
+                || (!movement::is_inside_word(&display_map, display_range.start)
+                    && !movement::is_inside_word(&display_map, display_range.end))
             {
                 new_selections.push(offset_range.start..offset_range.end);
             }
         }
 
         select_next_state.done = true;
-
-        if new_selections.is_empty() {
-            log::error!("bug: new_selections is empty in select_all_matches");
-            return Ok(());
-        }
-
         self.unfold_ranges(&new_selections.clone(), false, false, cx);
         self.change_selections(None, window, cx, |selections| {
             selections.select_ranges(new_selections)
@@ -13479,10 +13413,12 @@ impl Editor {
                     let query_match = query_match.unwrap(); // can only fail due to I/O
                     let offset_range =
                         end_offset - query_match.end()..end_offset - query_match.start();
+                    let display_range = offset_range.start.to_display_point(&display_map)
+                        ..offset_range.end.to_display_point(&display_map);
 
                     if !select_prev_state.wordwise
-                        || (!buffer.is_inside_word(offset_range.start, false)
-                            && !buffer.is_inside_word(offset_range.end, false))
+                        || (!movement::is_inside_word(&display_map, display_range.start)
+                            && !movement::is_inside_word(&display_map, display_range.end))
                     {
                         next_selected_range = Some(offset_range);
                         break;
@@ -13540,9 +13476,12 @@ impl Editor {
 
             if only_carets {
                 for selection in &mut selections {
-                    let (word_range, _) = buffer.surrounding_word(selection.start, false);
-                    selection.start = word_range.start;
-                    selection.end = word_range.end;
+                    let word_range = movement::surrounding_word(
+                        &display_map,
+                        selection.start.to_display_point(&display_map),
+                    );
+                    selection.start = word_range.start.to_offset(&display_map, Bias::Left);
+                    selection.end = word_range.end.to_offset(&display_map, Bias::Left);
                     selection.goal = SelectionGoal::None;
                     selection.reversed = false;
                     self.select_match_ranges(
@@ -14017,11 +13956,26 @@ impl Editor {
                 if let Some((node, _)) = buffer.syntax_ancestor(old_range.clone()) {
                     // manually select word at selection
                     if ["string_content", "inline"].contains(&node.kind()) {
-                        let (word_range, _) = buffer.surrounding_word(old_range.start, false);
+                        let word_range = {
+                            let display_point = buffer
+                                .offset_to_point(old_range.start)
+                                .to_display_point(&display_map);
+                            let Range { start, end } =
+                                movement::surrounding_word(&display_map, display_point);
+                            start.to_point(&display_map).to_offset(&buffer)
+                                ..end.to_point(&display_map).to_offset(&buffer)
+                        };
                         // ignore if word is already selected
                         if !word_range.is_empty() && old_range != word_range {
-                            let (last_word_range, _) =
-                                buffer.surrounding_word(old_range.end, false);
+                            let last_word_range = {
+                                let display_point = buffer
+                                    .offset_to_point(old_range.end)
+                                    .to_display_point(&display_map);
+                                let Range { start, end } =
+                                    movement::surrounding_word(&display_map, display_point);
+                                start.to_point(&display_map).to_offset(&buffer)
+                                    ..end.to_point(&display_map).to_offset(&buffer)
+                            };
                             // only select word if start and end point belongs to same word
                             if word_range == last_word_range {
                                 selected_larger_node = true;
@@ -14619,9 +14573,6 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.diagnostics_enabled() {
-            return;
-        }
         self.hide_mouse_cursor(HideMouseCursorOrigin::MovementAction, cx);
         self.go_to_diagnostic_impl(Direction::Next, window, cx)
     }
@@ -14632,9 +14583,6 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.diagnostics_enabled() {
-            return;
-        }
         self.hide_mouse_cursor(HideMouseCursorOrigin::MovementAction, cx);
         self.go_to_diagnostic_impl(Direction::Prev, window, cx)
     }
@@ -16056,7 +16004,7 @@ impl Editor {
     }
 
     fn refresh_active_diagnostics(&mut self, cx: &mut Context<Editor>) {
-        if !self.diagnostics_enabled() {
+        if self.mode.is_minimap() {
             return;
         }
 
@@ -16087,9 +16035,6 @@ impl Editor {
     }
 
     pub fn set_all_diagnostics_active(&mut self, cx: &mut Context<Self>) {
-        if !self.diagnostics_enabled() {
-            return;
-        }
         self.dismiss_diagnostics(cx);
         self.active_diagnostics = ActiveDiagnostic::All;
     }
@@ -16101,7 +16046,7 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.diagnostics_enabled() || matches!(self.active_diagnostics, ActiveDiagnostic::All) {
+        if matches!(self.active_diagnostics, ActiveDiagnostic::All) {
             return;
         }
         self.dismiss_diagnostics(cx);
@@ -16152,19 +16097,12 @@ impl Editor {
         self.inline_diagnostics.clear();
     }
 
-    pub fn disable_diagnostics(&mut self, cx: &mut Context<Self>) {
-        self.diagnostics_enabled = false;
-        self.dismiss_diagnostics(cx);
-        self.inline_diagnostics_update = Task::ready(());
-        self.inline_diagnostics.clear();
-    }
-
     pub fn diagnostics_enabled(&self) -> bool {
-        self.diagnostics_enabled && self.mode.is_full()
+        self.mode.is_full()
     }
 
     pub fn inline_diagnostics_enabled(&self) -> bool {
-        self.inline_diagnostics_enabled && self.diagnostics_enabled()
+        self.diagnostics_enabled() && self.inline_diagnostics_enabled
     }
 
     pub fn show_inline_diagnostics(&self) -> bool {
@@ -19145,7 +19083,7 @@ impl Editor {
         let current_execution_position = self
             .highlighted_rows
             .get(&TypeId::of::<ActiveDebugLine>())
-            .and_then(|lines| lines.last().map(|line| line.range.end));
+            .and_then(|lines| lines.last().map(|line| line.range.start));
 
         self.inline_value_cache.refresh_task = cx.spawn(async move |editor, cx| {
             let inline_values = editor
@@ -19387,9 +19325,6 @@ impl Editor {
     }
 
     fn update_diagnostics_state(&mut self, window: &mut Window, cx: &mut Context<'_, Editor>) {
-        if !self.diagnostics_enabled() {
-            return;
-        }
         self.refresh_active_diagnostics(cx);
         self.refresh_inline_diagnostics(true, window, cx);
         self.scrollbar_marker_state.dirty = true;
@@ -21531,6 +21466,7 @@ impl SemanticsProvider for Entity<Project> {
     fn inline_values(
         &self,
         buffer_handle: Entity<Buffer>,
+
         range: Range<text::Anchor>,
         cx: &mut App,
     ) -> Option<Task<anyhow::Result<Vec<InlayHint>>>> {
@@ -22095,7 +22031,7 @@ impl Render for Editor {
                 inlay_hints_style: make_inlay_hints_style(cx),
                 inline_completion_styles: make_suggestion_styles(cx),
                 unnecessary_code_fade: ThemeSettings::get_global(cx).unnecessary_code_fade,
-                show_underlines: self.diagnostics_enabled(),
+                show_underlines: !self.mode.is_minimap(),
             },
         )
     }
@@ -22737,7 +22673,7 @@ impl BreakpointPromptEditor {
             let mut prompt = Editor::new(
                 EditorMode::AutoHeight {
                     min_lines: 1,
-                    max_lines: Some(Self::MAX_LINES as usize),
+                    max_lines: Self::MAX_LINES as usize,
                 },
                 buffer,
                 None,

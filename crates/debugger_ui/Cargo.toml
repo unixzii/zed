@@ -81,4 +81,3 @@ unindent.workspace = true
 util = { workspace = true, features = ["test-support"] }
 workspace = { workspace = true, features = ["test-support"] }
 zlog.workspace = true
-tree-sitter-go.workspace = true

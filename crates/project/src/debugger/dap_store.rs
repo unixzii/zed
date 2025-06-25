@@ -40,7 +40,7 @@ use rpc::{
     AnyProtoClient, TypedEnvelope,
     proto::{self},
 };
-use settings::{Settings, SettingsLocation, WorktreeId};
+use settings::{Settings, WorktreeId};
 use std::{
     borrow::Borrow,
     collections::BTreeMap,
@@ -190,23 +190,17 @@ impl DapStore {
                     return Task::ready(Err(anyhow!("Failed to find a debug adapter")));
                 };
 
-                let settings_location = SettingsLocation {
-                    worktree_id: worktree.read(cx).id(),
-                    path: Path::new(""),
-                };
-                let dap_settings = ProjectSettings::get(Some(settings_location), cx)
+                let user_installed_path = ProjectSettings::get_global(cx)
                     .dap
-                    .get(&adapter.name());
-                let user_installed_path =
-                    dap_settings.and_then(|s| s.binary.as_ref().map(PathBuf::from));
-                let user_args = dap_settings.map(|s| s.args.clone());
+                    .get(&adapter.name())
+                    .and_then(|s| s.binary.as_ref().map(PathBuf::from));
 
                 let delegate = self.delegate(&worktree, console, cx);
                 let cwd: Arc<Path> = worktree.read(cx).abs_path().as_ref().into();
 
                 cx.spawn(async move |this, cx| {
                     let mut binary = adapter
-                        .get_binary(&delegate, &definition, user_installed_path, user_args, cx)
+                        .get_binary(&delegate, &definition, user_installed_path, cx)
                         .await?;
 
                     let env = this
@@ -588,14 +582,7 @@ impl DapStore {
         cx: &mut Context<Self>,
     ) -> Task<Result<Vec<InlayHint>>> {
         let snapshot = buffer_handle.read(cx).snapshot();
-        let local_variables =
-            session
-                .read(cx)
-                .variables_by_stack_frame_id(stack_frame_id, false, true);
-        let global_variables =
-            session
-                .read(cx)
-                .variables_by_stack_frame_id(stack_frame_id, true, false);
+        let all_variables = session.read(cx).variables_by_stack_frame_id(stack_frame_id);
 
         fn format_value(mut value: String) -> String {
             const LIMIT: usize = 100;
@@ -624,20 +611,10 @@ impl DapStore {
 
                 match inline_value_location.lookup {
                     VariableLookupKind::Variable => {
-                        let variable_search =
-                            if inline_value_location.scope
-                                == dap::inline_value::VariableScope::Local
-                            {
-                                local_variables.iter().chain(global_variables.iter()).find(
-                                    |variable| variable.name == inline_value_location.variable_name,
-                                )
-                            } else {
-                                global_variables.iter().find(|variable| {
-                                    variable.name == inline_value_location.variable_name
-                                })
-                            };
-
-                        let Some(variable) = variable_search else {
+                        let Some(variable) = all_variables
+                            .iter()
+                            .find(|variable| variable.name == inline_value_location.variable_name)
+                        else {
                             continue;
                         };
 

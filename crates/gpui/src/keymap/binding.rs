@@ -10,7 +10,6 @@ pub struct KeyBinding {
     pub(crate) action: Box<dyn Action>,
     pub(crate) keystrokes: SmallVec<[Keystroke; 2]>,
     pub(crate) context_predicate: Option<Rc<KeyBindingContextPredicate>>,
-    pub(crate) meta: Option<KeyBindingMetaIndex>,
 }
 
 impl Clone for KeyBinding {
@@ -19,7 +18,6 @@ impl Clone for KeyBinding {
             action: self.action.boxed_clone(),
             keystrokes: self.keystrokes.clone(),
             context_predicate: self.context_predicate.clone(),
-            meta: self.meta,
         }
     }
 }
@@ -61,19 +59,7 @@ impl KeyBinding {
             keystrokes,
             action,
             context_predicate,
-            meta: None,
         })
-    }
-
-    /// Set the metadata for this binding.
-    pub fn with_meta(mut self, meta: KeyBindingMetaIndex) -> Self {
-        self.meta = Some(meta);
-        self
-    }
-
-    /// Set the metadata for this binding.
-    pub fn set_meta(&mut self, meta: KeyBindingMetaIndex) {
-        self.meta = Some(meta);
     }
 
     /// Check if the given keystrokes match this binding.
@@ -105,11 +91,6 @@ impl KeyBinding {
     pub fn predicate(&self) -> Option<Rc<KeyBindingContextPredicate>> {
         self.context_predicate.as_ref().map(|rc| rc.clone())
     }
-
-    /// Get the metadata for this binding
-    pub fn meta(&self) -> Option<KeyBindingMetaIndex> {
-        self.meta
-    }
 }
 
 impl std::fmt::Debug for KeyBinding {
@@ -121,9 +102,3 @@ impl std::fmt::Debug for KeyBinding {
             .finish()
     }
 }
-
-/// A unique identifier for retrieval of metadata associated with a key binding.
-/// Intended to be used as an index or key into a user-defined store of metadata
-/// associated with the binding, such as the source of the binding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct KeyBindingMetaIndex(pub u32);
