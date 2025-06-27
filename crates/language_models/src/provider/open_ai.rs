@@ -12,7 +12,7 @@ use language_model::{
     LanguageModelId, LanguageModelName, LanguageModelProvider, LanguageModelProviderId,
     LanguageModelProviderName, LanguageModelProviderState, LanguageModelRequest,
     LanguageModelToolChoice, LanguageModelToolResultContent, LanguageModelToolUse, MessageContent,
-    RateLimiter, Role, StopReason, TokenUsage,
+    RateLimiter, Role, StopReason,
 };
 use menu;
 use open_ai::{ImageUrl, Model, ResponseStreamEvent, stream_completion};
@@ -28,7 +28,6 @@ use ui::{ElevationIndex, List, Tooltip, prelude::*};
 use ui_input::SingleLineInput;
 use util::ResultExt;
 
-use crate::OpenAiSettingsContent;
 use crate::{AllLanguageModelSettings, ui::InstructionListItem};
 
 const PROVIDER_ID: &str = "openai";
@@ -38,6 +37,7 @@ const PROVIDER_NAME: &str = "OpenAI";
 pub struct OpenAiSettings {
     pub api_url: String,
     pub available_models: Vec<AvailableModel>,
+    pub needs_setting_migration: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -534,20 +534,11 @@ impl OpenAiEventMapper {
         &mut self,
         event: ResponseStreamEvent,
     ) -> Vec<Result<LanguageModelCompletionEvent, LanguageModelCompletionError>> {
-        let mut events = Vec::new();
-        if let Some(usage) = event.usage {
-            events.push(Ok(LanguageModelCompletionEvent::UsageUpdate(TokenUsage {
-                input_tokens: usage.prompt_tokens,
-                output_tokens: usage.completion_tokens,
-                cache_creation_input_tokens: 0,
-                cache_read_input_tokens: 0,
-            })));
-        }
-
         let Some(choice) = event.choices.first() else {
-            return events;
+            return Vec::new();
         };
 
+        let mut events = Vec::new();
         if let Some(content) = choice.delta.content.clone() {
             events.push(Ok(LanguageModelCompletionEvent::Text(content)));
         }
@@ -803,13 +794,30 @@ impl ConfigurationView {
         if !api_url.is_empty() && api_url != effective_current_url {
             let fs = <dyn Fs>::global(cx);
             update_settings_file::<AllLanguageModelSettings>(fs, cx, move |settings, _| {
-                if let Some(settings) = settings.openai.as_mut() {
-                    settings.api_url = Some(api_url.clone());
+                use crate::settings::{OpenAiSettingsContent, VersionedOpenAiSettingsContent};
+
+                if settings.openai.is_none() {
+                    settings.openai = Some(OpenAiSettingsContent::Versioned(
+                        VersionedOpenAiSettingsContent::V1(
+                            crate::settings::OpenAiSettingsContentV1 {
+                                api_url: Some(api_url.clone()),
+                                available_models: None,
+                            },
+                        ),
+                    ));
                 } else {
-                    settings.openai = Some(OpenAiSettingsContent {
-                        api_url: Some(api_url.clone()),
-                        available_models: None,
-                    });
+                    if let Some(openai) = settings.openai.as_mut() {
+                        match openai {
+                            OpenAiSettingsContent::Versioned(versioned) => match versioned {
+                                VersionedOpenAiSettingsContent::V1(v1) => {
+                                    v1.api_url = Some(api_url.clone());
+                                }
+                            },
+                            OpenAiSettingsContent::Legacy(legacy) => {
+                                legacy.api_url = Some(api_url.clone());
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -823,8 +831,19 @@ impl ConfigurationView {
         });
         let fs = <dyn Fs>::global(cx);
         update_settings_file::<AllLanguageModelSettings>(fs, cx, |settings, _cx| {
-            if let Some(settings) = settings.openai.as_mut() {
-                settings.api_url = None;
+            use crate::settings::{OpenAiSettingsContent, VersionedOpenAiSettingsContent};
+
+            if let Some(openai) = settings.openai.as_mut() {
+                match openai {
+                    OpenAiSettingsContent::Versioned(versioned) => match versioned {
+                        VersionedOpenAiSettingsContent::V1(v1) => {
+                            v1.api_url = None;
+                        }
+                    },
+                    OpenAiSettingsContent::Legacy(legacy) => {
+                        legacy.api_url = None;
+                    }
+                }
             }
         });
         cx.notify();
@@ -892,7 +911,7 @@ impl Render for ConfigurationView {
                         })),
                 )
                 .child(
-                    Button::new("reset-api-key", "Reset API Key")
+                    Button::new("reset-key", "Reset API Key")
                         .label_size(LabelSize::Small)
                         .icon(IconName::Undo)
                         .icon_size(IconSize::Small)
@@ -925,7 +944,7 @@ impl Render for ConfigurationView {
                         .child(Label::new("Custom API URL configured.")),
                 )
                 .child(
-                    Button::new("reset-api-url", "Reset API URL")
+                    Button::new("reset-key", "Reset API URL")
                         .label_size(LabelSize::Small)
                         .icon(IconName::Undo)
                         .icon_size(IconSize::Small)

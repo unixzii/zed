@@ -74,7 +74,7 @@ impl SlashCommand for DeltaSlashCommand {
                             .slice(section.range.to_offset(&context_buffer)),
                     );
                     file_command_new_outputs.push(Arc::new(FileSlashCommand).run(
-                        std::slice::from_ref(&metadata.path),
+                        &[metadata.path.clone()],
                         context_slash_command_output_sections,
                         context_buffer.clone(),
                         workspace.clone(),

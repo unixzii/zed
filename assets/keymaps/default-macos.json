@@ -47,8 +47,7 @@
       "fn-f": "zed::ToggleFullScreen",
       "ctrl-cmd-f": "zed::ToggleFullScreen",
       "ctrl-cmd-z": "edit_prediction::RateCompletions",
-      "ctrl-cmd-i": "edit_prediction::ToggleMenu",
-      "ctrl-cmd-l": "lsp_tool::ToggleMenu"
+      "ctrl-cmd-i": "edit_prediction::ToggleMenu"
     }
   },
   {
@@ -283,9 +282,9 @@
       "cmd->": "assistant::QuoteSelection",
       "cmd-alt-e": "agent::RemoveAllContext",
       "cmd-shift-e": "project_panel::ToggleFocus",
-      "cmd-ctrl-b": "agent::ToggleBurnMode",
       "cmd-shift-enter": "agent::ContinueThread",
-      "alt-enter": "agent::ContinueWithBurnMode"
+      "alt-enter": "agent::ContinueWithBurnMode",
+      "cmd-alt-b": "agent::ToggleBurnMode"
     }
   },
   {
@@ -545,23 +544,9 @@
       "cmd-k r": "editor::RevealInFileManager",
       "cmd-k p": "editor::CopyPath",
       "cmd-\\": "pane::SplitRight",
-      "ctrl-cmd-c": "editor::DisplayCursorNames"
-    }
-  },
-  {
-    "context": "Editor && extension == md",
-    "use_key_equivalents": true,
-    "bindings": {
       "cmd-k v": "markdown::OpenPreviewToTheSide",
-      "cmd-shift-v": "markdown::OpenPreview"
-    }
-  },
-  {
-    "context": "Editor && extension == svg",
-    "use_key_equivalents": true,
-    "bindings": {
-      "cmd-k v": "svg::OpenPreviewToTheSide",
-      "cmd-shift-v": "svg::OpenPreview"
+      "cmd-shift-v": "markdown::OpenPreview",
+      "ctrl-cmd-c": "editor::DisplayCursorNames"
     }
   },
   {
@@ -602,7 +587,7 @@
       "alt-cmd-o": ["projects::OpenRecent", { "create_new_window": false }],
       "ctrl-cmd-o": ["projects::OpenRemote", { "from_existing_connection": false, "create_new_window": false }],
       "ctrl-cmd-shift-o": ["projects::OpenRemote", { "from_existing_connection": true, "create_new_window": false }],
-      "cmd-ctrl-b": "branches::OpenRecent",
+      "alt-cmd-b": "branches::OpenRecent",
       "ctrl-~": "workspace::NewTerminal",
       "cmd-s": "workspace::Save",
       "cmd-k s": "workspace::SaveWithoutFormat",
@@ -620,7 +605,6 @@
       "cmd-8": ["workspace::ActivatePane", 7],
       "cmd-9": ["workspace::ActivatePane", 8],
       "cmd-b": "workspace::ToggleLeftDock",
-      "cmd-alt-b": "workspace::ToggleRightDock",
       "cmd-r": "workspace::ToggleRightDock",
       "cmd-j": "workspace::ToggleBottomDock",
       "alt-cmd-y": "workspace::CloseAllDocks",
@@ -880,10 +864,7 @@
       "right": "variable_list::ExpandSelectedEntry",
       "enter": "variable_list::EditVariable",
       "cmd-c": "variable_list::CopyVariableValue",
-      "cmd-alt-c": "variable_list::CopyVariableName",
-      "delete": "variable_list::RemoveWatch",
-      "backspace": "variable_list::RemoveWatch",
-      "alt-enter": "variable_list::AddWatch"
+      "cmd-alt-c": "variable_list::CopyVariableName"
     }
   },
   {
@@ -1027,7 +1008,7 @@
     }
   },
   {
-    "context": "FileFinder || (FileFinder > Picker > Editor)",
+    "context": "FileFinder",
     "use_key_equivalents": true,
     "bindings": {
       "cmd-shift-a": "file_finder::ToggleSplitMenu",
@@ -1154,8 +1135,7 @@
     "context": "DebugConsole > Editor",
     "use_key_equivalents": true,
     "bindings": {
-      "enter": "menu::Confirm",
-      "alt-enter": "console::WatchExpression"
+      "enter": "menu::Confirm"
     }
   },
   {

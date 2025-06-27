@@ -41,8 +41,7 @@
       "shift-f11": "debugger::StepOut",
       "f11": "zed::ToggleFullScreen",
       "ctrl-alt-z": "edit_prediction::RateCompletions",
-      "ctrl-shift-i": "edit_prediction::ToggleMenu",
-      "ctrl-alt-l": "lsp_tool::ToggleMenu"
+      "ctrl-shift-i": "edit_prediction::ToggleMenu"
     }
   },
   {
@@ -244,8 +243,8 @@
       "ctrl-alt-e": "agent::RemoveAllContext",
       "ctrl-shift-e": "project_panel::ToggleFocus",
       "ctrl-shift-enter": "agent::ContinueThread",
-      "super-ctrl-b": "agent::ToggleBurnMode",
-      "alt-enter": "agent::ContinueWithBurnMode"
+      "alt-enter": "agent::ContinueWithBurnMode",
+      "ctrl-alt-b": "agent::ToggleBurnMode"
     }
   },
   {
@@ -491,25 +490,11 @@
       "ctrl-k r": "editor::RevealInFileManager",
       "ctrl-k p": "editor::CopyPath",
       "ctrl-\\": "pane::SplitRight",
+      "ctrl-k v": "markdown::OpenPreviewToTheSide",
+      "ctrl-shift-v": "markdown::OpenPreview",
       "ctrl-alt-shift-c": "editor::DisplayCursorNames",
       "alt-.": "editor::GoToHunk",
       "alt-,": "editor::GoToPreviousHunk"
-    }
-  },
-  {
-    "context": "Editor && extension == md",
-    "use_key_equivalents": true,
-    "bindings": {
-      "ctrl-k v": "markdown::OpenPreviewToTheSide",
-      "ctrl-shift-v": "markdown::OpenPreview"
-    }
-  },
-  {
-    "context": "Editor && extension == svg",
-    "use_key_equivalents": true,
-    "bindings": {
-      "ctrl-k v": "svg::OpenPreviewToTheSide",
-      "ctrl-shift-v": "svg::OpenPreview"
     }
   },
   {
@@ -909,10 +894,7 @@
       "right": "variable_list::ExpandSelectedEntry",
       "enter": "variable_list::EditVariable",
       "ctrl-c": "variable_list::CopyVariableValue",
-      "ctrl-alt-c": "variable_list::CopyVariableName",
-      "delete": "variable_list::RemoveWatch",
-      "backspace": "variable_list::RemoveWatch",
-      "alt-enter": "variable_list::AddWatch"
+      "ctrl-alt-c": "variable_list::CopyVariableName"
     }
   },
   {
@@ -960,7 +942,7 @@
     }
   },
   {
-    "context": "FileFinder || (FileFinder > Picker > Editor)",
+    "context": "FileFinder",
     "bindings": {
       "ctrl-shift-a": "file_finder::ToggleSplitMenu",
       "ctrl-shift-i": "file_finder::ToggleFilterMenu"
@@ -1055,8 +1037,7 @@
     "context": "DebugConsole > Editor",
     "use_key_equivalents": true,
     "bindings": {
-      "enter": "menu::Confirm",
-      "alt-enter": "console::WatchExpression"
+      "enter": "menu::Confirm"
     }
   },
   {

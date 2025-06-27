@@ -1,16 +1,20 @@
-use crate::{
-    ThreadId,
-    thread_store::{SerializedThreadMetadata, ThreadStore},
-};
+use std::{collections::VecDeque, path::Path, sync::Arc};
+
 use anyhow::{Context as _, Result};
-use assistant_context::SavedContextMetadata;
+use assistant_context_editor::SavedContextMetadata;
 use chrono::{DateTime, Utc};
-use gpui::{App, AsyncApp, Entity, SharedString, Task, prelude::*};
+use gpui::{AsyncApp, Entity, SharedString, Task, prelude::*};
 use itertools::Itertools;
 use paths::contexts_dir;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, path::Path, sync::Arc, time::Duration};
+use std::time::Duration;
+use ui::App;
 use util::ResultExt as _;
+
+use crate::{
+    thread::ThreadId,
+    thread_store::{SerializedThreadMetadata, ThreadStore},
+};
 
 const MAX_RECENTLY_OPENED_ENTRIES: usize = 6;
 const NAVIGATION_HISTORY_PATH: &str = "agent-navigation-history.json";
@@ -62,7 +66,7 @@ enum SerializedRecentOpen {
 
 pub struct HistoryStore {
     thread_store: Entity<ThreadStore>,
-    context_store: Entity<assistant_context::ContextStore>,
+    context_store: Entity<assistant_context_editor::ContextStore>,
     recently_opened_entries: VecDeque<HistoryEntryId>,
     _subscriptions: Vec<gpui::Subscription>,
     _save_recently_opened_entries_task: Task<()>,
@@ -71,7 +75,7 @@ pub struct HistoryStore {
 impl HistoryStore {
     pub fn new(
         thread_store: Entity<ThreadStore>,
-        context_store: Entity<assistant_context::ContextStore>,
+        context_store: Entity<assistant_context_editor::ContextStore>,
         initial_recent_entries: impl IntoIterator<Item = HistoryEntryId>,
         cx: &mut Context<Self>,
     ) -> Self {

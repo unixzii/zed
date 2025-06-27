@@ -396,10 +396,6 @@ impl ButtonLike {
         Self::new(id).rounding(ButtonLikeRounding::Right)
     }
 
-    pub fn new_rounded_all(id: impl Into<ElementId>) -> Self {
-        Self::new(id).rounding(ButtonLikeRounding::All)
-    }
-
     pub fn opacity(mut self, opacity: f32) -> Self {
         self.base = self.base.opacity(opacity);
         self

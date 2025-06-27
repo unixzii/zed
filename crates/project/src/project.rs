@@ -31,8 +31,6 @@ use git_store::{Repository, RepositoryId};
 pub mod search_history;
 mod yarn;
 
-use dap::inline_value::{InlineValueLocation, VariableLookupKind, VariableScope};
-
 use crate::git_store::GitStore;
 pub use git_store::{
     ConflictRegion, ConflictSet, ConflictSetSnapshot, ConflictSetUpdate,
@@ -47,7 +45,7 @@ use client::{
 };
 use clock::ReplicaId;
 
-use dap::client::DebugAdapterClient;
+use dap::{DapRegistry, client::DebugAdapterClient};
 
 use collections::{BTreeSet, HashMap, HashSet};
 use debounced_delay::DebouncedDelay;
@@ -81,7 +79,7 @@ use language::{
 };
 use lsp::{
     CodeActionKind, CompletionContext, CompletionItemKind, DocumentHighlightKind, InsertTextMode,
-    LanguageServerId, LanguageServerName, LanguageServerSelector, MessageActionItem,
+    LanguageServerId, LanguageServerName, MessageActionItem,
 };
 use lsp_command::*;
 use lsp_store::{CompletionDocumentation, LspFormatTarget, OpenLspBufferHandle};
@@ -113,7 +111,7 @@ use std::{
 
 use task_store::TaskStore;
 use terminals::Terminals;
-use text::{Anchor, BufferId, Point};
+use text::{Anchor, BufferId};
 use toolchain_store::EmptyToolchainStore;
 use util::{
     ResultExt as _,
@@ -251,7 +249,6 @@ enum BufferOrderedMessage {
     LanguageServerUpdate {
         language_server_id: LanguageServerId,
         message: proto::update_language_server::Variant,
-        name: Option<LanguageServerName>,
     },
     Resync,
 }
@@ -1791,7 +1788,7 @@ impl Project {
     pub fn has_open_buffer(&self, path: impl Into<ProjectPath>, cx: &App) -> bool {
         self.buffer_store
             .read(cx)
-            .get_by_path(&path.into())
+            .get_by_path(&path.into(), cx)
             .is_some()
     }
 
@@ -2501,7 +2498,7 @@ impl Project {
         cx: &mut App,
     ) -> OpenLspBufferHandle {
         self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.register_buffer_with_language_servers(&buffer, HashSet::default(), false, cx)
+            lsp_store.register_buffer_with_language_servers(&buffer, false, cx)
         })
     }
 
@@ -2591,7 +2588,7 @@ impl Project {
     }
 
     pub fn get_open_buffer(&self, path: &ProjectPath, cx: &App) -> Option<Entity<Buffer>> {
-        self.buffer_store.read(cx).get_by_path(path)
+        self.buffer_store.read(cx).get_by_path(path, cx)
     }
 
     fn register_buffer(&mut self, buffer: &Entity<Buffer>, cx: &mut Context<Self>) -> Result<()> {
@@ -2641,7 +2638,7 @@ impl Project {
     }
 
     async fn send_buffer_ordered_messages(
-        project: WeakEntity<Self>,
+        this: WeakEntity<Self>,
         rx: UnboundedReceiver<BufferOrderedMessage>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
@@ -2678,7 +2675,7 @@ impl Project {
         let mut changes = rx.ready_chunks(MAX_BATCH_SIZE);
 
         while let Some(changes) = changes.next().await {
-            let is_local = project.read_with(cx, |this, _| this.is_local())?;
+            let is_local = this.read_with(cx, |this, _| this.is_local())?;
 
             for change in changes {
                 match change {
@@ -2698,7 +2695,7 @@ impl Project {
 
                     BufferOrderedMessage::Resync => {
                         operations_by_buffer_id.clear();
-                        if project
+                        if this
                             .update(cx, |this, cx| this.synchronize_remote_buffers(cx))?
                             .await
                             .is_ok()
@@ -2710,10 +2707,9 @@ impl Project {
                     BufferOrderedMessage::LanguageServerUpdate {
                         language_server_id,
                         message,
-                        name,
                     } => {
                         flush_operations(
-                            &project,
+                            &this,
                             &mut operations_by_buffer_id,
                             &mut needs_resync_with_host,
                             is_local,
@@ -2721,14 +2717,12 @@ impl Project {
                         )
                         .await?;
 
-                        project.read_with(cx, |project, _| {
-                            if let Some(project_id) = project.remote_id() {
-                                project
-                                    .client
+                        this.read_with(cx, |this, _| {
+                            if let Some(project_id) = this.remote_id() {
+                                this.client
                                     .send(proto::UpdateLanguageServer {
                                         project_id,
-                                        server_name: name.map(|name| String::from(name.0)),
-                                        language_server_id: language_server_id.to_proto(),
+                                        language_server_id: language_server_id.0 as u64,
                                         variant: Some(message),
                                     })
                                     .log_err();
@@ -2739,7 +2733,7 @@ impl Project {
             }
 
             flush_operations(
-                &project,
+                &this,
                 &mut operations_by_buffer_id,
                 &mut needs_resync_with_host,
                 is_local,
@@ -2860,14 +2854,12 @@ impl Project {
             LspStoreEvent::LanguageServerUpdate {
                 language_server_id,
                 message,
-                name,
             } => {
                 if self.is_local() {
                     self.enqueue_buffer_ordered_message(
                         BufferOrderedMessage::LanguageServerUpdate {
                             language_server_id: *language_server_id,
                             message: message.clone(),
-                            name: name.clone(),
                         },
                     )
                     .ok();
@@ -3146,22 +3138,20 @@ impl Project {
     pub fn restart_language_servers_for_buffers(
         &mut self,
         buffers: Vec<Entity<Buffer>>,
-        only_restart_servers: HashSet<LanguageServerSelector>,
         cx: &mut Context<Self>,
     ) {
         self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.restart_language_servers_for_buffers(buffers, only_restart_servers, cx)
+            lsp_store.restart_language_servers_for_buffers(buffers, cx)
         })
     }
 
     pub fn stop_language_servers_for_buffers(
         &mut self,
         buffers: Vec<Entity<Buffer>>,
-        also_restart_servers: HashSet<LanguageServerSelector>,
         cx: &mut Context<Self>,
     ) {
         self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.stop_language_servers_for_buffers(buffers, also_restart_servers, cx)
+            lsp_store.stop_language_servers_for_buffers(buffers, cx)
         })
     }
 
@@ -3677,15 +3667,35 @@ impl Project {
         range: Range<text::Anchor>,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<Vec<InlayHint>>> {
+        let language_name = buffer_handle
+            .read(cx)
+            .language()
+            .map(|language| language.name().to_string());
+
+        let Some(inline_value_provider) = language_name
+            .and_then(|language| DapRegistry::global(cx).inline_value_provider(&language))
+        else {
+            return Task::ready(Err(anyhow::anyhow!("Inline value provider not found")));
+        };
+
         let snapshot = buffer_handle.read(cx).snapshot();
 
-        let captures = snapshot.debug_variables_query(Anchor::MIN..range.end);
+        let Some(root_node) = snapshot.syntax_root_ancestor(range.end) else {
+            return Task::ready(Ok(vec![]));
+        };
 
         let row = snapshot
             .summary_for_anchor::<text::PointUtf16>(&range.end)
             .row as usize;
 
-        let inline_value_locations = provide_inline_values(captures, &snapshot, row);
+        let inline_value_locations = inline_value_provider.provide(
+            root_node,
+            snapshot
+                .text_for_range(Anchor::MIN..range.end)
+                .collect::<String>()
+                .as_str(),
+            row,
+        );
 
         let stack_frame_id = active_stack_frame.stack_frame_id;
         cx.spawn(async move |this, cx| {
@@ -5366,70 +5376,4 @@ fn proto_to_prompt(level: proto::language_server_prompt_request::Level) -> gpui:
         proto::language_server_prompt_request::Level::Warning(_) => gpui::PromptLevel::Warning,
         proto::language_server_prompt_request::Level::Critical(_) => gpui::PromptLevel::Critical,
     }
-}
-
-fn provide_inline_values(
-    captures: impl Iterator<Item = (Range<usize>, language::DebuggerTextObject)>,
-    snapshot: &language::BufferSnapshot,
-    max_row: usize,
-) -> Vec<InlineValueLocation> {
-    let mut variables = Vec::new();
-    let mut variable_position = HashSet::default();
-    let mut scopes = Vec::new();
-
-    let active_debug_line_offset = snapshot.point_to_offset(Point::new(max_row as u32, 0));
-
-    for (capture_range, capture_kind) in captures {
-        match capture_kind {
-            language::DebuggerTextObject::Variable => {
-                let variable_name = snapshot
-                    .text_for_range(capture_range.clone())
-                    .collect::<String>();
-                let point = snapshot.offset_to_point(capture_range.end);
-
-                while scopes.last().map_or(false, |scope: &Range<_>| {
-                    !scope.contains(&capture_range.start)
-                }) {
-                    scopes.pop();
-                }
-
-                if point.row as usize > max_row {
-                    break;
-                }
-
-                let scope = if scopes
-                    .last()
-                    .map_or(true, |scope| !scope.contains(&active_debug_line_offset))
-                {
-                    VariableScope::Global
-                } else {
-                    VariableScope::Local
-                };
-
-                if variable_position.insert(capture_range.end) {
-                    variables.push(InlineValueLocation {
-                        variable_name,
-                        scope,
-                        lookup: VariableLookupKind::Variable,
-                        row: point.row as usize,
-                        column: point.column as usize,
-                    });
-                }
-            }
-            language::DebuggerTextObject::Scope => {
-                while scopes.last().map_or_else(
-                    || false,
-                    |scope: &Range<usize>| {
-                        !(scope.contains(&capture_range.start)
-                            && scope.contains(&capture_range.end))
-                    },
-                ) {
-                    scopes.pop();
-                }
-                scopes.push(capture_range);
-            }
-        }
-    }
-
-    variables
 }

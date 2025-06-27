@@ -2,13 +2,12 @@
 resolver = "2"
 members = [
     "crates/activity_indicator",
-    "crates/agent_ui",
     "crates/agent",
     "crates/agent_settings",
     "crates/anthropic",
     "crates/askpass",
     "crates/assets",
-    "crates/assistant_context",
+    "crates/assistant_context_editor",
     "crates/assistant_slash_command",
     "crates/assistant_slash_commands",
     "crates/assistant_tool",
@@ -66,7 +65,6 @@ members = [
     "crates/gpui",
     "crates/gpui_macros",
     "crates/gpui_tokio",
-
     "crates/html_to_markdown",
     "crates/http_client",
     "crates/http_client_tls",
@@ -95,7 +93,6 @@ members = [
     "crates/markdown_preview",
     "crates/media",
     "crates/menu",
-    "crates/svg_preview",
     "crates/migrator",
     "crates/mistral",
     "crates/multi_buffer",
@@ -217,13 +214,12 @@ edition = "2024"
 
 activity_indicator = { path = "crates/activity_indicator" }
 agent = { path = "crates/agent" }
-agent_ui = { path = "crates/agent_ui" }
 agent_settings = { path = "crates/agent_settings" }
 ai = { path = "crates/ai" }
 anthropic = { path = "crates/anthropic" }
 askpass = { path = "crates/askpass" }
 assets = { path = "crates/assets" }
-assistant_context = { path = "crates/assistant_context" }
+assistant_context_editor = { path = "crates/assistant_context_editor" }
 assistant_slash_command = { path = "crates/assistant_slash_command" }
 assistant_slash_commands = { path = "crates/assistant_slash_commands" }
 assistant_tool = { path = "crates/assistant_tool" }
@@ -305,7 +301,6 @@ lmstudio = { path = "crates/lmstudio" }
 lsp = { path = "crates/lsp" }
 markdown = { path = "crates/markdown" }
 markdown_preview = { path = "crates/markdown_preview" }
-svg_preview = { path = "crates/svg_preview" }
 media = { path = "crates/media" }
 menu = { path = "crates/menu" }
 migrator = { path = "crates/migrator" }
@@ -381,7 +376,6 @@ util_macros = { path = "crates/util_macros" }
 vercel = { path = "crates/vercel" }
 vim = { path = "crates/vim" }
 vim_mode_setting = { path = "crates/vim_mode_setting" }
-
 watch = { path = "crates/watch" }
 web_search = { path = "crates/web_search" }
 web_search_providers = { path = "crates/web_search_providers" }
@@ -461,6 +455,7 @@ futures-batch = "0.6.1"
 futures-lite = "1.13"
 git2 = { version = "0.20.1", default-features = false }
 globset = "0.4"
+hashbrown = "0.15.3"
 handlebars = "4.3"
 heck = "0.5"
 heed = { version = "0.21.0", features = ["read-txn-no-tls"] }
@@ -488,6 +483,7 @@ log = { version = "0.4.16", features = ["kv_unstable_serde", "serde"] }
 lsp-types = { git = "https://github.com/zed-industries/lsp-types", rev = "c9c189f1c5dd53c624a419ce35bc77ad6a908d18" }
 markup5ever_rcdom = "0.3.0"
 metal = "0.29"
+mlua = { version = "0.10", features = ["lua54", "vendored", "async", "send"] }
 moka = { version = "0.12.10", features = ["sync"] }
 naga = { version = "25.0", features = ["wgsl-in"] }
 nanoid = "0.4"
@@ -522,6 +518,7 @@ rand = "0.8.5"
 rayon = "1.8"
 ref-cast = "1.0.24"
 regex = "1.5"
+repair_json = "0.1.0"
 reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "951c770a32f1998d6e999cef3e59e0013e6c4415", default-features = false, features = [
     "charset",
     "http2",
@@ -553,6 +550,7 @@ serde_repr = "0.1"
 sha2 = "0.10"
 shellexpand = "2.1.0"
 shlex = "1.3.0"
+signal-hook = "0.3.17"
 simplelog = "0.12.2"
 smallvec = { version = "1.6", features = ["union"] }
 smol = "2.0"
@@ -597,7 +595,7 @@ tree-sitter-html = "0.23"
 tree-sitter-jsdoc = "0.23"
 tree-sitter-json = "0.24"
 tree-sitter-md = { git = "https://github.com/tree-sitter-grammars/tree-sitter-markdown", rev = "9a23c1a96c0513d8fc6520972beedd419a973539" }
-tree-sitter-python = { git = "https://github.com/zed-industries/tree-sitter-python", rev = "218fcbf3fda3d029225f3dec005cb497d111b35e" }
+tree-sitter-python = "0.23"
 tree-sitter-regex = "0.24"
 tree-sitter-ruby = "0.23"
 tree-sitter-rust = "0.24"
