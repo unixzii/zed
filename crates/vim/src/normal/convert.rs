@@ -220,9 +220,7 @@ impl Vim {
                         }
                         ranges.push(start..end);
 
-                        if end.column == snapshot.line_len(MultiBufferRow(end.row))
-                            && end.column > 0
-                        {
+                        if end.column == snapshot.line_len(MultiBufferRow(end.row)) {
                             end = snapshot.clip_point(end - Point::new(0, 1), Bias::Left);
                         }
                         cursor_positions.push(end..end)

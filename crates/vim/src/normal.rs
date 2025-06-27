@@ -24,13 +24,13 @@ use crate::{
 };
 use collections::BTreeSet;
 use convert::ConvertTarget;
+use editor::Anchor;
 use editor::Bias;
 use editor::Editor;
 use editor::scroll::Autoscroll;
-use editor::{Anchor, SelectionEffects};
 use editor::{display_map::ToDisplayPoint, movement};
 use gpui::{Context, Window, actions};
-use language::{Point, SelectionGoal};
+use language::{Point, SelectionGoal, ToPoint};
 use log::error;
 use multi_buffer::MultiBufferRow;
 
@@ -358,18 +358,13 @@ impl Vim {
     ) {
         self.update_editor(window, cx, |_, editor, window, cx| {
             let text_layout_details = editor.text_layout_details(window);
-            editor.change_selections(
-                SelectionEffects::default().nav_history(motion.push_to_jump_list()),
-                window,
-                cx,
-                |s| {
-                    s.move_cursors_with(|map, cursor, goal| {
-                        motion
-                            .move_point(map, cursor, goal, times, &text_layout_details)
-                            .unwrap_or((cursor, goal))
-                    })
-                },
-            )
+            editor.change_selections(Some(Autoscroll::fit()), window, cx, |s| {
+                s.move_cursors_with(|map, cursor, goal| {
+                    motion
+                        .move_point(map, cursor, goal, times, &text_layout_details)
+                        .unwrap_or((cursor, goal))
+                })
+            })
         });
     }
 
@@ -663,42 +658,38 @@ impl Vim {
         Vim::take_forced_motion(cx);
         self.update_editor(window, cx, |vim, editor, _window, cx| {
             let selection = editor.selections.newest_anchor();
-            let Some((buffer, point, _)) = editor
-                .buffer()
-                .read(cx)
-                .point_to_buffer_point(selection.head(), cx)
-            else {
-                return;
-            };
-            let filename = if let Some(file) = buffer.read(cx).file() {
-                if count.is_some() {
-                    if let Some(local) = file.as_local() {
-                        local.abs_path(cx).to_string_lossy().to_string()
+            if let Some((_, buffer, _)) = editor.active_excerpt(cx) {
+                let filename = if let Some(file) = buffer.read(cx).file() {
+                    if count.is_some() {
+                        if let Some(local) = file.as_local() {
+                            local.abs_path(cx).to_string_lossy().to_string()
+                        } else {
+                            file.full_path(cx).to_string_lossy().to_string()
+                        }
                     } else {
-                        file.full_path(cx).to_string_lossy().to_string()
+                        file.path().to_string_lossy().to_string()
                     }
                 } else {
-                    file.path().to_string_lossy().to_string()
-                }
-            } else {
-                "[No Name]".into()
-            };
-            let buffer = buffer.read(cx);
-            let lines = buffer.max_point().row + 1;
-            let current_line = point.row;
-            let percentage = current_line as f32 / lines as f32;
-            let modified = if buffer.is_dirty() { " [modified]" } else { "" };
-            vim.status_label = Some(
-                format!(
-                    "{}{} {} lines --{:.0}%--",
-                    filename,
-                    modified,
-                    lines,
-                    percentage * 100.0,
-                )
-                .into(),
-            );
-            cx.notify();
+                    "[No Name]".into()
+                };
+                let buffer = buffer.read(cx);
+                let snapshot = buffer.snapshot();
+                let lines = buffer.max_point().row + 1;
+                let current_line = selection.head().text_anchor.to_point(&snapshot).row;
+                let percentage = current_line as f32 / lines as f32;
+                let modified = if buffer.is_dirty() { " [modified]" } else { "" };
+                vim.status_label = Some(
+                    format!(
+                        "{}{} {} lines --{:.0}%--",
+                        filename,
+                        modified,
+                        lines,
+                        percentage * 100.0,
+                    )
+                    .into(),
+                );
+                cx.notify();
+            }
         });
     }
 
@@ -1807,36 +1798,5 @@ mod test {
             The quick brown
             fox jˇumps over
             the lazy dog"});
-    }
-
-    #[gpui::test]
-    async fn test_jump_list(cx: &mut gpui::TestAppContext) {
-        let mut cx = NeovimBackedTestContext::new(cx).await;
-
-        cx.set_shared_state(indoc! {"
-            ˇfn a() { }
-
-
-
-
-
-            fn b() { }
-
-
-
-
-
-            fn b() { }"})
-            .await;
-        cx.simulate_shared_keystrokes("3 }").await;
-        cx.shared_state().await.assert_matches();
-        cx.simulate_shared_keystrokes("ctrl-o").await;
-        cx.shared_state().await.assert_matches();
-        cx.simulate_shared_keystrokes("ctrl-i").await;
-        cx.shared_state().await.assert_matches();
-        cx.simulate_shared_keystrokes("1 1 k").await;
-        cx.shared_state().await.assert_matches();
-        cx.simulate_shared_keystrokes("ctrl-o").await;
-        cx.shared_state().await.assert_matches();
     }
 }

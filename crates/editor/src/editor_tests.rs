@@ -4335,60 +4335,48 @@ async fn test_convert_indentation_to_spaces(cx: &mut TestAppContext) {
     cx.update_editor(|e, window, cx| {
         e.convert_indentation_to_spaces(&ConvertIndentationToSpaces, window, cx);
     });
-    cx.assert_editor_state(
-        indoc! {"
-            «
-            abc                 // No indentation
-               abc              // 1 tab
-                  abc          // 2 tabs
-                abc             // Tab followed by space
-               abc              // Space followed by tab (3 spaces should be the result)
-                           abc   // Mixed indentation (tab conversion depends on the column)
-               abc         // Already space indented
-               ·
-               abc\tdef          // Only the leading tab is manipulatedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
+    cx.assert_editor_state(indoc! {"
+        «
+        abc                 // No indentation
+           abc              // 1 tab
+              abc          // 2 tabs
+            abc             // Tab followed by space
+           abc              // Space followed by tab (3 spaces should be the result)
+                       abc   // Mixed indentation (tab conversion depends on the column)
+           abc         // Already space indented
+           
+           abc\tdef          // Only the leading tab is manipulatedˇ»
+    "});
 
     // Test on just a few lines, the others should remain unchanged
     // Only lines (3, 5, 10, 11) should change
-    cx.set_state(
-        indoc! {"
-            ·
-            abc                 // No indentation
-            \tabcˇ               // 1 tab
-            \t\tabc             // 2 tabs
-            \t abcˇ              // Tab followed by space
-             \tabc              // Space followed by tab (3 spaces should be the result)
-            \t \t  \t   \tabc   // Mixed indentation (tab conversion depends on the column)
-               abc              // Already space indented
-            «\t
-            \tabc\tdef          // Only the leading tab is manipulatedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
+    cx.set_state(indoc! {"
+        
+        abc                 // No indentation
+        \tabcˇ               // 1 tab
+        \t\tabc             // 2 tabs
+        \t abcˇ              // Tab followed by space
+         \tabc              // Space followed by tab (3 spaces should be the result)
+        \t \t  \t   \tabc   // Mixed indentation (tab conversion depends on the column)
+           abc              // Already space indented
+        «\t
+        \tabc\tdef          // Only the leading tab is manipulatedˇ»
+    "});
     cx.update_editor(|e, window, cx| {
         e.convert_indentation_to_spaces(&ConvertIndentationToSpaces, window, cx);
     });
-    cx.assert_editor_state(
-        indoc! {"
-            ·
-            abc                 // No indentation
-            «   abc               // 1 tabˇ»
-            \t\tabc             // 2 tabs
-            «    abc              // Tab followed by spaceˇ»
-             \tabc              // Space followed by tab (3 spaces should be the result)
-            \t \t  \t   \tabc   // Mixed indentation (tab conversion depends on the column)
-               abc              // Already space indented
-            «   ·
-               abc\tdef          // Only the leading tab is manipulatedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
+    cx.assert_editor_state(indoc! {"
+        
+        abc                 // No indentation
+        «   abc               // 1 tabˇ»
+        \t\tabc             // 2 tabs
+        «    abc              // Tab followed by spaceˇ»
+         \tabc              // Space followed by tab (3 spaces should be the result)
+        \t \t  \t   \tabc   // Mixed indentation (tab conversion depends on the column)
+           abc              // Already space indented
+        «   
+           abc\tdef          // Only the leading tab is manipulatedˇ»
+    "});
 
     // SINGLE SELECTION
     // Ln.1 "«" tests empty lines
@@ -4408,22 +4396,18 @@ async fn test_convert_indentation_to_spaces(cx: &mut TestAppContext) {
     cx.update_editor(|e, window, cx| {
         e.convert_indentation_to_spaces(&ConvertIndentationToSpaces, window, cx);
     });
-    cx.assert_editor_state(
-        indoc! {"
-            «
-            abc                 // No indentation
-               abc               // 1 tab
-                  abc             // 2 tabs
-                abc              // Tab followed by space
-               abc              // Space followed by tab (3 spaces should be the result)
-                           abc   // Mixed indentation (tab conversion depends on the column)
-               abc              // Already space indented
-               ·
-               abc\tdef          // Only the leading tab is manipulatedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
+    cx.assert_editor_state(indoc! {"
+        «
+        abc                 // No indentation
+           abc               // 1 tab
+              abc             // 2 tabs
+            abc              // Tab followed by space
+           abc              // Space followed by tab (3 spaces should be the result)
+                       abc   // Mixed indentation (tab conversion depends on the column)
+           abc              // Already space indented
+           
+           abc\tdef          // Only the leading tab is manipulatedˇ»
+    "});
 }
 
 #[gpui::test]
@@ -4471,47 +4455,39 @@ async fn test_convert_indentation_to_tabs(cx: &mut TestAppContext) {
 
     // Test on just a few lines, the other should remain unchanged
     // Only lines (4, 8, 11, 12) should change
-    cx.set_state(
-        indoc! {"
-            ·
-            abc                 // No indentation
-             abc                // 1 space (< 3 so dont convert)
-              abc               // 2 spaces (< 3 so dont convert)
-            «   abc              // 3 spaces (convert)ˇ»
-                 abc            // 5 spaces (1 tab + 2 spaces)
-            \t\t\tabc           // Already tab indented
-            \t abc              // Tab followed by space
-             \tabc      ˇ        // Space followed by tab (should be consumed due to tab)
-               \t\t  \tabc      // Mixed indentation
-            \t \t  \t   \tabc   // Mixed indentation
-               \t  \tˇ
-            «   abc   \t         // Only the leading spaces should be convertedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
+    cx.set_state(indoc! {"
+        
+        abc                 // No indentation
+         abc                // 1 space (< 3 so dont convert)
+          abc               // 2 spaces (< 3 so dont convert)
+        «   abc              // 3 spaces (convert)ˇ»
+             abc            // 5 spaces (1 tab + 2 spaces)
+        \t\t\tabc           // Already tab indented
+        \t abc              // Tab followed by space
+         \tabc      ˇ        // Space followed by tab (should be consumed due to tab)
+           \t\t  \tabc      // Mixed indentation
+        \t \t  \t   \tabc   // Mixed indentation
+           \t  \tˇ
+        «   abc   \t         // Only the leading spaces should be convertedˇ»
+    "});
     cx.update_editor(|e, window, cx| {
         e.convert_indentation_to_tabs(&ConvertIndentationToTabs, window, cx);
     });
-    cx.assert_editor_state(
-        indoc! {"
-            ·
-            abc                 // No indentation
-             abc                // 1 space (< 3 so dont convert)
-              abc               // 2 spaces (< 3 so dont convert)
-            «\tabc              // 3 spaces (convert)ˇ»
-                 abc            // 5 spaces (1 tab + 2 spaces)
-            \t\t\tabc           // Already tab indented
-            \t abc              // Tab followed by space
-            «\tabc              // Space followed by tab (should be consumed due to tab)ˇ»
-               \t\t  \tabc      // Mixed indentation
-            \t \t  \t   \tabc   // Mixed indentation
-            «\t\t\t
-            \tabc   \t         // Only the leading spaces should be convertedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
+    cx.assert_editor_state(indoc! {"
+        
+        abc                 // No indentation
+         abc                // 1 space (< 3 so dont convert)
+          abc               // 2 spaces (< 3 so dont convert)
+        «\tabc              // 3 spaces (convert)ˇ»
+             abc            // 5 spaces (1 tab + 2 spaces)
+        \t\t\tabc           // Already tab indented
+        \t abc              // Tab followed by space
+        «\tabc              // Space followed by tab (should be consumed due to tab)ˇ»
+           \t\t  \tabc      // Mixed indentation
+        \t \t  \t   \tabc   // Mixed indentation
+        «\t\t\t
+        \tabc   \t         // Only the leading spaces should be convertedˇ»
+    "});
 
     // SINGLE SELECTION
     // Ln.1 "«" tests empty lines
@@ -21795,9 +21771,9 @@ async fn test_tab_in_leading_whitespace_auto_indents_for_python(cx: &mut TestApp
     cx.set_state(indoc! {"
         def main():
         ˇ    try:
-        ˇ        fetch()
+        ˇ       fetch()
         ˇ    except ValueError:
-        ˇ        handle_error()
+        ˇ       handle_error()
         ˇ    else:
         ˇ        match value:
         ˇ            case _:
@@ -21925,101 +21901,74 @@ async fn test_outdent_after_input_for_python(cx: &mut TestAppContext) {
             finally:ˇ
     "});
 
-    // test `else` does not outdents when typed inside `except` block right after for block
-    cx.set_state(indoc! {"
-        def main():
-            try:
-                i = 2
-            except:
-                for i in range(n):
-                    pass
-                ˇ
-    "});
-    cx.update_editor(|editor, window, cx| {
-        editor.handle_input("else:", window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        def main():
-            try:
-                i = 2
-            except:
-                for i in range(n):
-                    pass
-                else:ˇ
-    "});
+    // TODO: test `except` auto outdents when typed inside `try` block right after for block
+    // cx.set_state(indoc! {"
+    //     def main():
+    //         try:
+    //             for i in range(n):
+    //                 pass
+    //             ˇ
+    // "});
+    // cx.update_editor(|editor, window, cx| {
+    //     editor.handle_input("except:", window, cx);
+    // });
+    // cx.assert_editor_state(indoc! {"
+    //     def main():
+    //         try:
+    //             for i in range(n):
+    //                 pass
+    //         except:ˇ
+    // "});
 
-    // test `finally` auto outdents when typed inside `else` block right after for block
-    cx.set_state(indoc! {"
-        def main():
-            try:
-                i = 2
-            except:
-                j = 2
-            else:
-                for i in range(n):
-                    pass
-                ˇ
-    "});
-    cx.update_editor(|editor, window, cx| {
-        editor.handle_input("finally:", window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        def main():
-            try:
-                i = 2
-            except:
-                j = 2
-            else:
-                for i in range(n):
-                    pass
-            finally:ˇ
-    "});
+    // TODO: test `else` auto outdents when typed inside `except` block right after for block
+    // cx.set_state(indoc! {"
+    //     def main():
+    //         try:
+    //             i = 2
+    //         except:
+    //             for i in range(n):
+    //                 pass
+    //             ˇ
+    // "});
+    // cx.update_editor(|editor, window, cx| {
+    //     editor.handle_input("else:", window, cx);
+    // });
+    // cx.assert_editor_state(indoc! {"
+    //     def main():
+    //         try:
+    //             i = 2
+    //         except:
+    //             for i in range(n):
+    //                 pass
+    //         else:ˇ
+    // "});
 
-    // test `except` outdents to inner "try" block
-    cx.set_state(indoc! {"
-        def main():
-            try:
-                i = 2
-                if i == 2:
-                    try:
-                        i = 3
-                        ˇ
-    "});
-    cx.update_editor(|editor, window, cx| {
-        editor.handle_input("except:", window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        def main():
-            try:
-                i = 2
-                if i == 2:
-                    try:
-                        i = 3
-                    except:ˇ
-    "});
-
-    // test `except` outdents to outer "try" block
-    cx.set_state(indoc! {"
-        def main():
-            try:
-                i = 2
-                if i == 2:
-                    try:
-                        i = 3
-                ˇ
-    "});
-    cx.update_editor(|editor, window, cx| {
-        editor.handle_input("except:", window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        def main():
-            try:
-                i = 2
-                if i == 2:
-                    try:
-                        i = 3
-            except:ˇ
-    "});
+    // TODO: test `finally` auto outdents when typed inside `else` block right after for block
+    // cx.set_state(indoc! {"
+    //     def main():
+    //         try:
+    //             i = 2
+    //         except:
+    //             j = 2
+    //         else:
+    //             for i in range(n):
+    //                 pass
+    //             ˇ
+    // "});
+    // cx.update_editor(|editor, window, cx| {
+    //     editor.handle_input("finally:", window, cx);
+    // });
+    // cx.assert_editor_state(indoc! {"
+    //     def main():
+    //         try:
+    //             i = 2
+    //         except:
+    //             j = 2
+    //         else:
+    //             for i in range(n):
+    //                 pass
+    //         finally:ˇ
+    // "});
 
     // test `else` stays at correct indent when typed after `for` block
     cx.set_state(indoc! {"
@@ -22767,24 +22716,6 @@ async fn test_mtime_and_document_colors(cx: &mut TestAppContext) {
             extract_color_inlays(editor, cx),
             "Should have an initial inlay"
         );
-    });
-}
-
-#[gpui::test]
-async fn test_newline_replacement_in_single_line(cx: &mut TestAppContext) {
-    init_test(cx, |_| {});
-    let (editor, cx) = cx.add_window_view(Editor::single_line);
-    editor.update_in(cx, |editor, window, cx| {
-        editor.set_text("oops\n\nwow\n", window, cx)
-    });
-    cx.run_until_parked();
-    editor.update(cx, |editor, cx| {
-        assert_eq!(editor.display_text(cx), "oops⋯⋯wow⋯");
-    });
-    editor.update(cx, |editor, cx| editor.edit([(3..5, "")], cx));
-    cx.run_until_parked();
-    editor.update(cx, |editor, cx| {
-        assert_eq!(editor.display_text(cx), "oop⋯wow⋯");
     });
 }
 

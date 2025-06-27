@@ -154,31 +154,6 @@ pub enum StripeBillingAddressCollection {
     Required,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct StripeCustomerUpdate {
-    pub address: Option<StripeCustomerUpdateAddress>,
-    pub name: Option<StripeCustomerUpdateName>,
-    pub shipping: Option<StripeCustomerUpdateShipping>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum StripeCustomerUpdateAddress {
-    Auto,
-    Never,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum StripeCustomerUpdateName {
-    Auto,
-    Never,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum StripeCustomerUpdateShipping {
-    Auto,
-    Never,
-}
-
 #[derive(Debug, Default)]
 pub struct StripeCreateCheckoutSessionParams<'a> {
     pub customer: Option<&'a StripeCustomerId>,
@@ -189,7 +164,6 @@ pub struct StripeCreateCheckoutSessionParams<'a> {
     pub subscription_data: Option<StripeCreateCheckoutSessionSubscriptionData>,
     pub success_url: Option<&'a str>,
     pub billing_address_collection: Option<StripeBillingAddressCollection>,
-    pub customer_update: Option<StripeCustomerUpdate>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

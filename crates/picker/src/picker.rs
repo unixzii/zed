@@ -205,7 +205,6 @@ pub trait PickerDelegate: Sized + 'static {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem>;
-
     fn render_header(
         &self,
         _window: &mut Window,
@@ -213,7 +212,6 @@ pub trait PickerDelegate: Sized + 'static {
     ) -> Option<AnyElement> {
         None
     }
-
     fn render_footer(
         &self,
         _window: &mut Window,

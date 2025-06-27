@@ -1143,7 +1143,6 @@ pub struct Editor {
     drag_and_drop_selection_enabled: bool,
     next_color_inlay_id: usize,
     colors: Option<LspColorData>,
-    folding_newlines: Task<()>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
@@ -1216,12 +1215,6 @@ impl GutterDimensions {
     }
 }
 
-struct CharacterDimensions {
-    em_width: Pixels,
-    em_advance: Pixels,
-    line_height: Pixels,
-}
-
 #[derive(Debug)]
 pub struct RemoteSelection {
     pub replica_id: ReplicaId,
@@ -1263,7 +1256,7 @@ impl Default for SelectionHistoryMode {
 
 #[derive(Debug)]
 pub struct SelectionEffects {
-    nav_history: Option<bool>,
+    nav_history: bool,
     completions: bool,
     scroll: Option<Autoscroll>,
 }
@@ -1271,7 +1264,7 @@ pub struct SelectionEffects {
 impl Default for SelectionEffects {
     fn default() -> Self {
         Self {
-            nav_history: None,
+            nav_history: true,
             completions: true,
             scroll: Some(Autoscroll::fit()),
         }
@@ -1301,7 +1294,7 @@ impl SelectionEffects {
 
     pub fn nav_history(self, nav_history: bool) -> Self {
         Self {
-            nav_history: Some(nav_history),
+            nav_history,
             ..self
         }
     }
@@ -2160,7 +2153,6 @@ impl Editor {
             mode,
             selection_drag_state: SelectionDragState::None,
             drag_and_drop_selection_enabled: EditorSettings::get_global(cx).drag_and_drop_selection,
-            folding_newlines: Task::ready(()),
         };
         if let Some(breakpoints) = editor.breakpoint_store.as_ref() {
             editor
@@ -2917,12 +2909,11 @@ impl Editor {
         let new_cursor_position = newest_selection.head();
         let selection_start = newest_selection.start;
 
-        if effects.nav_history.is_none() || effects.nav_history == Some(true) {
+        if effects.nav_history {
             self.push_to_nav_history(
                 *old_cursor_position,
                 Some(new_cursor_position.to_point(buffer)),
                 false,
-                effects.nav_history == Some(true),
                 cx,
             );
         }
@@ -3173,7 +3164,7 @@ impl Editor {
         if let Some(state) = &mut self.deferred_selection_effects_state {
             state.effects.scroll = effects.scroll.or(state.effects.scroll);
             state.effects.completions = effects.completions;
-            state.effects.nav_history = effects.nav_history.or(state.effects.nav_history);
+            state.effects.nav_history |= effects.nav_history;
             let (changed, result) = self.selections.change_with(cx, change);
             state.changed |= changed;
             return result;
@@ -3906,10 +3897,8 @@ impl Editor {
                             bracket_pair_matching_end = Some(pair.clone());
                         }
                     }
-                    if let Some(end) = bracket_pair_matching_end
-                        && bracket_pair.is_none()
-                    {
-                        bracket_pair = Some(end);
+                    if bracket_pair.is_none() && bracket_pair_matching_end.is_some() {
+                        bracket_pair = Some(bracket_pair_matching_end.unwrap());
                         is_bracket_pair_end = true;
                     }
                 }
@@ -5987,23 +5976,15 @@ impl Editor {
 
             editor.update_in(cx, |editor, window, cx| {
                 crate::hover_popover::hide_hover(editor, cx);
-                let actions = CodeActionContents::new(
-                    resolved_tasks,
-                    code_actions,
-                    debug_scenarios,
-                    task_context.unwrap_or_default(),
-                );
-
-                // Don't show the menu if there are no actions available
-                if actions.is_empty() {
-                    cx.notify();
-                    return Task::ready(Ok(()));
-                }
-
                 *editor.context_menu.borrow_mut() =
                     Some(CodeContextMenu::CodeActions(CodeActionsMenu {
                         buffer,
-                        actions,
+                        actions: CodeActionContents::new(
+                            resolved_tasks,
+                            code_actions,
+                            debug_scenarios,
+                            task_context.unwrap_or_default(),
+                        ),
                         selected_item: Default::default(),
                         scroll_handle: UniformListScrollHandle::default(),
                         deployed_from,
@@ -6717,77 +6698,6 @@ impl Editor {
                 })
                 .log_err();
         })
-    }
-
-    fn refresh_single_line_folds(&mut self, window: &mut Window, cx: &mut Context<Editor>) {
-        struct NewlineFold;
-        let type_id = std::any::TypeId::of::<NewlineFold>();
-        if !self.mode.is_single_line() {
-            return;
-        }
-        let snapshot = self.snapshot(window, cx);
-        if snapshot.buffer_snapshot.max_point().row == 0 {
-            return;
-        }
-        let task = cx.background_spawn(async move {
-            let new_newlines = snapshot
-                .buffer_chars_at(0)
-                .filter_map(|(c, i)| {
-                    if c == '\n' {
-                        Some(
-                            snapshot.buffer_snapshot.anchor_after(i)
-                                ..snapshot.buffer_snapshot.anchor_before(i + 1),
-                        )
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            let existing_newlines = snapshot
-                .folds_in_range(0..snapshot.buffer_snapshot.len())
-                .filter_map(|fold| {
-                    if fold.placeholder.type_tag == Some(type_id) {
-                        Some(fold.range.start..fold.range.end)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            (new_newlines, existing_newlines)
-        });
-        self.folding_newlines = cx.spawn(async move |this, cx| {
-            let (new_newlines, existing_newlines) = task.await;
-            if new_newlines == existing_newlines {
-                return;
-            }
-            let placeholder = FoldPlaceholder {
-                render: Arc::new(move |_, _, cx| {
-                    div()
-                        .bg(cx.theme().status().hint_background)
-                        .border_b_1()
-                        .size_full()
-                        .font(ThemeSettings::get_global(cx).buffer_font.clone())
-                        .border_color(cx.theme().status().hint)
-                        .child("\\n")
-                        .into_any()
-                }),
-                constrain_width: false,
-                merge_adjacent: false,
-                type_tag: Some(type_id),
-            };
-            let creases = new_newlines
-                .into_iter()
-                .map(|range| Crease::simple(range, placeholder.clone()))
-                .collect();
-            this.update(cx, |this, cx| {
-                this.display_map.update(cx, |display_map, cx| {
-                    display_map.remove_folds_with_type(existing_newlines, type_id, cx);
-                    display_map.fold(creases, cx);
-                });
-            })
-            .ok();
-        });
     }
 
     fn refresh_selected_text_highlights(
@@ -13177,13 +13087,7 @@ impl Editor {
     }
 
     pub fn create_nav_history_entry(&mut self, cx: &mut Context<Self>) {
-        self.push_to_nav_history(
-            self.selections.newest_anchor().head(),
-            None,
-            false,
-            true,
-            cx,
-        );
+        self.push_to_nav_history(self.selections.newest_anchor().head(), None, false, cx);
     }
 
     fn push_to_nav_history(
@@ -13191,7 +13095,6 @@ impl Editor {
         cursor_anchor: Anchor,
         new_position: Option<Point>,
         is_deactivate: bool,
-        always: bool,
         cx: &mut Context<Self>,
     ) {
         if let Some(nav_history) = self.nav_history.as_mut() {
@@ -13203,7 +13106,7 @@ impl Editor {
 
             if let Some(new_position) = new_position {
                 let row_delta = (new_position.row as i64 - cursor_position.row as i64).abs();
-                if row_delta == 0 || (row_delta < MIN_NAVIGATION_HISTORY_ROW_DELTA && !always) {
+                if row_delta < MIN_NAVIGATION_HISTORY_ROW_DELTA {
                     return;
                 }
             }
@@ -13470,12 +13373,7 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Editor>,
     ) {
-        self.unfold_ranges(
-            std::slice::from_ref(&range),
-            false,
-            auto_scroll.is_some(),
-            cx,
-        );
+        self.unfold_ranges(&[range.clone()], false, auto_scroll.is_some(), cx);
         self.change_selections(auto_scroll, window, cx, |s| {
             if replace_newest {
                 s.delete(s.newest_anchor().id);
@@ -14875,12 +14773,9 @@ impl Editor {
         let Some(end) = multibuffer.buffer_point_to_anchor(&buffer, range.end, cx) else {
             return;
         };
-        self.change_selections(
-            SelectionEffects::default().nav_history(true),
-            window,
-            cx,
-            |s| s.select_anchor_ranges([start..end]),
-        );
+        self.change_selections(Some(Autoscroll::center()), window, cx, |s| {
+            s.select_anchor_ranges([start..end])
+        });
     }
 
     pub fn go_to_diagnostic(
@@ -16261,7 +16156,7 @@ impl Editor {
         })
     }
 
-    pub fn restart_language_server(
+    fn restart_language_server(
         &mut self,
         _: &RestartLanguageServer,
         _: &mut Window,
@@ -16272,7 +16167,6 @@ impl Editor {
                 project.update(cx, |project, cx| {
                     project.restart_language_servers_for_buffers(
                         multi_buffer.all_buffers().into_iter().collect(),
-                        HashSet::default(),
                         cx,
                     );
                 });
@@ -16280,7 +16174,7 @@ impl Editor {
         }
     }
 
-    pub fn stop_language_server(
+    fn stop_language_server(
         &mut self,
         _: &StopLanguageServer,
         _: &mut Window,
@@ -16291,7 +16185,6 @@ impl Editor {
                 project.update(cx, |project, cx| {
                     project.stop_language_servers_for_buffers(
                         multi_buffer.all_buffers().into_iter().collect(),
-                        HashSet::default(),
                         cx,
                     );
                     cx.emit(project::Event::RefreshInlayHints);
@@ -17171,6 +17064,16 @@ impl Editor {
     ) {
         if creases.is_empty() {
             return;
+        }
+
+        let mut buffers_affected = HashSet::default();
+        let multi_buffer = self.buffer().read(cx);
+        for crease in &creases {
+            if let Some((_, buffer, _)) =
+                multi_buffer.excerpt_containing(crease.range().start.clone(), cx)
+            {
+                buffers_affected.insert(buffer.read(cx).remote_id());
+            };
         }
 
         self.display_map.update(cx, |map, cx| map.fold(creases, cx));
@@ -19498,7 +19401,6 @@ impl Editor {
                 self.refresh_active_diagnostics(cx);
                 self.refresh_code_actions(window, cx);
                 self.refresh_selected_text_highlights(true, window, cx);
-                self.refresh_single_line_folds(window, cx);
                 refresh_matching_bracket_highlights(self, window, cx);
                 if self.has_active_inline_completion() {
                     self.update_visible_inline_completion(window, cx);
@@ -20590,20 +20492,15 @@ impl Editor {
             .and_then(|item| item.to_any_mut()?.downcast_mut::<T>())
     }
 
-    fn character_dimensions(&self, window: &mut Window) -> CharacterDimensions {
+    fn character_size(&self, window: &mut Window) -> gpui::Size<Pixels> {
         let text_layout_details = self.text_layout_details(window);
         let style = &text_layout_details.editor_style;
         let font_id = window.text_system().resolve_font(&style.text.font());
         let font_size = style.text.font_size.to_pixels(window.rem_size());
         let line_height = style.text.line_height_in_pixels(window.rem_size());
         let em_width = window.text_system().em_width(font_id, font_size).unwrap();
-        let em_advance = window.text_system().em_advance(font_id, font_size).unwrap();
 
-        CharacterDimensions {
-            em_width,
-            em_advance,
-            line_height,
-        }
+        gpui::Size::new(em_width, line_height)
     }
 
     pub fn wait_for_diff_to_load(&self) -> Option<Shared<Task<()>>> {
@@ -22617,19 +22514,19 @@ impl EntityInputHandler for Editor {
         cx: &mut Context<Self>,
     ) -> Option<gpui::Bounds<Pixels>> {
         let text_layout_details = self.text_layout_details(window);
-        let CharacterDimensions {
-            em_width,
-            em_advance,
-            line_height,
-        } = self.character_dimensions(window);
+        let gpui::Size {
+            width: em_width,
+            height: line_height,
+        } = self.character_size(window);
 
         let snapshot = self.snapshot(window, cx);
         let scroll_position = snapshot.scroll_position();
-        let scroll_left = scroll_position.x * em_advance;
+        let scroll_left = scroll_position.x * em_width;
 
         let start = OffsetUtf16(range_utf16.start).to_display_point(&snapshot);
         let x = snapshot.x_for_display_point(start, &text_layout_details) - scroll_left
-            + self.gutter_dimensions.full_width();
+            + self.gutter_dimensions.width
+            + self.gutter_dimensions.margin;
         let y = line_height * (start.row().as_f32() - scroll_position.y);
 
         Some(Bounds {

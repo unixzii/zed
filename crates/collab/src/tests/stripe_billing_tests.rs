@@ -8,9 +8,8 @@ use crate::stripe_billing::StripeBilling;
 use crate::stripe_client::{
     FakeStripeClient, StripeBillingAddressCollection, StripeCheckoutSessionMode,
     StripeCheckoutSessionPaymentMethodCollection, StripeCreateCheckoutSessionLineItems,
-    StripeCreateCheckoutSessionSubscriptionData, StripeCustomerId, StripeCustomerUpdate,
-    StripeCustomerUpdateAddress, StripeCustomerUpdateName, StripeMeter, StripeMeterId, StripePrice,
-    StripePriceId, StripePriceRecurring, StripeSubscription, StripeSubscriptionId,
+    StripeCreateCheckoutSessionSubscriptionData, StripeCustomerId, StripeMeter, StripeMeterId,
+    StripePrice, StripePriceId, StripePriceRecurring, StripeSubscription, StripeSubscriptionId,
     StripeSubscriptionItem, StripeSubscriptionItemId, StripeSubscriptionTrialSettings,
     StripeSubscriptionTrialSettingsEndBehavior,
     StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, UpdateSubscriptionItems,
@@ -432,14 +431,6 @@ async fn test_checkout_with_zed_pro() {
             call.billing_address_collection,
             Some(StripeBillingAddressCollection::Required)
         );
-        assert_eq!(
-            call.customer_update,
-            Some(StripeCustomerUpdate {
-                address: Some(StripeCustomerUpdateAddress::Auto),
-                name: Some(StripeCustomerUpdateName::Auto),
-                shipping: None,
-            })
-        );
     }
 }
 
@@ -525,14 +516,6 @@ async fn test_checkout_with_zed_pro_trial() {
             call.billing_address_collection,
             Some(StripeBillingAddressCollection::Required)
         );
-        assert_eq!(
-            call.customer_update,
-            Some(StripeCustomerUpdate {
-                address: Some(StripeCustomerUpdateAddress::Auto),
-                name: Some(StripeCustomerUpdateName::Auto),
-                shipping: None,
-            })
-        );
     }
 
     // Successful checkout with extended trial.
@@ -590,14 +573,6 @@ async fn test_checkout_with_zed_pro_trial() {
         assert_eq!(
             call.billing_address_collection,
             Some(StripeBillingAddressCollection::Required)
-        );
-        assert_eq!(
-            call.customer_update,
-            Some(StripeCustomerUpdate {
-                address: Some(StripeCustomerUpdateAddress::Auto),
-                name: Some(StripeCustomerUpdateName::Auto),
-                shipping: None,
-            })
         );
     }
 }

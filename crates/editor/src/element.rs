@@ -5238,8 +5238,8 @@ impl EditorElement {
                     paint_highlight(range.start, range.end, color, edges);
                 }
 
-                let scroll_left = layout.position_map.snapshot.scroll_position().x
-                    * layout.position_map.em_advance;
+                let scroll_left =
+                    layout.position_map.snapshot.scroll_position().x * layout.position_map.em_width;
 
                 for (wrap_position, active) in layout.wrap_guides.iter() {
                     let x = (layout.position_map.text_hitbox.origin.x
@@ -6676,7 +6676,7 @@ impl EditorElement {
                         let position_map: &PositionMap = &position_map;
 
                         let line_height = position_map.line_height;
-                        let max_glyph_advance = position_map.em_advance;
+                        let max_glyph_width = position_map.em_width;
                         let (delta, axis) = match delta {
                             gpui::ScrollDelta::Pixels(mut pixels) => {
                                 //Trackpad
@@ -6687,15 +6687,15 @@ impl EditorElement {
                             gpui::ScrollDelta::Lines(lines) => {
                                 //Not trackpad
                                 let pixels =
-                                    point(lines.x * max_glyph_advance, lines.y * line_height);
+                                    point(lines.x * max_glyph_width, lines.y * line_height);
                                 (pixels, None)
                             }
                         };
 
                         let current_scroll_position = position_map.snapshot.scroll_position();
-                        let x = (current_scroll_position.x * max_glyph_advance
+                        let x = (current_scroll_position.x * max_glyph_width
                             - (delta.x * scroll_sensitivity))
-                            / max_glyph_advance;
+                            / max_glyph_width;
                         let y = (current_scroll_position.y * line_height
                             - (delta.y * scroll_sensitivity))
                             / line_height;
@@ -8591,7 +8591,7 @@ impl Element for EditorElement {
                                 start_row,
                                 editor_content_width,
                                 scroll_width,
-                                em_advance,
+                                em_width,
                                 &line_layouts,
                                 cx,
                             )

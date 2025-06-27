@@ -4,13 +4,13 @@ use crate::{
     GrammarManifestEntry, RELOAD_DEBOUNCE_DURATION, SchemaVersion,
 };
 use async_compression::futures::bufread::GzipEncoder;
-use collections::{BTreeMap, HashSet};
+use collections::BTreeMap;
 use extension::ExtensionHostProxy;
 use fs::{FakeFs, Fs, RealFs};
 use futures::{AsyncReadExt, StreamExt, io::BufReader};
 use gpui::{AppContext as _, SemanticVersion, TestAppContext};
 use http_client::{FakeHttpClient, Response};
-use language::{BinaryStatus, LanguageMatcher, LanguageRegistry};
+use language::{BinaryStatus, LanguageMatcher, LanguageRegistry, LanguageServerStatusUpdate};
 use lsp::LanguageServerName;
 use node_runtime::NodeRuntime;
 use parking_lot::Mutex;
@@ -720,22 +720,20 @@ async fn test_extension_store_with_test_extension(cx: &mut TestAppContext) {
             status_updates.next().await.unwrap(),
             status_updates.next().await.unwrap(),
             status_updates.next().await.unwrap(),
-            status_updates.next().await.unwrap(),
         ],
         [
             (
                 LanguageServerName::new_static("gleam"),
-                BinaryStatus::Starting
+                LanguageServerStatusUpdate::Binary(BinaryStatus::CheckingForUpdate)
             ),
             (
                 LanguageServerName::new_static("gleam"),
-                BinaryStatus::CheckingForUpdate
+                LanguageServerStatusUpdate::Binary(BinaryStatus::Downloading)
             ),
             (
                 LanguageServerName::new_static("gleam"),
-                BinaryStatus::Downloading
-            ),
-            (LanguageServerName::new_static("gleam"), BinaryStatus::None)
+                LanguageServerStatusUpdate::Binary(BinaryStatus::None)
+            )
         ]
     );
 
@@ -796,7 +794,7 @@ async fn test_extension_store_with_test_extension(cx: &mut TestAppContext) {
 
     // Start a new instance of the language server.
     project.update(cx, |project, cx| {
-        project.restart_language_servers_for_buffers(vec![buffer.clone()], HashSet::default(), cx)
+        project.restart_language_servers_for_buffers(vec![buffer.clone()], cx)
     });
     cx.executor().run_until_parked();
 
@@ -818,7 +816,7 @@ async fn test_extension_store_with_test_extension(cx: &mut TestAppContext) {
 
     cx.executor().run_until_parked();
     project.update(cx, |project, cx| {
-        project.restart_language_servers_for_buffers(vec![buffer.clone()], HashSet::default(), cx)
+        project.restart_language_servers_for_buffers(vec![buffer.clone()], cx)
     });
 
     // The extension re-fetches the latest version of the language server.

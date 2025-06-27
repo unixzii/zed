@@ -1,11 +1,11 @@
 use gpui::{Context, FontWeight, IntoElement, Render, Window};
 use ui::{prelude::*, tooltip_container};
 
-pub struct BurnModeTooltip {
+pub struct MaxModeTooltip {
     selected: bool,
 }
 
-impl BurnModeTooltip {
+impl MaxModeTooltip {
     pub fn new() -> Self {
         Self { selected: false }
     }
@@ -16,7 +16,7 @@ impl BurnModeTooltip {
     }
 }
 
-impl Render for BurnModeTooltip {
+impl Render for MaxModeTooltip {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (icon, color) = if self.selected {
             (IconName::ZedBurnModeOn, Color::Error)

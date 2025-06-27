@@ -432,7 +432,7 @@ mod tests {
             actions!(
                 test_only,
                 [
-                    H, I, J, K, L, M, N, // Don't wrap, test the trailing comma
+                    A, B, C, D, E, F, G, // Don't wrap, test the trailing comma
                 ]
             );
         }
