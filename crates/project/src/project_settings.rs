@@ -49,10 +49,6 @@ pub struct ProjectSettings {
     #[serde(default)]
     pub lsp: HashMap<LanguageServerName, LspSettings>,
 
-    /// Common language server settings.
-    #[serde(default)]
-    pub global_lsp_settings: GlobalLspSettings,
-
     /// Configuration for Debugger-related features
     #[serde(default)]
     pub dap: HashMap<DebugAdapterName, DapSettings>,
@@ -112,16 +108,6 @@ pub enum ContextServerSettings {
         /// are supported.
         settings: serde_json::Value,
     },
-}
-
-/// Common language server settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct GlobalLspSettings {
-    /// Whether to show the LSP servers button in the status bar.
-    ///
-    /// Default: `true`
-    #[serde(default = "default_true")]
-    pub button: bool,
 }
 
 impl ContextServerSettings {
@@ -281,14 +267,6 @@ impl Default for InlineDiagnosticsSettings {
             padding: default_inline_diagnostics_padding(),
             min_column: 0,
             max_severity: None,
-        }
-    }
-}
-
-impl Default for GlobalLspSettings {
-    fn default() -> Self {
-        Self {
-            button: default_true(),
         }
     }
 }

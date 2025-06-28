@@ -691,7 +691,7 @@ fn markdown_style(window: &Window, cx: &App) -> MarkdownStyle {
 
     MarkdownStyle {
         base_text_style: text_style.clone(),
-        selection_background_color: cx.theme().colors().element_selection_background,
+        selection_background_color: cx.theme().players().local().selection,
         ..Default::default()
     }
 }

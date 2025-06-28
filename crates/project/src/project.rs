@@ -81,7 +81,7 @@ use language::{
 };
 use lsp::{
     CodeActionKind, CompletionContext, CompletionItemKind, DocumentHighlightKind, InsertTextMode,
-    LanguageServerId, LanguageServerName, LanguageServerSelector, MessageActionItem,
+    LanguageServerId, LanguageServerName, MessageActionItem,
 };
 use lsp_command::*;
 use lsp_store::{CompletionDocumentation, LspFormatTarget, OpenLspBufferHandle};
@@ -251,7 +251,6 @@ enum BufferOrderedMessage {
     LanguageServerUpdate {
         language_server_id: LanguageServerId,
         message: proto::update_language_server::Variant,
-        name: Option<LanguageServerName>,
     },
     Resync,
 }
@@ -1820,7 +1819,7 @@ impl Project {
     pub fn has_open_buffer(&self, path: impl Into<ProjectPath>, cx: &App) -> bool {
         self.buffer_store
             .read(cx)
-            .get_by_path(&path.into())
+            .get_by_path(&path.into(), cx)
             .is_some()
     }
 
@@ -2530,7 +2529,7 @@ impl Project {
         cx: &mut App,
     ) -> OpenLspBufferHandle {
         self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.register_buffer_with_language_servers(&buffer, HashSet::default(), false, cx)
+            lsp_store.register_buffer_with_language_servers(&buffer, false, cx)
         })
     }
 
@@ -2620,7 +2619,7 @@ impl Project {
     }
 
     pub fn get_open_buffer(&self, path: &ProjectPath, cx: &App) -> Option<Entity<Buffer>> {
-        self.buffer_store.read(cx).get_by_path(path)
+        self.buffer_store.read(cx).get_by_path(path, cx)
     }
 
     fn register_buffer(&mut self, buffer: &Entity<Buffer>, cx: &mut Context<Self>) -> Result<()> {
@@ -2670,7 +2669,7 @@ impl Project {
     }
 
     async fn send_buffer_ordered_messages(
-        project: WeakEntity<Self>,
+        this: WeakEntity<Self>,
         rx: UnboundedReceiver<BufferOrderedMessage>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
@@ -2707,7 +2706,7 @@ impl Project {
         let mut changes = rx.ready_chunks(MAX_BATCH_SIZE);
 
         while let Some(changes) = changes.next().await {
-            let is_local = project.read_with(cx, |this, _| this.is_local())?;
+            let is_local = this.read_with(cx, |this, _| this.is_local())?;
 
             for change in changes {
                 match change {
@@ -2727,7 +2726,7 @@ impl Project {
 
                     BufferOrderedMessage::Resync => {
                         operations_by_buffer_id.clear();
-                        if project
+                        if this
                             .update(cx, |this, cx| this.synchronize_remote_buffers(cx))?
                             .await
                             .is_ok()
@@ -2739,10 +2738,9 @@ impl Project {
                     BufferOrderedMessage::LanguageServerUpdate {
                         language_server_id,
                         message,
-                        name,
                     } => {
                         flush_operations(
-                            &project,
+                            &this,
                             &mut operations_by_buffer_id,
                             &mut needs_resync_with_host,
                             is_local,
@@ -2750,14 +2748,12 @@ impl Project {
                         )
                         .await?;
 
-                        project.read_with(cx, |project, _| {
-                            if let Some(project_id) = project.remote_id() {
-                                project
-                                    .client
+                        this.read_with(cx, |this, _| {
+                            if let Some(project_id) = this.remote_id() {
+                                this.client
                                     .send(proto::UpdateLanguageServer {
                                         project_id,
-                                        server_name: name.map(|name| String::from(name.0)),
-                                        language_server_id: language_server_id.to_proto(),
+                                        language_server_id: language_server_id.0 as u64,
                                         variant: Some(message),
                                     })
                                     .log_err();
@@ -2768,7 +2764,7 @@ impl Project {
             }
 
             flush_operations(
-                &project,
+                &this,
                 &mut operations_by_buffer_id,
                 &mut needs_resync_with_host,
                 is_local,
@@ -2889,14 +2885,12 @@ impl Project {
             LspStoreEvent::LanguageServerUpdate {
                 language_server_id,
                 message,
-                name,
             } => {
                 if self.is_local() {
                     self.enqueue_buffer_ordered_message(
                         BufferOrderedMessage::LanguageServerUpdate {
                             language_server_id: *language_server_id,
                             message: message.clone(),
-                            name: name.clone(),
                         },
                     )
                     .ok();
@@ -3175,22 +3169,20 @@ impl Project {
     pub fn restart_language_servers_for_buffers(
         &mut self,
         buffers: Vec<Entity<Buffer>>,
-        only_restart_servers: HashSet<LanguageServerSelector>,
         cx: &mut Context<Self>,
     ) {
         self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.restart_language_servers_for_buffers(buffers, only_restart_servers, cx)
+            lsp_store.restart_language_servers_for_buffers(buffers, cx)
         })
     }
 
     pub fn stop_language_servers_for_buffers(
         &mut self,
         buffers: Vec<Entity<Buffer>>,
-        also_restart_servers: HashSet<LanguageServerSelector>,
         cx: &mut Context<Self>,
     ) {
         self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.stop_language_servers_for_buffers(buffers, also_restart_servers, cx)
+            lsp_store.stop_language_servers_for_buffers(buffers, cx)
         })
     }
 

@@ -4,7 +4,7 @@ pub mod popover_menu;
 
 use anyhow::Result;
 use editor::{
-    Editor, SelectionEffects,
+    Editor,
     actions::{MoveDown, MoveUp},
     scroll::Autoscroll,
 };
@@ -205,7 +205,6 @@ pub trait PickerDelegate: Sized + 'static {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem>;
-
     fn render_header(
         &self,
         _window: &mut Window,
@@ -213,7 +212,6 @@ pub trait PickerDelegate: Sized + 'static {
     ) -> Option<AnyElement> {
         None
     }
-
     fn render_footer(
         &self,
         _window: &mut Window,
@@ -695,12 +693,9 @@ impl<D: PickerDelegate> Picker<D> {
             editor.update(cx, |editor, cx| {
                 editor.set_text(query, window, cx);
                 let editor_offset = editor.buffer().read(cx).len(cx);
-                editor.change_selections(
-                    SelectionEffects::scroll(Autoscroll::Next),
-                    window,
-                    cx,
-                    |s| s.select_ranges(Some(editor_offset..editor_offset)),
-                );
+                editor.change_selections(Some(Autoscroll::Next), window, cx, |s| {
+                    s.select_ranges(Some(editor_offset..editor_offset))
+                });
             });
         }
     }
