@@ -19,10 +19,10 @@ use collections::{BTreeSet, HashMap, HashSet, hash_map};
 use db::kvp::KEY_VALUE_STORE;
 use editor::{
     AnchorRangeExt, Bias, DisplayPoint, Editor, EditorEvent, EditorSettings, ExcerptId,
-    ExcerptRange, MultiBufferSnapshot, RangeToAnchorExt, SelectionEffects, ShowScrollbar,
+    ExcerptRange, MultiBufferSnapshot, RangeToAnchorExt, ShowScrollbar,
     display_map::ToDisplayPoint,
     items::{entry_git_aware_label_color, entry_label_color},
-    scroll::{Autoscroll, ScrollAnchor, ScrollbarAutoHide},
+    scroll::{Autoscroll, AutoscrollStrategy, ScrollAnchor, ScrollbarAutoHide},
 };
 use file_icons::FileIcons;
 use fuzzy::{StringMatch, StringMatchCandidate, match_strings};
@@ -1099,7 +1099,7 @@ impl OutlinePanel {
                 if change_selection {
                     active_editor.update(cx, |editor, cx| {
                         editor.change_selections(
-                            SelectionEffects::scroll(Autoscroll::center()),
+                            Some(Autoscroll::Strategy(AutoscrollStrategy::Center, None)),
                             window,
                             cx,
                             |s| s.select_ranges(Some(anchor..anchor)),
@@ -3233,22 +3233,15 @@ impl OutlinePanel {
                 self.outline_fetch_tasks.insert(
                     (buffer_id, excerpt_id),
                     cx.spawn_in(window, async move |outline_panel, cx| {
-                        let buffer_language = buffer_snapshot.language().cloned();
                         let fetched_outlines = cx
                             .background_spawn(async move {
-                                let mut outlines = buffer_snapshot
+                                buffer_snapshot
                                     .outline_items_containing(
                                         excerpt_range.context,
                                         false,
                                         Some(&syntax_theme),
                                     )
-                                    .unwrap_or_default();
-                                outlines.retain(|outline| {
-                                    buffer_language.is_none()
-                                        || buffer_language.as_ref()
-                                            == buffer_snapshot.language_at(outline.range.start)
-                                });
-                                outlines
+                                    .unwrap_or_default()
                             })
                             .await;
                         outline_panel

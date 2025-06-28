@@ -4,7 +4,6 @@ use fs::Fs;
 use migrator::{migrate_keymap, migrate_settings};
 use settings::{KeymapFile, Settings, SettingsStore};
 use util::ResultExt;
-use workspace::notifications::NotifyTaskExt;
 
 use std::sync::Arc;
 
@@ -154,7 +153,7 @@ impl ToolbarItemView for MigrationBanner {
         if &target == paths::keymap_file() {
             self.migration_type = Some(MigrationType::Keymap);
             let fs = <dyn Fs>::global(cx);
-            let should_migrate = cx.background_spawn(should_migrate_keymap(fs));
+            let should_migrate = should_migrate_keymap(fs);
             self.should_migrate_task = Some(cx.spawn_in(window, async move |this, cx| {
                 if let Ok(true) = should_migrate.await {
                     this.update(cx, |this, cx| {
@@ -166,7 +165,7 @@ impl ToolbarItemView for MigrationBanner {
         } else if &target == paths::settings_file() {
             self.migration_type = Some(MigrationType::Settings);
             let fs = <dyn Fs>::global(cx);
-            let should_migrate = cx.background_spawn(should_migrate_settings(fs));
+            let should_migrate = should_migrate_settings(fs);
             self.should_migrate_task = Some(cx.spawn_in(window, async move |this, cx| {
                 if let Ok(true) = should_migrate.await {
                     this.update(cx, |this, cx| {
@@ -235,22 +234,20 @@ impl Render for MigrationBanner {
                     ),
             )
             .child(
-                Button::new("backup-and-migrate", "Backup and Update").on_click(
-                    move |_, window, cx| {
-                        let fs = <dyn Fs>::global(cx);
-                        match migration_type {
-                            Some(MigrationType::Keymap) => {
-                                cx.background_spawn(write_keymap_migration(fs.clone()))
-                                    .detach_and_notify_err(window, cx);
-                            }
-                            Some(MigrationType::Settings) => {
-                                cx.background_spawn(write_settings_migration(fs.clone()))
-                                    .detach_and_notify_err(window, cx);
-                            }
-                            None => unreachable!(),
+                Button::new("backup-and-migrate", "Backup and Update").on_click(move |_, _, cx| {
+                    let fs = <dyn Fs>::global(cx);
+                    match migration_type {
+                        Some(MigrationType::Keymap) => {
+                            cx.spawn(async move |_| write_keymap_migration(&fs).await.ok())
+                                .detach();
                         }
-                    },
-                ),
+                        Some(MigrationType::Settings) => {
+                            cx.spawn(async move |_| write_settings_migration(&fs).await.ok())
+                                .detach();
+                        }
+                        None => unreachable!(),
+                    }
+                }),
             )
             .into_any_element()
     }
@@ -272,8 +269,8 @@ async fn should_migrate_settings(fs: Arc<dyn Fs>) -> Result<bool> {
     Ok(false)
 }
 
-async fn write_keymap_migration(fs: Arc<dyn Fs>) -> Result<()> {
-    let old_text = KeymapFile::load_keymap_file(&fs).await?;
+async fn write_keymap_migration(fs: &Arc<dyn Fs>) -> Result<()> {
+    let old_text = KeymapFile::load_keymap_file(fs).await?;
     let Ok(Some(new_text)) = migrate_keymap(&old_text) else {
         return Ok(());
     };
@@ -297,8 +294,8 @@ async fn write_keymap_migration(fs: Arc<dyn Fs>) -> Result<()> {
     Ok(())
 }
 
-async fn write_settings_migration(fs: Arc<dyn Fs>) -> Result<()> {
-    let old_text = SettingsStore::load_settings(&fs).await?;
+async fn write_settings_migration(fs: &Arc<dyn Fs>) -> Result<()> {
+    let old_text = SettingsStore::load_settings(fs).await?;
     let Ok(Some(new_text)) = migrate_settings(&old_text) else {
         return Ok(());
     };

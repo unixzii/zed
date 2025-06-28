@@ -43,7 +43,6 @@ pub struct WindowsWindowState {
     pub callbacks: Callbacks,
     pub input_handler: Option<PlatformInputHandler>,
     pub last_reported_modifiers: Option<Modifiers>,
-    pub last_reported_capslock: Option<Capslock>,
     pub system_key_handled: bool,
     pub hovered: bool,
 
@@ -63,7 +62,6 @@ pub struct WindowsWindowState {
 pub(crate) struct WindowsWindowStatePtr {
     hwnd: HWND,
     this: Weak<Self>,
-    drop_target_helper: IDropTargetHelper,
     pub(crate) state: RefCell<WindowsWindowState>,
     pub(crate) handle: AnyWindowHandle,
     pub(crate) hide_title_bar: bool,
@@ -104,7 +102,6 @@ impl WindowsWindowState {
         let callbacks = Callbacks::default();
         let input_handler = None;
         let last_reported_modifiers = None;
-        let last_reported_capslock = None;
         let system_key_handled = false;
         let hovered = false;
         let click_state = ClickState::new();
@@ -124,7 +121,6 @@ impl WindowsWindowState {
             callbacks,
             input_handler,
             last_reported_modifiers,
-            last_reported_capslock,
             system_key_handled,
             hovered,
             renderer,
@@ -211,7 +207,6 @@ impl WindowsWindowStatePtr {
         Ok(Rc::new_cyclic(|this| Self {
             hwnd,
             this: this.clone(),
-            drop_target_helper: context.drop_target_helper.clone(),
             state,
             handle: context.handle,
             hide_title_bar: context.hide_title_bar,
@@ -333,7 +328,6 @@ struct WindowCreateContext<'a> {
     executor: ForegroundExecutor,
     current_cursor: Option<HCURSOR>,
     windows_version: WindowsVersion,
-    drop_target_helper: IDropTargetHelper,
     validation_number: usize,
     main_receiver: flume::Receiver<Runnable>,
     gpu_context: &'a BladeContext,
@@ -352,7 +346,6 @@ impl WindowsWindow {
             executor,
             current_cursor,
             windows_version,
-            drop_target_helper,
             validation_number,
             main_receiver,
             main_thread_id_win32,
@@ -398,7 +391,6 @@ impl WindowsWindow {
             executor,
             current_cursor,
             windows_version,
-            drop_target_helper,
             validation_number,
             main_receiver,
             gpu_context,
@@ -836,9 +828,8 @@ impl IDropTarget_Impl for WindowsDragDropHandler_Impl {
                 lindex: -1,
                 tymed: TYMED_HGLOBAL.0 as _,
             };
-            let cursor_position = POINT { x: pt.x, y: pt.y };
             if idata_obj.QueryGetData(&config as _) == S_OK {
-                *pdweffect = DROPEFFECT_COPY;
+                *pdweffect = DROPEFFECT_LINK;
                 let Some(mut idata) = idata_obj.GetData(&config as _).log_err() else {
                     return Ok(());
                 };
@@ -853,7 +844,7 @@ impl IDropTarget_Impl for WindowsDragDropHandler_Impl {
                     }
                 });
                 ReleaseStgMedium(&mut idata);
-                let mut cursor_position = cursor_position;
+                let mut cursor_position = POINT { x: pt.x, y: pt.y };
                 ScreenToClient(self.0.hwnd, &mut cursor_position)
                     .ok()
                     .log_err();
@@ -870,10 +861,6 @@ impl IDropTarget_Impl for WindowsDragDropHandler_Impl {
             } else {
                 *pdweffect = DROPEFFECT_NONE;
             }
-            self.0
-                .drop_target_helper
-                .DragEnter(self.0.hwnd, idata_obj, &cursor_position, *pdweffect)
-                .log_err();
         }
         Ok(())
     }
@@ -882,15 +869,10 @@ impl IDropTarget_Impl for WindowsDragDropHandler_Impl {
         &self,
         _grfkeystate: MODIFIERKEYS_FLAGS,
         pt: &POINTL,
-        pdweffect: *mut DROPEFFECT,
+        _pdweffect: *mut DROPEFFECT,
     ) -> windows::core::Result<()> {
         let mut cursor_position = POINT { x: pt.x, y: pt.y };
         unsafe {
-            *pdweffect = DROPEFFECT_COPY;
-            self.0
-                .drop_target_helper
-                .DragOver(&cursor_position, *pdweffect)
-                .log_err();
             ScreenToClient(self.0.hwnd, &mut cursor_position)
                 .ok()
                 .log_err();
@@ -909,9 +891,6 @@ impl IDropTarget_Impl for WindowsDragDropHandler_Impl {
     }
 
     fn DragLeave(&self) -> windows::core::Result<()> {
-        unsafe {
-            self.0.drop_target_helper.DragLeave().log_err();
-        }
         let input = PlatformInput::FileDrop(FileDropEvent::Exited);
         self.handle_drag_drop(input);
 
@@ -920,19 +899,13 @@ impl IDropTarget_Impl for WindowsDragDropHandler_Impl {
 
     fn Drop(
         &self,
-        pdataobj: windows::core::Ref<IDataObject>,
+        _pdataobj: windows::core::Ref<IDataObject>,
         _grfkeystate: MODIFIERKEYS_FLAGS,
         pt: &POINTL,
-        pdweffect: *mut DROPEFFECT,
+        _pdweffect: *mut DROPEFFECT,
     ) -> windows::core::Result<()> {
-        let idata_obj = pdataobj.ok()?;
         let mut cursor_position = POINT { x: pt.x, y: pt.y };
         unsafe {
-            *pdweffect = DROPEFFECT_COPY;
-            self.0
-                .drop_target_helper
-                .Drop(idata_obj, &cursor_position, *pdweffect)
-                .log_err();
             ScreenToClient(self.0.hwnd, &mut cursor_position)
                 .ok()
                 .log_err();
@@ -1250,13 +1223,11 @@ fn set_window_composition_attribute(hwnd: HWND, color: Option<Color>, state: u32
         type SetWindowCompositionAttributeType =
             unsafe extern "system" fn(HWND, *mut WINDOWCOMPOSITIONATTRIBDATA) -> BOOL;
         let module_name = PCSTR::from_raw(c"user32.dll".as_ptr() as *const u8);
-        if let Some(user32) = GetModuleHandleA(module_name)
-            .context("Unable to get user32.dll handle")
-            .log_err()
-        {
+        let user32 = GetModuleHandleA(module_name);
+        if user32.is_ok() {
             let func_name = PCSTR::from_raw(c"SetWindowCompositionAttribute".as_ptr() as *const u8);
             let set_window_composition_attribute: SetWindowCompositionAttributeType =
-                std::mem::transmute(GetProcAddress(user32, func_name));
+                std::mem::transmute(GetProcAddress(user32.unwrap(), func_name));
             let mut color = color.unwrap_or_default();
             let is_acrylic = state == 4;
             if is_acrylic && color.3 == 0 {
@@ -1277,6 +1248,10 @@ fn set_window_composition_attribute(hwnd: HWND, color: Option<Color>, state: u32
                 cb_data: std::mem::size_of::<AccentPolicy>(),
             };
             let _ = set_window_composition_attribute(hwnd, &mut data as *mut _ as _);
+        } else {
+            let _ = user32
+                .inspect_err(|e| log::error!("Error getting module: {e}"))
+                .ok();
         }
     }
 }

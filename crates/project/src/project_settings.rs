@@ -49,10 +49,6 @@ pub struct ProjectSettings {
     #[serde(default)]
     pub lsp: HashMap<LanguageServerName, LspSettings>,
 
-    /// Common language server settings.
-    #[serde(default)]
-    pub global_lsp_settings: GlobalLspSettings,
-
     /// Configuration for Debugger-related features
     #[serde(default)]
     pub dap: HashMap<DebugAdapterName, DapSettings>,
@@ -94,57 +90,18 @@ pub struct DapSettings {
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum ContextServerSettings {
     Custom {
-        /// Whether the context server is enabled.
-        #[serde(default = "default_true")]
-        enabled: bool,
         /// The command to run this context server.
         ///
         /// This will override the command set by an extension.
         command: ContextServerCommand,
     },
     Extension {
-        /// Whether the context server is enabled.
-        #[serde(default = "default_true")]
-        enabled: bool,
         /// The settings for this context server specified by the extension.
         ///
         /// Consult the documentation for the context server to see what settings
         /// are supported.
         settings: serde_json::Value,
     },
-}
-
-/// Common language server settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct GlobalLspSettings {
-    /// Whether to show the LSP servers button in the status bar.
-    ///
-    /// Default: `true`
-    #[serde(default = "default_true")]
-    pub button: bool,
-}
-
-impl ContextServerSettings {
-    pub fn default_extension() -> Self {
-        Self::Extension {
-            enabled: true,
-            settings: serde_json::json!({}),
-        }
-    }
-
-    pub fn enabled(&self) -> bool {
-        match self {
-            ContextServerSettings::Custom { enabled, .. } => *enabled,
-            ContextServerSettings::Extension { enabled, .. } => *enabled,
-        }
-    }
-
-    pub fn set_enabled(&mut self, enabled: bool) {
-        match self {
-            ContextServerSettings::Custom { enabled: e, .. } => *e = enabled,
-            ContextServerSettings::Extension { enabled: e, .. } => *e = enabled,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -281,14 +238,6 @@ impl Default for InlineDiagnosticsSettings {
             padding: default_inline_diagnostics_padding(),
             min_column: 0,
             max_severity: None,
-        }
-    }
-}
-
-impl Default for GlobalLspSettings {
-    fn default() -> Self {
-        Self {
-            button: default_true(),
         }
     }
 }
@@ -531,7 +480,6 @@ impl Settings for ProjectSettings {
                     Some((
                         k.clone().into(),
                         ContextServerSettings::Custom {
-                            enabled: true,
                             command: serde_json::from_value::<VsCodeContextServerCommand>(
                                 v.clone(),
                             )

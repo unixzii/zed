@@ -4,7 +4,7 @@ use story::Story;
 use crate::prelude::*;
 use crate::{ContextMenu, Label, right_click_menu};
 
-actions!(stories, [PrintCurrentDate, PrintBestFood]);
+actions!(context_menu, [PrintCurrentDate, PrintBestFood]);
 
 fn build_menu(
     window: &mut Window,

@@ -179,9 +179,7 @@ fn test_edit_events(cx: &mut TestAppContext) {
 
     // No event is emitted when the mutation is a no-op.
     _ = editor2.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([0..0])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([0..0]));
 
         editor.backspace(&Backspace, window, cx);
     });
@@ -204,9 +202,7 @@ fn test_undo_redo_with_selection_restoration(cx: &mut TestAppContext) {
 
     _ = editor.update(cx, |editor, window, cx| {
         editor.start_transaction_at(now, window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([2..4])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([2..4]));
 
         editor.insert("cd", window, cx);
         editor.end_transaction_at(now, cx);
@@ -214,18 +210,14 @@ fn test_undo_redo_with_selection_restoration(cx: &mut TestAppContext) {
         assert_eq!(editor.selections.ranges(cx), vec![4..4]);
 
         editor.start_transaction_at(now, window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([4..5])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([4..5]));
         editor.insert("e", window, cx);
         editor.end_transaction_at(now, cx);
         assert_eq!(editor.text(cx), "12cde6");
         assert_eq!(editor.selections.ranges(cx), vec![5..5]);
 
         now += group_interval + Duration::from_millis(1);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([2..2])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([2..2]));
 
         // Simulate an edit in another editor
         buffer.update(cx, |buffer, cx| {
@@ -333,7 +325,7 @@ fn test_ime_composition(cx: &mut TestAppContext) {
         assert_eq!(editor.marked_text_ranges(cx), None);
 
         // Start a new IME composition with multiple cursors.
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([
                 OffsetUtf16(1)..OffsetUtf16(1),
                 OffsetUtf16(3)..OffsetUtf16(3),
@@ -631,7 +623,7 @@ fn test_clone(cx: &mut TestAppContext) {
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges(selection_ranges.clone())
         });
         editor.fold_creases(
@@ -717,12 +709,12 @@ async fn test_navigation_history(cx: &mut TestAppContext) {
 
             // Move the cursor a small distance.
             // Nothing is added to the navigation history.
-            editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+            editor.change_selections(None, window, cx, |s| {
                 s.select_display_ranges([
                     DisplayPoint::new(DisplayRow(1), 0)..DisplayPoint::new(DisplayRow(1), 0)
                 ])
             });
-            editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+            editor.change_selections(None, window, cx, |s| {
                 s.select_display_ranges([
                     DisplayPoint::new(DisplayRow(3), 0)..DisplayPoint::new(DisplayRow(3), 0)
                 ])
@@ -731,7 +723,7 @@ async fn test_navigation_history(cx: &mut TestAppContext) {
 
             // Move the cursor a large distance.
             // The history can jump back to the previous position.
-            editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+            editor.change_selections(None, window, cx, |s| {
                 s.select_display_ranges([
                     DisplayPoint::new(DisplayRow(13), 0)..DisplayPoint::new(DisplayRow(13), 3)
                 ])
@@ -901,7 +893,7 @@ fn test_fold_action(cx: &mut TestAppContext) {
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(7), 0)..DisplayPoint::new(DisplayRow(12), 0)
             ]);
@@ -992,7 +984,7 @@ fn test_fold_action_whitespace_sensitive_language(cx: &mut TestAppContext) {
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(6), 0)..DisplayPoint::new(DisplayRow(10), 0)
             ]);
@@ -1077,7 +1069,7 @@ fn test_fold_action_multiple_line_breaks(cx: &mut TestAppContext) {
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(6), 0)..DisplayPoint::new(DisplayRow(11), 0)
             ]);
@@ -1309,7 +1301,7 @@ fn test_move_cursor(cx: &mut TestAppContext) {
             &[DisplayPoint::new(DisplayRow(0), 0)..DisplayPoint::new(DisplayRow(0), 0)]
         );
 
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(0), 2)
             ]);
@@ -1454,7 +1446,7 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         build_editor(buffer.clone(), window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([empty_range(0, "ⓐⓑⓒⓓⓔ".len())]);
         });
 
@@ -1544,7 +1536,7 @@ fn test_beginning_end_of_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(1), 4)..DisplayPoint::new(DisplayRow(1), 4),
@@ -1739,7 +1731,7 @@ fn test_beginning_end_of_line_ignore_soft_wrap(cx: &mut TestAppContext) {
 
         // First, let's assert behavior on the first line, that was not soft-wrapped.
         // Start the cursor at the `k` on the first line
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 7)..DisplayPoint::new(DisplayRow(0), 7)
             ]);
@@ -1761,7 +1753,7 @@ fn test_beginning_end_of_line_ignore_soft_wrap(cx: &mut TestAppContext) {
 
         // Now, let's assert behavior on the second line, that ended up being soft-wrapped.
         // Start the cursor at the last line (`y` that was wrapped to a new line)
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(2), 0)..DisplayPoint::new(DisplayRow(2), 0)
             ]);
@@ -1827,7 +1819,7 @@ fn test_beginning_of_line_stop_at_indent(cx: &mut TestAppContext) {
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(1), 4)..DisplayPoint::new(DisplayRow(1), 4),
@@ -1909,7 +1901,7 @@ fn test_prev_next_word_boundary(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 11)..DisplayPoint::new(DisplayRow(0), 11),
                 DisplayPoint::new(DisplayRow(2), 4)..DisplayPoint::new(DisplayRow(2), 4),
@@ -1979,7 +1971,7 @@ fn test_prev_next_word_bounds_with_soft_wrap(cx: &mut TestAppContext) {
             "use one::{\n    two::three::\n    four::five\n};"
         );
 
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(1), 7)..DisplayPoint::new(DisplayRow(1), 7)
             ]);
@@ -2242,7 +2234,7 @@ async fn test_autoscroll(cx: &mut TestAppContext) {
     // on screen, the editor autoscrolls to reveal the newest cursor, and
     // allows the vertical scroll margin below that cursor.
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(Default::default(), window, cx, |selections| {
+        editor.change_selections(Some(Autoscroll::fit()), window, cx, |selections| {
             selections.select_ranges([
                 Point::new(0, 0)..Point::new(0, 0),
                 Point::new(6, 0)..Point::new(6, 0),
@@ -2270,7 +2262,7 @@ async fn test_autoscroll(cx: &mut TestAppContext) {
     // Add a cursor above the visible area. Since both cursors fit on screen,
     // the editor scrolls to show both.
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(Default::default(), window, cx, |selections| {
+        editor.change_selections(Some(Autoscroll::fit()), window, cx, |selections| {
             selections.select_ranges([
                 Point::new(1, 0)..Point::new(1, 0),
                 Point::new(6, 0)..Point::new(6, 0),
@@ -2437,7 +2429,7 @@ fn test_delete_to_word_boundary(cx: &mut TestAppContext) {
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 // an empty selection - the preceding word fragment is deleted
                 DisplayPoint::new(DisplayRow(0), 2)..DisplayPoint::new(DisplayRow(0), 2),
@@ -2456,7 +2448,7 @@ fn test_delete_to_word_boundary(cx: &mut TestAppContext) {
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 // an empty selection - the following word fragment is deleted
                 DisplayPoint::new(DisplayRow(0), 3)..DisplayPoint::new(DisplayRow(0), 3),
@@ -2491,7 +2483,7 @@ fn test_delete_to_previous_word_start_or_newline(cx: &mut TestAppContext) {
     };
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(3), 1)..DisplayPoint::new(DisplayRow(3), 1)
             ])
@@ -2527,7 +2519,7 @@ fn test_delete_to_next_word_end_or_newline(cx: &mut TestAppContext) {
     };
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 0)..DisplayPoint::new(DisplayRow(0), 0)
             ])
@@ -2566,7 +2558,7 @@ fn test_newline(cx: &mut TestAppContext) {
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 2)..DisplayPoint::new(DisplayRow(0), 2),
                 DisplayPoint::new(DisplayRow(1), 2)..DisplayPoint::new(DisplayRow(1), 2),
@@ -2599,7 +2591,7 @@ fn test_newline_with_old_selections(cx: &mut TestAppContext) {
             cx,
         );
         let mut editor = build_editor(buffer.clone(), window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([
                 Point::new(2, 4)..Point::new(2, 5),
                 Point::new(5, 4)..Point::new(5, 5),
@@ -3086,7 +3078,7 @@ fn test_insert_with_old_selections(cx: &mut TestAppContext) {
     let editor = cx.add_window(|window, cx| {
         let buffer = MultiBuffer::build_simple("a( X ), b( Y ), c( Z )", cx);
         let mut editor = build_editor(buffer.clone(), window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([3..4, 11..12, 19..20])
         });
         editor
@@ -3735,7 +3727,7 @@ fn test_delete_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(1), 0)..DisplayPoint::new(DisplayRow(1), 1),
@@ -3758,7 +3750,7 @@ fn test_delete_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(2), 0)..DisplayPoint::new(DisplayRow(0), 1)
             ])
@@ -3795,7 +3787,7 @@ fn test_join_lines_with_single_selection(cx: &mut TestAppContext) {
         );
 
         // When multiple lines are selected, remove newlines that are spanned by the selection
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(0, 5)..Point::new(2, 2)])
         });
         editor.join_lines(&JoinLines, window, cx);
@@ -3814,7 +3806,7 @@ fn test_join_lines_with_single_selection(cx: &mut TestAppContext) {
         );
 
         // When joining an empty line don't insert a space
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(2, 1)..Point::new(2, 2)])
         });
         editor.join_lines(&JoinLines, window, cx);
@@ -3854,7 +3846,7 @@ fn test_join_lines_with_single_selection(cx: &mut TestAppContext) {
 
         // We remove any leading spaces
         assert_eq!(buffer.read(cx).text(), "aaa bbb\n  c\n  \n\td");
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(0, 1)..Point::new(0, 1)])
         });
         editor.join_lines(&JoinLines, window, cx);
@@ -3881,7 +3873,7 @@ fn test_join_lines_with_multi_selection(cx: &mut TestAppContext) {
         let mut editor = build_editor(buffer.clone(), window, cx);
         let buffer = buffer.read(cx).as_singleton().unwrap();
 
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([
                 Point::new(0, 2)..Point::new(1, 1),
                 Point::new(1, 2)..Point::new(1, 2),
@@ -3984,7 +3976,7 @@ async fn test_custom_newlines_cause_no_false_positive_diffs(
 }
 
 #[gpui::test]
-async fn test_manipulate_immutable_lines_with_single_selection(cx: &mut TestAppContext) {
+async fn test_manipulate_lines_with_single_selection(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
 
     let mut cx = EditorTestContext::new(cx).await;
@@ -4029,8 +4021,8 @@ async fn test_manipulate_immutable_lines_with_single_selection(cx: &mut TestAppC
 
     // Skip testing shuffle_line()
 
-    // From here on out, test more complex cases of manipulate_immutable_lines() with a single driver method: sort_lines_case_sensitive()
-    // Since all methods calling manipulate_immutable_lines() are doing the exact same general thing (reordering lines)
+    // From here on out, test more complex cases of manipulate_lines() with a single driver method: sort_lines_case_sensitive()
+    // Since all methods calling manipulate_lines() are doing the exact same general thing (reordering lines)
 
     // Don't manipulate when cursor is on single line, but expand the selection
     cx.set_state(indoc! {"
@@ -4097,7 +4089,7 @@ async fn test_manipulate_immutable_lines_with_single_selection(cx: &mut TestAppC
         bbˇ»b
     "});
     cx.update_editor(|e, window, cx| {
-        e.manipulate_immutable_lines(window, cx, |lines| lines.push("added_line"))
+        e.manipulate_lines(window, cx, |lines| lines.push("added_line"))
     });
     cx.assert_editor_state(indoc! {"
         «aaa
@@ -4111,7 +4103,7 @@ async fn test_manipulate_immutable_lines_with_single_selection(cx: &mut TestAppC
         bbbˇ»
     "});
     cx.update_editor(|e, window, cx| {
-        e.manipulate_immutable_lines(window, cx, |lines| {
+        e.manipulate_lines(window, cx, |lines| {
             lines.pop();
         })
     });
@@ -4125,7 +4117,7 @@ async fn test_manipulate_immutable_lines_with_single_selection(cx: &mut TestAppC
         bbbˇ»
     "});
     cx.update_editor(|e, window, cx| {
-        e.manipulate_immutable_lines(window, cx, |lines| {
+        e.manipulate_lines(window, cx, |lines| {
             lines.drain(..);
         })
     });
@@ -4225,7 +4217,7 @@ async fn test_unique_lines_single_selection(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-async fn test_manipulate_immutable_lines_with_multi_selection(cx: &mut TestAppContext) {
+async fn test_manipulate_lines_with_multi_selection(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
 
     let mut cx = EditorTestContext::new(cx).await;
@@ -4285,7 +4277,7 @@ async fn test_manipulate_immutable_lines_with_multi_selection(cx: &mut TestAppCo
         aaaˇ»aa
     "});
     cx.update_editor(|e, window, cx| {
-        e.manipulate_immutable_lines(window, cx, |lines| lines.push("added line"))
+        e.manipulate_lines(window, cx, |lines| lines.push("added line"))
     });
     cx.assert_editor_state(indoc! {"
         «2
@@ -4306,7 +4298,7 @@ async fn test_manipulate_immutable_lines_with_multi_selection(cx: &mut TestAppCo
         aaaˇ»aa
     "});
     cx.update_editor(|e, window, cx| {
-        e.manipulate_immutable_lines(window, cx, |lines| {
+        e.manipulate_lines(window, cx, |lines| {
             lines.pop();
         })
     });
@@ -4314,246 +4306,6 @@ async fn test_manipulate_immutable_lines_with_multi_selection(cx: &mut TestAppCo
         «2ˇ»
 
         «bbbbˇ»
-    "});
-}
-
-#[gpui::test]
-async fn test_convert_indentation_to_spaces(cx: &mut TestAppContext) {
-    init_test(cx, |settings| {
-        settings.defaults.tab_size = NonZeroU32::new(3)
-    });
-
-    let mut cx = EditorTestContext::new(cx).await;
-
-    // MULTI SELECTION
-    // Ln.1 "«" tests empty lines
-    // Ln.9 tests just leading whitespace
-    cx.set_state(indoc! {"
-        «
-        abc                 // No indentationˇ»
-        «\tabc              // 1 tabˇ»
-        \t\tabc «      ˇ»   // 2 tabs
-        \t ab«c             // Tab followed by space
-         \tabc              // Space followed by tab (3 spaces should be the result)
-        \t \t  \t   \tabc   // Mixed indentation (tab conversion depends on the column)
-           abˇ»ˇc   ˇ    ˇ  // Already space indented«
-        \t
-        \tabc\tdef          // Only the leading tab is manipulatedˇ»
-    "});
-    cx.update_editor(|e, window, cx| {
-        e.convert_indentation_to_spaces(&ConvertIndentationToSpaces, window, cx);
-    });
-    cx.assert_editor_state(
-        indoc! {"
-            «
-            abc                 // No indentation
-               abc              // 1 tab
-                  abc          // 2 tabs
-                abc             // Tab followed by space
-               abc              // Space followed by tab (3 spaces should be the result)
-                           abc   // Mixed indentation (tab conversion depends on the column)
-               abc         // Already space indented
-               ·
-               abc\tdef          // Only the leading tab is manipulatedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
-
-    // Test on just a few lines, the others should remain unchanged
-    // Only lines (3, 5, 10, 11) should change
-    cx.set_state(
-        indoc! {"
-            ·
-            abc                 // No indentation
-            \tabcˇ               // 1 tab
-            \t\tabc             // 2 tabs
-            \t abcˇ              // Tab followed by space
-             \tabc              // Space followed by tab (3 spaces should be the result)
-            \t \t  \t   \tabc   // Mixed indentation (tab conversion depends on the column)
-               abc              // Already space indented
-            «\t
-            \tabc\tdef          // Only the leading tab is manipulatedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
-    cx.update_editor(|e, window, cx| {
-        e.convert_indentation_to_spaces(&ConvertIndentationToSpaces, window, cx);
-    });
-    cx.assert_editor_state(
-        indoc! {"
-            ·
-            abc                 // No indentation
-            «   abc               // 1 tabˇ»
-            \t\tabc             // 2 tabs
-            «    abc              // Tab followed by spaceˇ»
-             \tabc              // Space followed by tab (3 spaces should be the result)
-            \t \t  \t   \tabc   // Mixed indentation (tab conversion depends on the column)
-               abc              // Already space indented
-            «   ·
-               abc\tdef          // Only the leading tab is manipulatedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
-
-    // SINGLE SELECTION
-    // Ln.1 "«" tests empty lines
-    // Ln.9 tests just leading whitespace
-    cx.set_state(indoc! {"
-        «
-        abc                 // No indentation
-        \tabc               // 1 tab
-        \t\tabc             // 2 tabs
-        \t abc              // Tab followed by space
-         \tabc              // Space followed by tab (3 spaces should be the result)
-        \t \t  \t   \tabc   // Mixed indentation (tab conversion depends on the column)
-           abc              // Already space indented
-        \t
-        \tabc\tdef          // Only the leading tab is manipulatedˇ»
-    "});
-    cx.update_editor(|e, window, cx| {
-        e.convert_indentation_to_spaces(&ConvertIndentationToSpaces, window, cx);
-    });
-    cx.assert_editor_state(
-        indoc! {"
-            «
-            abc                 // No indentation
-               abc               // 1 tab
-                  abc             // 2 tabs
-                abc              // Tab followed by space
-               abc              // Space followed by tab (3 spaces should be the result)
-                           abc   // Mixed indentation (tab conversion depends on the column)
-               abc              // Already space indented
-               ·
-               abc\tdef          // Only the leading tab is manipulatedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
-}
-
-#[gpui::test]
-async fn test_convert_indentation_to_tabs(cx: &mut TestAppContext) {
-    init_test(cx, |settings| {
-        settings.defaults.tab_size = NonZeroU32::new(3)
-    });
-
-    let mut cx = EditorTestContext::new(cx).await;
-
-    // MULTI SELECTION
-    // Ln.1 "«" tests empty lines
-    // Ln.11 tests just leading whitespace
-    cx.set_state(indoc! {"
-        «
-        abˇ»ˇc                 // No indentation
-         abc    ˇ        ˇ    // 1 space (< 3 so dont convert)
-          abc  «             // 2 spaces (< 3 so dont convert)
-           abc              // 3 spaces (convert)
-             abc ˇ»           // 5 spaces (1 tab + 2 spaces)
-        «\tˇ»\t«\tˇ»abc           // Already tab indented
-        «\t abc              // Tab followed by space
-         \tabc              // Space followed by tab (should be consumed due to tab)
-        \t \t  \t   \tabc   // Mixed indentation (first 3 spaces are consumed, the others are converted)
-           \tˇ»  «\t
-           abcˇ»   \t ˇˇˇ        // Only the leading spaces should be converted
-    "});
-    cx.update_editor(|e, window, cx| {
-        e.convert_indentation_to_tabs(&ConvertIndentationToTabs, window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        «
-        abc                 // No indentation
-         abc                // 1 space (< 3 so dont convert)
-          abc               // 2 spaces (< 3 so dont convert)
-        \tabc              // 3 spaces (convert)
-        \t  abc            // 5 spaces (1 tab + 2 spaces)
-        \t\t\tabc           // Already tab indented
-        \t abc              // Tab followed by space
-        \tabc              // Space followed by tab (should be consumed due to tab)
-        \t\t\t\t\tabc   // Mixed indentation (first 3 spaces are consumed, the others are converted)
-        \t\t\t
-        \tabc   \t         // Only the leading spaces should be convertedˇ»
-    "});
-
-    // Test on just a few lines, the other should remain unchanged
-    // Only lines (4, 8, 11, 12) should change
-    cx.set_state(
-        indoc! {"
-            ·
-            abc                 // No indentation
-             abc                // 1 space (< 3 so dont convert)
-              abc               // 2 spaces (< 3 so dont convert)
-            «   abc              // 3 spaces (convert)ˇ»
-                 abc            // 5 spaces (1 tab + 2 spaces)
-            \t\t\tabc           // Already tab indented
-            \t abc              // Tab followed by space
-             \tabc      ˇ        // Space followed by tab (should be consumed due to tab)
-               \t\t  \tabc      // Mixed indentation
-            \t \t  \t   \tabc   // Mixed indentation
-               \t  \tˇ
-            «   abc   \t         // Only the leading spaces should be convertedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
-    cx.update_editor(|e, window, cx| {
-        e.convert_indentation_to_tabs(&ConvertIndentationToTabs, window, cx);
-    });
-    cx.assert_editor_state(
-        indoc! {"
-            ·
-            abc                 // No indentation
-             abc                // 1 space (< 3 so dont convert)
-              abc               // 2 spaces (< 3 so dont convert)
-            «\tabc              // 3 spaces (convert)ˇ»
-                 abc            // 5 spaces (1 tab + 2 spaces)
-            \t\t\tabc           // Already tab indented
-            \t abc              // Tab followed by space
-            «\tabc              // Space followed by tab (should be consumed due to tab)ˇ»
-               \t\t  \tabc      // Mixed indentation
-            \t \t  \t   \tabc   // Mixed indentation
-            «\t\t\t
-            \tabc   \t         // Only the leading spaces should be convertedˇ»
-        "}
-        .replace("·", "")
-        .as_str(), // · used as placeholder to prevent format-on-save from removing whitespace
-    );
-
-    // SINGLE SELECTION
-    // Ln.1 "«" tests empty lines
-    // Ln.11 tests just leading whitespace
-    cx.set_state(indoc! {"
-        «
-        abc                 // No indentation
-         abc                // 1 space (< 3 so dont convert)
-          abc               // 2 spaces (< 3 so dont convert)
-           abc              // 3 spaces (convert)
-             abc            // 5 spaces (1 tab + 2 spaces)
-        \t\t\tabc           // Already tab indented
-        \t abc              // Tab followed by space
-         \tabc              // Space followed by tab (should be consumed due to tab)
-        \t \t  \t   \tabc   // Mixed indentation (first 3 spaces are consumed, the others are converted)
-           \t  \t
-           abc   \t         // Only the leading spaces should be convertedˇ»
-    "});
-    cx.update_editor(|e, window, cx| {
-        e.convert_indentation_to_tabs(&ConvertIndentationToTabs, window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        «
-        abc                 // No indentation
-         abc                // 1 space (< 3 so dont convert)
-          abc               // 2 spaces (< 3 so dont convert)
-        \tabc              // 3 spaces (convert)
-        \t  abc            // 5 spaces (1 tab + 2 spaces)
-        \t\t\tabc           // Already tab indented
-        \t abc              // Tab followed by space
-        \tabc              // Space followed by tab (should be consumed due to tab)
-        \t\t\t\t\tabc   // Mixed indentation (first 3 spaces are consumed, the others are converted)
-        \t\t\t
-        \tabc   \t         // Only the leading spaces should be convertedˇ»
     "});
 }
 
@@ -4721,7 +4473,7 @@ fn test_duplicate_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 0)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(0), 2)..DisplayPoint::new(DisplayRow(0), 2),
@@ -4747,7 +4499,7 @@ fn test_duplicate_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(1), 1),
                 DisplayPoint::new(DisplayRow(1), 2)..DisplayPoint::new(DisplayRow(2), 1),
@@ -4771,7 +4523,7 @@ fn test_duplicate_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 0)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(0), 2)..DisplayPoint::new(DisplayRow(0), 2),
@@ -4797,7 +4549,7 @@ fn test_duplicate_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(1), 1),
                 DisplayPoint::new(DisplayRow(1), 2)..DisplayPoint::new(DisplayRow(2), 1),
@@ -4819,7 +4571,7 @@ fn test_duplicate_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(1), 1),
                 DisplayPoint::new(DisplayRow(1), 2)..DisplayPoint::new(DisplayRow(2), 1),
@@ -4856,7 +4608,7 @@ fn test_move_line_up_down(cx: &mut TestAppContext) {
             window,
             cx,
         );
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 1)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(3), 1)..DisplayPoint::new(DisplayRow(3), 1),
@@ -4959,7 +4711,7 @@ fn test_move_line_up_down_with_blocks(cx: &mut TestAppContext) {
             Some(Autoscroll::fit()),
             cx,
         );
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(2, 0)..Point::new(2, 0)])
         });
         editor.move_line_down(&MoveLineDown, window, cx);
@@ -5044,9 +4796,7 @@ fn test_transpose(cx: &mut TestAppContext) {
     _ = cx.add_window(|window, cx| {
         let mut editor = build_editor(MultiBuffer::build_simple("abc", cx), window, cx);
         editor.set_style(EditorStyle::default(), window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([1..1])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([1..1]));
         editor.transpose(&Default::default(), window, cx);
         assert_eq!(editor.text(cx), "bac");
         assert_eq!(editor.selections.ranges(cx), [2..2]);
@@ -5065,16 +4815,12 @@ fn test_transpose(cx: &mut TestAppContext) {
     _ = cx.add_window(|window, cx| {
         let mut editor = build_editor(MultiBuffer::build_simple("abc\nde", cx), window, cx);
         editor.set_style(EditorStyle::default(), window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([3..3])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([3..3]));
         editor.transpose(&Default::default(), window, cx);
         assert_eq!(editor.text(cx), "acb\nde");
         assert_eq!(editor.selections.ranges(cx), [3..3]);
 
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([4..4])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([4..4]));
         editor.transpose(&Default::default(), window, cx);
         assert_eq!(editor.text(cx), "acbd\ne");
         assert_eq!(editor.selections.ranges(cx), [5..5]);
@@ -5093,9 +4839,7 @@ fn test_transpose(cx: &mut TestAppContext) {
     _ = cx.add_window(|window, cx| {
         let mut editor = build_editor(MultiBuffer::build_simple("abc\nde", cx), window, cx);
         editor.set_style(EditorStyle::default(), window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([1..1, 2..2, 4..4])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([1..1, 2..2, 4..4]));
         editor.transpose(&Default::default(), window, cx);
         assert_eq!(editor.text(cx), "bacd\ne");
         assert_eq!(editor.selections.ranges(cx), [2..2, 3..3, 5..5]);
@@ -5122,9 +4866,7 @@ fn test_transpose(cx: &mut TestAppContext) {
     _ = cx.add_window(|window, cx| {
         let mut editor = build_editor(MultiBuffer::build_simple("🍐🏀✋", cx), window, cx);
         editor.set_style(EditorStyle::default(), window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([4..4])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([4..4]));
         editor.transpose(&Default::default(), window, cx);
         assert_eq!(editor.text(cx), "🏀🍐✋");
         assert_eq!(editor.selections.ranges(cx), [8..8]);
@@ -5149,7 +4891,6 @@ async fn test_rewrap(cx: &mut TestAppContext) {
                 "Markdown".into(),
                 LanguageSettingsContent {
                     allow_rewrap: Some(language_settings::RewrapBehavior::Anywhere),
-                    preferred_line_length: Some(40),
                     ..Default::default()
                 },
             ),
@@ -5157,31 +4898,6 @@ async fn test_rewrap(cx: &mut TestAppContext) {
                 "Plain Text".into(),
                 LanguageSettingsContent {
                     allow_rewrap: Some(language_settings::RewrapBehavior::Anywhere),
-                    preferred_line_length: Some(40),
-                    ..Default::default()
-                },
-            ),
-            (
-                "C++".into(),
-                LanguageSettingsContent {
-                    allow_rewrap: Some(language_settings::RewrapBehavior::InComments),
-                    preferred_line_length: Some(40),
-                    ..Default::default()
-                },
-            ),
-            (
-                "Python".into(),
-                LanguageSettingsContent {
-                    allow_rewrap: Some(language_settings::RewrapBehavior::InComments),
-                    preferred_line_length: Some(40),
-                    ..Default::default()
-                },
-            ),
-            (
-                "Rust".into(),
-                LanguageSettingsContent {
-                    allow_rewrap: Some(language_settings::RewrapBehavior::InComments),
-                    preferred_line_length: Some(40),
                     ..Default::default()
                 },
             ),
@@ -5190,17 +4906,15 @@ async fn test_rewrap(cx: &mut TestAppContext) {
 
     let mut cx = EditorTestContext::new(cx).await;
 
-    let cpp_language = Arc::new(Language::new(
+    let language_with_c_comments = Arc::new(Language::new(
         LanguageConfig {
-            name: "C++".into(),
             line_comments: vec!["// ".into()],
             ..LanguageConfig::default()
         },
         None,
     ));
-    let python_language = Arc::new(Language::new(
+    let language_with_pound_comments = Arc::new(Language::new(
         LanguageConfig {
-            name: "Python".into(),
             line_comments: vec!["# ".into()],
             ..LanguageConfig::default()
         },
@@ -5213,9 +4927,8 @@ async fn test_rewrap(cx: &mut TestAppContext) {
         },
         None,
     ));
-    let rust_language = Arc::new(Language::new(
+    let language_with_doc_comments = Arc::new(Language::new(
         LanguageConfig {
-            name: "Rust".into(),
             line_comments: vec!["// ".into(), "/// ".into()],
             ..LanguageConfig::default()
         },
@@ -5230,220 +4943,296 @@ async fn test_rewrap(cx: &mut TestAppContext) {
         None,
     ));
 
-    // Test basic rewrapping of a long line with a cursor
     assert_rewrap(
         indoc! {"
-            // ˇThis is a long comment that needs to be wrapped.
+            // ˇLorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor, eu lacinia sapien scelerisque. Vivamus sit amet neque et quam tincidunt hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio lectus, iaculis ac volutpat et, blandit quis urna. Sed vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in. Integer sit amet scelerisque nisi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras egestas porta metus, eu viverra ipsum efficitur quis. Donec luctus eros turpis, id vulputate turpis porttitor id. Aliquam id accumsan eros.
         "},
         indoc! {"
-            // ˇThis is a long comment that needs to
-            // be wrapped.
+            // ˇLorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit
+            // purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus
+            // auctor, eu lacinia sapien scelerisque. Vivamus sit amet neque et quam
+            // tincidunt hendrerit. Praesent semper egestas tellus id dignissim.
+            // Pellentesque odio lectus, iaculis ac volutpat et, blandit quis urna. Sed
+            // vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam,
+            // et porta nunc laoreet in. Integer sit amet scelerisque nisi. Lorem ipsum
+            // dolor sit amet, consectetur adipiscing elit. Cras egestas porta metus, eu
+            // viverra ipsum efficitur quis. Donec luctus eros turpis, id vulputate turpis
+            // porttitor id. Aliquam id accumsan eros.
         "},
-        cpp_language.clone(),
+        language_with_c_comments.clone(),
         &mut cx,
     );
 
-    // Test rewrapping a full selection
+    // Test that rewrapping works inside of a selection
     assert_rewrap(
         indoc! {"
-            «// This selected long comment needs to be wrapped.ˇ»"
-        },
-        indoc! {"
-            «// This selected long comment needs to
-            // be wrapped.ˇ»"
-        },
-        cpp_language.clone(),
-        &mut cx,
-    );
-
-    // Test multiple cursors on different lines within the same paragraph are preserved after rewrapping
-    assert_rewrap(
-        indoc! {"
-            // ˇThis is the first line.
-            // Thisˇ is the second line.
-            // This is the thirdˇ line, all part of one paragraph.
-         "},
-        indoc! {"
-            // ˇThis is the first line. Thisˇ is the
-            // second line. This is the thirdˇ line,
-            // all part of one paragraph.
-         "},
-        cpp_language.clone(),
-        &mut cx,
-    );
-
-    // Test multiple cursors in different paragraphs trigger separate rewraps
-    assert_rewrap(
-        indoc! {"
-            // ˇThis is the first paragraph, first line.
-            // ˇThis is the first paragraph, second line.
-
-            // ˇThis is the second paragraph, first line.
-            // ˇThis is the second paragraph, second line.
+            «// Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor, eu lacinia sapien scelerisque. Vivamus sit amet neque et quam tincidunt hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio lectus, iaculis ac volutpat et, blandit quis urna. Sed vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in. Integer sit amet scelerisque nisi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras egestas porta metus, eu viverra ipsum efficitur quis. Donec luctus eros turpis, id vulputate turpis porttitor id. Aliquam id accumsan eros.ˇ»
         "},
         indoc! {"
-            // ˇThis is the first paragraph, first
-            // line. ˇThis is the first paragraph,
-            // second line.
-
-            // ˇThis is the second paragraph, first
-            // line. ˇThis is the second paragraph,
-            // second line.
+            «// Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit
+            // purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus
+            // auctor, eu lacinia sapien scelerisque. Vivamus sit amet neque et quam
+            // tincidunt hendrerit. Praesent semper egestas tellus id dignissim.
+            // Pellentesque odio lectus, iaculis ac volutpat et, blandit quis urna. Sed
+            // vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam,
+            // et porta nunc laoreet in. Integer sit amet scelerisque nisi. Lorem ipsum
+            // dolor sit amet, consectetur adipiscing elit. Cras egestas porta metus, eu
+            // viverra ipsum efficitur quis. Donec luctus eros turpis, id vulputate turpis
+            // porttitor id. Aliquam id accumsan eros.ˇ»
         "},
-        cpp_language.clone(),
+        language_with_c_comments.clone(),
         &mut cx,
     );
 
-    // Test that change in comment prefix (e.g., `//` to `///`) trigger seperate rewraps
+    // Test that cursors that expand to the same region are collapsed.
     assert_rewrap(
         indoc! {"
-            «// A regular long long comment to be wrapped.
-            /// A documentation long comment to be wrapped.ˇ»
-          "},
+            // ˇLorem ipsum dolor sit amet, consectetur adipiscing elit.
+            // ˇVivamus mollis elit purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor, eu lacinia sapien scelerisque.
+            // ˇVivamus sit amet neque et quam tincidunt hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio lectus, iaculis ac volutpat et,
+            // ˇblandit quis urna. Sed vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in. Integer sit amet scelerisque nisi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras egestas porta metus, eu viverra ipsum efficitur quis. Donec luctus eros turpis, id vulputate turpis porttitor id. Aliquam id accumsan eros.
+        "},
         indoc! {"
-            «// A regular long long comment to be
-            // wrapped.
-            /// A documentation long comment to be
-            /// wrapped.ˇ»
-          "},
-        rust_language.clone(),
+            // ˇLorem ipsum dolor sit amet, consectetur adipiscing elit. ˇVivamus mollis elit
+            // purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus
+            // auctor, eu lacinia sapien scelerisque. ˇVivamus sit amet neque et quam
+            // tincidunt hendrerit. Praesent semper egestas tellus id dignissim.
+            // Pellentesque odio lectus, iaculis ac volutpat et, ˇblandit quis urna. Sed
+            // vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam,
+            // et porta nunc laoreet in. Integer sit amet scelerisque nisi. Lorem ipsum
+            // dolor sit amet, consectetur adipiscing elit. Cras egestas porta metus, eu
+            // viverra ipsum efficitur quis. Donec luctus eros turpis, id vulputate turpis
+            // porttitor id. Aliquam id accumsan eros.
+        "},
+        language_with_c_comments.clone(),
         &mut cx,
     );
 
-    // Test that change in indentation level trigger seperate rewraps
+    // Test that non-contiguous selections are treated separately.
     assert_rewrap(
         indoc! {"
-            fn foo() {
-                «// This is a long comment at the base indent.
-                    // This is a long comment at the next indent.ˇ»
+            // ˇLorem ipsum dolor sit amet, consectetur adipiscing elit.
+            // ˇVivamus mollis elit purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor, eu lacinia sapien scelerisque.
+            //
+            // ˇVivamus sit amet neque et quam tincidunt hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio lectus, iaculis ac volutpat et,
+            // ˇblandit quis urna. Sed vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in. Integer sit amet scelerisque nisi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras egestas porta metus, eu viverra ipsum efficitur quis. Donec luctus eros turpis, id vulputate turpis porttitor id. Aliquam id accumsan eros.
+        "},
+        indoc! {"
+            // ˇLorem ipsum dolor sit amet, consectetur adipiscing elit. ˇVivamus mollis elit
+            // purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus
+            // auctor, eu lacinia sapien scelerisque.
+            //
+            // ˇVivamus sit amet neque et quam tincidunt hendrerit. Praesent semper egestas
+            // tellus id dignissim. Pellentesque odio lectus, iaculis ac volutpat et,
+            // ˇblandit quis urna. Sed vestibulum nisi sit amet nisl venenatis tempus. Donec
+            // molestie blandit quam, et porta nunc laoreet in. Integer sit amet scelerisque
+            // nisi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras egestas
+            // porta metus, eu viverra ipsum efficitur quis. Donec luctus eros turpis, id
+            // vulputate turpis porttitor id. Aliquam id accumsan eros.
+        "},
+        language_with_c_comments.clone(),
+        &mut cx,
+    );
+
+    // Test that different comment prefixes are supported.
+    assert_rewrap(
+        indoc! {"
+            # ˇLorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor, eu lacinia sapien scelerisque. Vivamus sit amet neque et quam tincidunt hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio lectus, iaculis ac volutpat et, blandit quis urna. Sed vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in. Integer sit amet scelerisque nisi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras egestas porta metus, eu viverra ipsum efficitur quis. Donec luctus eros turpis, id vulputate turpis porttitor id. Aliquam id accumsan eros.
+        "},
+        indoc! {"
+            # ˇLorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit
+            # purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor,
+            # eu lacinia sapien scelerisque. Vivamus sit amet neque et quam tincidunt
+            # hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio
+            # lectus, iaculis ac volutpat et, blandit quis urna. Sed vestibulum nisi sit
+            # amet nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet
+            # in. Integer sit amet scelerisque nisi. Lorem ipsum dolor sit amet, consectetur
+            # adipiscing elit. Cras egestas porta metus, eu viverra ipsum efficitur quis.
+            # Donec luctus eros turpis, id vulputate turpis porttitor id. Aliquam id
+            # accumsan eros.
+        "},
+        language_with_pound_comments.clone(),
+        &mut cx,
+    );
+
+    // Test that rewrapping is ignored outside of comments in most languages.
+    assert_rewrap(
+        indoc! {"
+            /// Adds two numbers.
+            /// Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit purus, a ornare lacus gravida vitae.ˇ
+            fn add(a: u32, b: u32) -> u32 {
+                a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + bˇ
             }
         "},
         indoc! {"
-            fn foo() {
-                «// This is a long comment at the
-                // base indent.
-                    // This is a long comment at the
-                    // next indent.ˇ»
+            /// Adds two numbers. Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+            /// Vivamus mollis elit purus, a ornare lacus gravida vitae.ˇ
+            fn add(a: u32, b: u32) -> u32 {
+                a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + b + a + bˇ
             }
         "},
-        rust_language.clone(),
+        language_with_doc_comments.clone(),
         &mut cx,
     );
 
-    // Test that different comment prefix characters (e.g., '#') are handled correctly
+    // Test that rewrapping works in Markdown and Plain Text languages.
     assert_rewrap(
         indoc! {"
-            # ˇThis is a long comment using a pound sign.
+            # Hello
+
+            Lorem ipsum dolor sit amet, ˇconsectetur adipiscing elit. Vivamus mollis elit purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor, eu lacinia sapien scelerisque. Vivamus sit amet neque et quam tincidunt hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio lectus, iaculis ac volutpat et, blandit quis urna. Sed vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in. Integer sit amet scelerisque nisi.
         "},
         indoc! {"
-            # ˇThis is a long comment using a pound
-            # sign.
+            # Hello
+
+            Lorem ipsum dolor sit amet, ˇconsectetur adipiscing elit. Vivamus mollis elit
+            purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor,
+            eu lacinia sapien scelerisque. Vivamus sit amet neque et quam tincidunt
+            hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio
+            lectus, iaculis ac volutpat et, blandit quis urna. Sed vestibulum nisi sit amet
+            nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in.
+            Integer sit amet scelerisque nisi.
         "},
-        python_language.clone(),
-        &mut cx,
-    );
-
-    // Test rewrapping only affects comments, not code even when selected
-    assert_rewrap(
-        indoc! {"
-            «/// This doc comment is long and should be wrapped.
-            fn my_func(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32) {}ˇ»
-        "},
-        indoc! {"
-            «/// This doc comment is long and should
-            /// be wrapped.
-            fn my_func(a: u32, b: u32, c: u32, d: u32, e: u32, f: u32) {}ˇ»
-        "},
-        rust_language.clone(),
-        &mut cx,
-    );
-
-    // Test that rewrapping works in Markdown documents where `allow_rewrap` is `Anywhere`
-    assert_rewrap(
-        indoc! {"
-            # Header
-
-            A long long long line of markdown text to wrap.ˇ
-         "},
-        indoc! {"
-            # Header
-
-            A long long long line of markdown text
-            to wrap.ˇ
-         "},
         markdown_language,
         &mut cx,
     );
 
-    // Test that rewrapping works in plain text where `allow_rewrap` is `Anywhere`
     assert_rewrap(
         indoc! {"
-            ˇThis is a very long line of plain text that will be wrapped.
+            Lorem ipsum dolor sit amet, ˇconsectetur adipiscing elit. Vivamus mollis elit purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor, eu lacinia sapien scelerisque. Vivamus sit amet neque et quam tincidunt hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio lectus, iaculis ac volutpat et, blandit quis urna. Sed vestibulum nisi sit amet nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in. Integer sit amet scelerisque nisi.
         "},
         indoc! {"
-            ˇThis is a very long line of plain text
-            that will be wrapped.
+            Lorem ipsum dolor sit amet, ˇconsectetur adipiscing elit. Vivamus mollis elit
+            purus, a ornare lacus gravida vitae. Proin consectetur felis vel purus auctor,
+            eu lacinia sapien scelerisque. Vivamus sit amet neque et quam tincidunt
+            hendrerit. Praesent semper egestas tellus id dignissim. Pellentesque odio
+            lectus, iaculis ac volutpat et, blandit quis urna. Sed vestibulum nisi sit amet
+            nisl venenatis tempus. Donec molestie blandit quam, et porta nunc laoreet in.
+            Integer sit amet scelerisque nisi.
         "},
         plaintext_language.clone(),
         &mut cx,
     );
 
-    // Test that non-commented code acts as a paragraph boundary within a selection
+    // Test rewrapping unaligned comments in a selection.
     assert_rewrap(
         indoc! {"
-               «// This is the first long comment block to be wrapped.
-               fn my_func(a: u32);
-               // This is the second long comment block to be wrapped.ˇ»
-           "},
+            fn foo() {
+                if true {
+            «        // Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit purus, a ornare lacus gravida vitae.
+            // Praesent semper egestas tellus id dignissim.ˇ»
+                    do_something();
+                } else {
+                    //
+                }
+            }
+        "},
         indoc! {"
-               «// This is the first long comment block
-               // to be wrapped.
-               fn my_func(a: u32);
-               // This is the second long comment block
-               // to be wrapped.ˇ»
-           "},
-        rust_language.clone(),
+            fn foo() {
+                if true {
+            «        // Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus
+                    // mollis elit purus, a ornare lacus gravida vitae. Praesent semper
+                    // egestas tellus id dignissim.ˇ»
+                    do_something();
+                } else {
+                    //
+                }
+            }
+        "},
+        language_with_doc_comments.clone(),
         &mut cx,
     );
 
-    // Test rewrapping multiple selections, including ones with blank lines or tabs
     assert_rewrap(
         indoc! {"
-            «ˇThis is a very long line that will be wrapped.
+            fn foo() {
+                if true {
+            «ˇ        // Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus mollis elit purus, a ornare lacus gravida vitae.
+            // Praesent semper egestas tellus id dignissim.»
+                    do_something();
+                } else {
+                    //
+                }
 
-            This is another paragraph in the same selection.»
-
-            «\tThis is a very long indented line that will be wrapped.ˇ»
-         "},
+            }
+        "},
         indoc! {"
-            «ˇThis is a very long line that will be
-            wrapped.
+            fn foo() {
+                if true {
+            «ˇ        // Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus
+                    // mollis elit purus, a ornare lacus gravida vitae. Praesent semper
+                    // egestas tellus id dignissim.»
+                    do_something();
+                } else {
+                    //
+                }
 
-            This is another paragraph in the same
-            selection.»
+            }
+        "},
+        language_with_doc_comments.clone(),
+        &mut cx,
+    );
 
-            «\tThis is a very long indented line
-            \tthat will be wrapped.ˇ»
-         "},
+    assert_rewrap(
+        indoc! {"
+            «ˇone one one one one one one one one one one one one one one one one one one one one one one one one
+
+            two»
+
+            three
+
+            «ˇ\t
+
+            four four four four four four four four four four four four four four four four four four four four»
+
+            «ˇfive five five five five five five five five five five five five five five five five five five five
+            \t»
+            six six six six six six six six six six six six six six six six six six six six six six six six six
+        "},
+        indoc! {"
+            «ˇone one one one one one one one one one one one one one one one one one one one
+            one one one one one
+
+            two»
+
+            three
+
+            «ˇ\t
+
+            four four four four four four four four four four four four four four four four
+            four four four four»
+
+            «ˇfive five five five five five five five five five five five five five five five
+            five five five five
+            \t»
+            six six six six six six six six six six six six six six six six six six six six six six six six six
+        "},
         plaintext_language.clone(),
         &mut cx,
     );
 
-    // Test that an empty comment line acts as a paragraph boundary
     assert_rewrap(
         indoc! {"
-            // ˇThis is a long comment that will be wrapped.
-            //
-            // And this is another long comment that will also be wrapped.ˇ
-         "},
+            //ˇ long long long long long long long long long long long long long long long long long long long long long long long long long long long long
+            //ˇ
+            //ˇ long long long long long long long long long long long long long long long long long long long long long long long long long long long long
+            //ˇ short short short
+            int main(void) {
+                return 17;
+            }
+        "},
         indoc! {"
-            // ˇThis is a long comment that will be
-            // wrapped.
-            //
-            // And this is another long comment that
-            // will also be wrapped.ˇ
-         "},
-        cpp_language,
+            //ˇ long long long long long long long long long long long long long long long
+            // long long long long long long long long long long long long long
+            //ˇ
+            //ˇ long long long long long long long long long long long long long long long
+            //ˇ long long long long long long long long long long long long long short short
+            // short
+            int main(void) {
+                return 17;
+            }
+        "},
+        language_with_c_comments,
         &mut cx,
     );
 
@@ -6056,7 +5845,7 @@ fn test_select_line(cx: &mut TestAppContext) {
         build_editor(buffer, window, cx)
     });
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 0)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(0), 2)..DisplayPoint::new(DisplayRow(0), 2),
@@ -6183,7 +5972,7 @@ async fn test_split_selection_into_lines_interacting_with_creases(cx: &mut TestA
     });
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 0)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(0), 2)..DisplayPoint::new(DisplayRow(0), 2),
@@ -6202,7 +5991,7 @@ async fn test_split_selection_into_lines_interacting_with_creases(cx: &mut TestA
         .assert_editor_state("aˇaˇaaa\nbbbbb\nˇccccc\nddddd\neeeee\nfffff\nggggg\nhhhhh\niiiiiˇ");
 
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(5), 0)..DisplayPoint::new(DisplayRow(0), 1)
             ])
@@ -6878,15 +6667,6 @@ async fn test_select_all_matches(cx: &mut TestAppContext) {
     cx.update_editor(|e, window, cx| e.select_all_matches(&SelectAllMatches, window, cx))
         .unwrap();
     cx.assert_editor_state("abc\n«  ˇ»abc\nabc");
-
-    // Test with a single word and clip_at_line_ends=true (#29823)
-    cx.set_state("aˇbc");
-    cx.update_editor(|e, window, cx| {
-        e.set_clip_at_line_ends(true, cx);
-        e.select_all_matches(&SelectAllMatches, window, cx).unwrap();
-        e.set_clip_at_line_ends(false, cx);
-    });
-    cx.assert_editor_state("«abcˇ»");
 }
 
 #[gpui::test]
@@ -6948,7 +6728,7 @@ async fn test_undo_format_scrolls_to_last_edit_pos(cx: &mut TestAppContext) {
 
     // Move cursor to a different position
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(4, 2)..Point::new(4, 2)]);
         });
     });
@@ -7053,7 +6833,7 @@ async fn test_undo_inline_completion_scrolls_to_edit_pos(cx: &mut TestAppContext
     "});
 
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(9, 2)..Point::new(9, 2)]);
         });
     });
@@ -7313,7 +7093,7 @@ async fn test_select_larger_smaller_syntax_node(cx: &mut TestAppContext) {
         .await;
 
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 25)..DisplayPoint::new(DisplayRow(0), 25),
                 DisplayPoint::new(DisplayRow(2), 24)..DisplayPoint::new(DisplayRow(2), 12),
@@ -7495,7 +7275,7 @@ async fn test_select_larger_syntax_node_for_cursor_at_end(cx: &mut TestAppContex
 
     // Test case 1: Cursor at end of word
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 5)..DisplayPoint::new(DisplayRow(0), 5)
             ]);
@@ -7519,7 +7299,7 @@ async fn test_select_larger_syntax_node_for_cursor_at_end(cx: &mut TestAppContex
 
     // Test case 2: Cursor at end of statement
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 11)..DisplayPoint::new(DisplayRow(0), 11)
             ]);
@@ -7564,7 +7344,7 @@ async fn test_select_larger_smaller_syntax_node_for_string(cx: &mut TestAppConte
 
     // Test 1: Cursor on a letter of a string word
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(3), 17)..DisplayPoint::new(DisplayRow(3), 17)
             ]);
@@ -7598,7 +7378,7 @@ async fn test_select_larger_smaller_syntax_node_for_string(cx: &mut TestAppConte
 
     // Test 2: Partial selection within a word
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(3), 17)..DisplayPoint::new(DisplayRow(3), 19)
             ]);
@@ -7632,7 +7412,7 @@ async fn test_select_larger_smaller_syntax_node_for_string(cx: &mut TestAppConte
 
     // Test 3: Complete word already selected
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(3), 16)..DisplayPoint::new(DisplayRow(3), 21)
             ]);
@@ -7666,7 +7446,7 @@ async fn test_select_larger_smaller_syntax_node_for_string(cx: &mut TestAppConte
 
     // Test 4: Selection spanning across words
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(3), 19)..DisplayPoint::new(DisplayRow(3), 24)
             ]);
@@ -7868,9 +7648,7 @@ async fn test_autoindent(cx: &mut TestAppContext) {
         .await;
 
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([5..5, 8..8, 9..9])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([5..5, 8..8, 9..9]));
         editor.newline(&Newline, window, cx);
         assert_eq!(editor.text(cx), "fn a(\n    \n) {\n    \n}\n");
         assert_eq!(
@@ -8652,7 +8430,7 @@ async fn test_surround_with_pair(cx: &mut TestAppContext) {
         .await;
 
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 0)..DisplayPoint::new(DisplayRow(0), 1),
                 DisplayPoint::new(DisplayRow(1), 0)..DisplayPoint::new(DisplayRow(1), 1),
@@ -8802,7 +8580,7 @@ async fn test_delete_autoclose_pair(cx: &mut TestAppContext) {
         .await;
 
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([
                 Point::new(0, 1)..Point::new(0, 1),
                 Point::new(1, 1)..Point::new(1, 1),
@@ -9484,22 +9262,16 @@ async fn test_multibuffer_format_during_save(cx: &mut TestAppContext) {
     });
 
     multi_buffer_editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(
-            SelectionEffects::scroll(Autoscroll::Next),
-            window,
-            cx,
-            |s| s.select_ranges(Some(1..2)),
-        );
+        editor.change_selections(Some(Autoscroll::Next), window, cx, |s| {
+            s.select_ranges(Some(1..2))
+        });
         editor.insert("|one|two|three|", window, cx);
     });
     assert!(cx.read(|cx| multi_buffer_editor.is_dirty(cx)));
     multi_buffer_editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(
-            SelectionEffects::scroll(Autoscroll::Next),
-            window,
-            cx,
-            |s| s.select_ranges(Some(60..70)),
-        );
+        editor.change_selections(Some(Autoscroll::Next), window, cx, |s| {
+            s.select_ranges(Some(60..70))
+        });
         editor.insert("|four|five|six|", window, cx);
     });
     assert!(cx.read(|cx| multi_buffer_editor.is_dirty(cx)));
@@ -9662,12 +9434,9 @@ async fn test_autosave_with_dirty_buffers(cx: &mut TestAppContext) {
 
     // Edit only the first buffer
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(
-            SelectionEffects::scroll(Autoscroll::Next),
-            window,
-            cx,
-            |s| s.select_ranges(Some(10..10)),
-        );
+        editor.change_selections(Some(Autoscroll::Next), window, cx, |s| {
+            s.select_ranges(Some(10..10))
+        });
         editor.insert("// edited", window, cx);
     });
 
@@ -11079,9 +10848,7 @@ async fn test_signature_help(cx: &mut TestAppContext) {
     "});
 
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([0..0])
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges([0..0]));
     });
 
     let mocked_response = lsp::SignatureHelp {
@@ -11168,7 +10935,7 @@ async fn test_signature_help(cx: &mut TestAppContext) {
     // When selecting a range, the popover is gone.
     // Avoid using `cx.set_state` to not actually edit the document, just change its selections.
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges(Some(Point::new(1, 25)..Point::new(1, 19)));
         })
     });
@@ -11185,7 +10952,7 @@ async fn test_signature_help(cx: &mut TestAppContext) {
 
     // When unselecting again, the popover is back if within the brackets.
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges(Some(Point::new(1, 19)..Point::new(1, 19)));
         })
     });
@@ -11205,7 +10972,7 @@ async fn test_signature_help(cx: &mut TestAppContext) {
 
     // Test to confirm that SignatureHelp does not appear after deselecting multiple ranges when it was hidden by pressing Escape.
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges(Some(Point::new(0, 0)..Point::new(0, 0)));
             s.select_ranges(Some(Point::new(1, 19)..Point::new(1, 19)));
         })
@@ -11246,7 +11013,7 @@ async fn test_signature_help(cx: &mut TestAppContext) {
     cx.condition(|editor, _| !editor.signature_help_state.is_shown())
         .await;
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges(Some(Point::new(1, 25)..Point::new(1, 19)));
         })
     });
@@ -11258,7 +11025,7 @@ async fn test_signature_help(cx: &mut TestAppContext) {
         fn sample(param1: u8, param2: u8) {}
     "});
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges(Some(Point::new(1, 19)..Point::new(1, 19)));
         })
     });
@@ -11914,7 +11681,7 @@ async fn test_completion_in_multibuffer_with_replace_range(cx: &mut TestAppConte
     let fake_server = fake_servers.next().await.unwrap();
 
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([
                 Point::new(1, 11)..Point::new(1, 11),
                 Point::new(7, 11)..Point::new(7, 11),
@@ -13555,7 +13322,7 @@ fn test_editing_disjoint_excerpts(cx: &mut TestAppContext) {
     let (editor, cx) = cx.add_window_view(|window, cx| build_editor(multibuffer, window, cx));
     editor.update_in(cx, |editor, window, cx| {
         assert_eq!(editor.text(cx), "aaaa\nbbbb");
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([
                 Point::new(0, 0)..Point::new(0, 0),
                 Point::new(1, 0)..Point::new(1, 0),
@@ -13573,7 +13340,7 @@ fn test_editing_disjoint_excerpts(cx: &mut TestAppContext) {
         );
 
         // Ensure the cursor's head is respected when deleting across an excerpt boundary.
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(0, 2)..Point::new(1, 2)])
         });
         editor.backspace(&Default::default(), window, cx);
@@ -13583,7 +13350,7 @@ fn test_editing_disjoint_excerpts(cx: &mut TestAppContext) {
             [Point::new(1, 0)..Point::new(1, 0)]
         );
 
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(1, 1)..Point::new(0, 1)])
         });
         editor.backspace(&Default::default(), window, cx);
@@ -13631,9 +13398,7 @@ fn test_editing_overlapping_excerpts(cx: &mut TestAppContext) {
             true,
         );
         assert_eq!(editor.text(cx), expected_text);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges(selection_ranges)
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges(selection_ranges));
 
         editor.handle_input("X", window, cx);
 
@@ -13694,7 +13459,7 @@ fn test_refresh_selections(cx: &mut TestAppContext) {
     let editor = cx.add_window(|window, cx| {
         let mut editor = build_editor(multibuffer.clone(), window, cx);
         let snapshot = editor.snapshot(window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(1, 3)..Point::new(1, 3)])
         });
         editor.begin_selection(
@@ -13716,7 +13481,7 @@ fn test_refresh_selections(cx: &mut TestAppContext) {
 
     // Refreshing selections is a no-op when excerpts haven't changed.
     _ = editor.update(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| s.refresh());
+        editor.change_selections(None, window, cx, |s| s.refresh());
         assert_eq!(
             editor.selections.ranges(cx),
             [
@@ -13741,7 +13506,7 @@ fn test_refresh_selections(cx: &mut TestAppContext) {
 
         // Refreshing selections will relocate the first selection to the original buffer
         // location.
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| s.refresh());
+        editor.change_selections(None, window, cx, |s| s.refresh());
         assert_eq!(
             editor.selections.ranges(cx),
             [
@@ -13803,7 +13568,7 @@ fn test_refresh_selections_while_selecting_with_mouse(cx: &mut TestAppContext) {
         );
 
         // Ensure we don't panic when selections are refreshed and that the pending selection is finalized.
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| s.refresh());
+        editor.change_selections(None, window, cx, |s| s.refresh());
         assert_eq!(
             editor.selections.ranges(cx),
             [Point::new(0, 3)..Point::new(0, 3)]
@@ -13862,7 +13627,7 @@ async fn test_extra_newline_insertion(cx: &mut TestAppContext) {
         .await;
 
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_display_ranges([
                 DisplayPoint::new(DisplayRow(0), 2)..DisplayPoint::new(DisplayRow(0), 3),
                 DisplayPoint::new(DisplayRow(2), 5)..DisplayPoint::new(DisplayRow(2), 5),
@@ -14041,9 +13806,7 @@ async fn test_following(cx: &mut TestAppContext) {
 
     // Update the selections only
     _ = leader.update(cx, |leader, window, cx| {
-        leader.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([1..1])
-        });
+        leader.change_selections(None, window, cx, |s| s.select_ranges([1..1]));
     });
     follower
         .update(cx, |follower, window, cx| {
@@ -14091,9 +13854,7 @@ async fn test_following(cx: &mut TestAppContext) {
     // Update the selections and scroll position. The follower's scroll position is updated
     // via autoscroll, not via the leader's exact scroll position.
     _ = leader.update(cx, |leader, window, cx| {
-        leader.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([0..0])
-        });
+        leader.change_selections(None, window, cx, |s| s.select_ranges([0..0]));
         leader.request_autoscroll(Autoscroll::newest(), cx);
         leader.set_scroll_position(gpui::Point::new(1.5, 3.5), window, cx);
     });
@@ -14117,9 +13878,7 @@ async fn test_following(cx: &mut TestAppContext) {
 
     // Creating a pending selection that precedes another selection
     _ = leader.update(cx, |leader, window, cx| {
-        leader.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges([1..1])
-        });
+        leader.change_selections(None, window, cx, |s| s.select_ranges([1..1]));
         leader.begin_selection(DisplayPoint::new(DisplayRow(0), 0), true, 1, window, cx);
     });
     follower
@@ -14775,7 +14534,7 @@ async fn test_on_type_formatting_not_triggered(cx: &mut TestAppContext) {
 
     editor_handle.update_in(cx, |editor, window, cx| {
         window.focus(&editor.focus_handle(cx));
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(0, 21)..Point::new(0, 20)])
         });
         editor.handle_input("{", window, cx);
@@ -14790,58 +14549,6 @@ async fn test_on_type_formatting_not_triggered(cx: &mut TestAppContext) {
             "No extra braces from on type formatting should appear in the buffer"
         )
     });
-}
-
-#[gpui::test(iterations = 20, seeds(31))]
-async fn test_on_type_formatting_is_applied_after_autoindent(cx: &mut TestAppContext) {
-    init_test(cx, |_| {});
-
-    let mut cx = EditorLspTestContext::new_rust(
-        lsp::ServerCapabilities {
-            document_on_type_formatting_provider: Some(lsp::DocumentOnTypeFormattingOptions {
-                first_trigger_character: ".".to_string(),
-                more_trigger_character: None,
-            }),
-            ..Default::default()
-        },
-        cx,
-    )
-    .await;
-
-    cx.update_buffer(|buffer, _| {
-        // This causes autoindent to be async.
-        buffer.set_sync_parse_timeout(Duration::ZERO)
-    });
-
-    cx.set_state("fn c() {\n    d()ˇ\n}\n");
-    cx.simulate_keystroke("\n");
-    cx.run_until_parked();
-
-    let buffer_cloned =
-        cx.multibuffer(|multi_buffer, _| multi_buffer.as_singleton().unwrap().clone());
-    let mut request =
-        cx.set_request_handler::<lsp::request::OnTypeFormatting, _, _>(move |_, _, mut cx| {
-            let buffer_cloned = buffer_cloned.clone();
-            async move {
-                buffer_cloned.update(&mut cx, |buffer, _| {
-                    assert_eq!(
-                        buffer.text(),
-                        "fn c() {\n    d()\n        .\n}\n",
-                        "OnTypeFormatting should triggered after autoindent applied"
-                    )
-                })?;
-
-                Ok(Some(vec![]))
-            }
-        });
-
-    cx.simulate_keystroke(".");
-    cx.run_until_parked();
-
-    cx.assert_editor_state("fn c() {\n    d()\n        .ˇ\n}\n");
-    assert!(request.next().await.is_some());
-    request.close();
-    assert!(request.next().await.is_none());
 }
 
 #[gpui::test]
@@ -15681,7 +15388,7 @@ async fn test_completions_default_resolve_data_handling(cx: &mut TestAppContext)
     // Completions that have already been resolved are skipped.
     assert_eq!(
         *resolved_items.lock(),
-        items[items.len() - 17..items.len() - 4]
+        items[items.len() - 16..items.len() - 4]
             .iter()
             .cloned()
             .map(|mut item| {
@@ -16390,7 +16097,7 @@ async fn test_multibuffer_reverts(cx: &mut TestAppContext) {
     });
 
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges(Some(Point::new(0, 0)..Point::new(6, 0)));
         });
         editor.git_restore(&Default::default(), window, cx);
@@ -16534,12 +16241,9 @@ async fn test_mutlibuffer_in_navigation_history(cx: &mut TestAppContext) {
     cx.executor().run_until_parked();
 
     multi_buffer_editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(
-            SelectionEffects::scroll(Autoscroll::Next),
-            window,
-            cx,
-            |s| s.select_ranges(Some(1..2)),
-        );
+        editor.change_selections(Some(Autoscroll::Next), window, cx, |s| {
+            s.select_ranges(Some(1..2))
+        });
         editor.open_excerpts(&OpenExcerpts, window, cx);
     });
     cx.executor().run_until_parked();
@@ -16589,12 +16293,9 @@ async fn test_mutlibuffer_in_navigation_history(cx: &mut TestAppContext) {
         .unwrap();
 
     multi_buffer_editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(
-            SelectionEffects::scroll(Autoscroll::Next),
-            window,
-            cx,
-            |s| s.select_ranges(Some(39..40)),
-        );
+        editor.change_selections(Some(Autoscroll::Next), window, cx, |s| {
+            s.select_ranges(Some(39..40))
+        });
         editor.open_excerpts(&OpenExcerpts, window, cx);
     });
     cx.executor().run_until_parked();
@@ -16648,12 +16349,9 @@ async fn test_mutlibuffer_in_navigation_history(cx: &mut TestAppContext) {
         .unwrap();
 
     multi_buffer_editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(
-            SelectionEffects::scroll(Autoscroll::Next),
-            window,
-            cx,
-            |s| s.select_ranges(Some(70..70)),
-        );
+        editor.change_selections(Some(Autoscroll::Next), window, cx, |s| {
+            s.select_ranges(Some(70..70))
+        });
         editor.open_excerpts(&OpenExcerpts, window, cx);
     });
     cx.executor().run_until_parked();
@@ -18255,7 +17953,7 @@ async fn test_active_indent_guide_single_line(cx: &mut TestAppContext) {
     .await;
 
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(1, 0)..Point::new(1, 0)])
         });
     });
@@ -18283,7 +17981,7 @@ async fn test_active_indent_guide_respect_indented_range(cx: &mut TestAppContext
     .await;
 
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(1, 0)..Point::new(1, 0)])
         });
     });
@@ -18299,7 +17997,7 @@ async fn test_active_indent_guide_respect_indented_range(cx: &mut TestAppContext
     );
 
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(2, 0)..Point::new(2, 0)])
         });
     });
@@ -18315,7 +18013,7 @@ async fn test_active_indent_guide_respect_indented_range(cx: &mut TestAppContext
     );
 
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(3, 0)..Point::new(3, 0)])
         });
     });
@@ -18346,7 +18044,7 @@ async fn test_active_indent_guide_empty_line(cx: &mut TestAppContext) {
     .await;
 
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(2, 0)..Point::new(2, 0)])
         });
     });
@@ -18372,7 +18070,7 @@ async fn test_active_indent_guide_non_matching_indent(cx: &mut TestAppContext) {
     .await;
 
     cx.update_editor(|editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(1, 0)..Point::new(1, 0)])
         });
     });
@@ -19310,14 +19008,14 @@ async fn test_find_enclosing_node_with_task(cx: &mut TestAppContext) {
         );
 
         // Test finding task when cursor is inside function body
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(4, 5)..Point::new(4, 5)])
         });
         let (_, row, _) = editor.find_enclosing_node_task(cx).unwrap();
         assert_eq!(row, 3, "Should find task for cursor inside runnable_1");
 
         // Test finding task when cursor is on function name
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(8, 4)..Point::new(8, 4)])
         });
         let (_, row, _) = editor.find_enclosing_node_task(cx).unwrap();
@@ -19471,7 +19169,7 @@ async fn test_folding_buffers(cx: &mut TestAppContext) {
                 .collect::<String>(),
             "bbbb"
         );
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
+        editor.change_selections(None, window, cx, |selections| {
             selections.select_ranges(vec![Point::new(1, 0)..Point::new(1, 0)]);
         });
         editor.handle_input("B", window, cx);
@@ -19698,9 +19396,7 @@ async fn test_folding_buffer_when_multibuffer_has_only_one_excerpt(cx: &mut Test
             HighlightStyle::color(Hsla::green()),
             cx,
         );
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
-            s.select_ranges(Some(highlight_range))
-        });
+        editor.change_selections(None, window, cx, |s| s.select_ranges(Some(highlight_range)));
     });
 
     let full_text = format!("\n\n{sample_text}");
@@ -21070,7 +20766,7 @@ println!("5");
         })
     });
     editor_1.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges(expected_ranges.clone());
         });
     });
@@ -21516,7 +21212,7 @@ async fn test_html_linked_edits_on_completion(cx: &mut TestAppContext) {
     let fake_server = fake_servers.next().await.unwrap();
     editor.update_in(cx, |editor, window, cx| {
         editor.set_text("<ad></ad>", window, cx);
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |selections| {
+        editor.change_selections(None, window, cx, |selections| {
             selections.select_ranges([Point::new(0, 3)..Point::new(0, 3)]);
         });
         let Some((buffer, _)) = editor
@@ -21798,9 +21494,9 @@ async fn test_tab_in_leading_whitespace_auto_indents_for_python(cx: &mut TestApp
     cx.set_state(indoc! {"
         def main():
         ˇ    try:
-        ˇ        fetch()
+        ˇ       fetch()
         ˇ    except ValueError:
-        ˇ        handle_error()
+        ˇ       handle_error()
         ˇ    else:
         ˇ        match value:
         ˇ            case _:
@@ -21928,101 +21624,74 @@ async fn test_outdent_after_input_for_python(cx: &mut TestAppContext) {
             finally:ˇ
     "});
 
-    // test `else` does not outdents when typed inside `except` block right after for block
-    cx.set_state(indoc! {"
-        def main():
-            try:
-                i = 2
-            except:
-                for i in range(n):
-                    pass
-                ˇ
-    "});
-    cx.update_editor(|editor, window, cx| {
-        editor.handle_input("else:", window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        def main():
-            try:
-                i = 2
-            except:
-                for i in range(n):
-                    pass
-                else:ˇ
-    "});
+    // TODO: test `except` auto outdents when typed inside `try` block right after for block
+    // cx.set_state(indoc! {"
+    //     def main():
+    //         try:
+    //             for i in range(n):
+    //                 pass
+    //             ˇ
+    // "});
+    // cx.update_editor(|editor, window, cx| {
+    //     editor.handle_input("except:", window, cx);
+    // });
+    // cx.assert_editor_state(indoc! {"
+    //     def main():
+    //         try:
+    //             for i in range(n):
+    //                 pass
+    //         except:ˇ
+    // "});
 
-    // test `finally` auto outdents when typed inside `else` block right after for block
-    cx.set_state(indoc! {"
-        def main():
-            try:
-                i = 2
-            except:
-                j = 2
-            else:
-                for i in range(n):
-                    pass
-                ˇ
-    "});
-    cx.update_editor(|editor, window, cx| {
-        editor.handle_input("finally:", window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        def main():
-            try:
-                i = 2
-            except:
-                j = 2
-            else:
-                for i in range(n):
-                    pass
-            finally:ˇ
-    "});
+    // TODO: test `else` auto outdents when typed inside `except` block right after for block
+    // cx.set_state(indoc! {"
+    //     def main():
+    //         try:
+    //             i = 2
+    //         except:
+    //             for i in range(n):
+    //                 pass
+    //             ˇ
+    // "});
+    // cx.update_editor(|editor, window, cx| {
+    //     editor.handle_input("else:", window, cx);
+    // });
+    // cx.assert_editor_state(indoc! {"
+    //     def main():
+    //         try:
+    //             i = 2
+    //         except:
+    //             for i in range(n):
+    //                 pass
+    //         else:ˇ
+    // "});
 
-    // test `except` outdents to inner "try" block
-    cx.set_state(indoc! {"
-        def main():
-            try:
-                i = 2
-                if i == 2:
-                    try:
-                        i = 3
-                        ˇ
-    "});
-    cx.update_editor(|editor, window, cx| {
-        editor.handle_input("except:", window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        def main():
-            try:
-                i = 2
-                if i == 2:
-                    try:
-                        i = 3
-                    except:ˇ
-    "});
-
-    // test `except` outdents to outer "try" block
-    cx.set_state(indoc! {"
-        def main():
-            try:
-                i = 2
-                if i == 2:
-                    try:
-                        i = 3
-                ˇ
-    "});
-    cx.update_editor(|editor, window, cx| {
-        editor.handle_input("except:", window, cx);
-    });
-    cx.assert_editor_state(indoc! {"
-        def main():
-            try:
-                i = 2
-                if i == 2:
-                    try:
-                        i = 3
-            except:ˇ
-    "});
+    // TODO: test `finally` auto outdents when typed inside `else` block right after for block
+    // cx.set_state(indoc! {"
+    //     def main():
+    //         try:
+    //             i = 2
+    //         except:
+    //             j = 2
+    //         else:
+    //             for i in range(n):
+    //                 pass
+    //             ˇ
+    // "});
+    // cx.update_editor(|editor, window, cx| {
+    //     editor.handle_input("finally:", window, cx);
+    // });
+    // cx.assert_editor_state(indoc! {"
+    //     def main():
+    //         try:
+    //             i = 2
+    //         except:
+    //             j = 2
+    //         else:
+    //             for i in range(n):
+    //                 pass
+    //         finally:ˇ
+    // "});
 
     // test `else` stays at correct indent when typed after `for` block
     cx.set_state(indoc! {"
@@ -22522,7 +22191,7 @@ async fn test_pulling_diagnostics(cx: &mut TestAppContext) {
 
     // Moving cursor should not trigger diagnostic request
     editor.update_in(cx, |editor, window, cx| {
-        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+        editor.change_selections(None, window, cx, |s| {
             s.select_ranges([Point::new(0, 0)..Point::new(0, 0)])
         });
     });
@@ -22810,24 +22479,6 @@ async fn test_mtime_and_document_colors(cx: &mut TestAppContext) {
             extract_color_inlays(editor, cx),
             "Should have an initial inlay"
         );
-    });
-}
-
-#[gpui::test]
-async fn test_newline_replacement_in_single_line(cx: &mut TestAppContext) {
-    init_test(cx, |_| {});
-    let (editor, cx) = cx.add_window_view(Editor::single_line);
-    editor.update_in(cx, |editor, window, cx| {
-        editor.set_text("oops\n\nwow\n", window, cx)
-    });
-    cx.run_until_parked();
-    editor.update(cx, |editor, cx| {
-        assert_eq!(editor.display_text(cx), "oops⋯⋯wow⋯");
-    });
-    editor.update(cx, |editor, cx| editor.edit([(3..5, "")], cx));
-    cx.run_until_parked();
-    editor.update(cx, |editor, cx| {
-        assert_eq!(editor.display_text(cx), "oop⋯wow⋯");
     });
 }
 

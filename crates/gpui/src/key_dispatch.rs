@@ -634,7 +634,7 @@ mod tests {
             "test::TestAction"
         }
 
-        fn name_for_type() -> &'static str
+        fn debug_name() -> &'static str
         where
             Self: ::std::marker::Sized,
         {

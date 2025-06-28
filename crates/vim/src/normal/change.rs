@@ -8,6 +8,7 @@ use editor::{
     Bias, DisplayPoint,
     display_map::{DisplaySnapshot, ToDisplayPoint},
     movement::TextLayoutDetails,
+    scroll::Autoscroll,
 };
 use gpui::{Context, Window};
 use language::Selection;
@@ -39,7 +40,7 @@ impl Vim {
             editor.transact(window, cx, |editor, window, cx| {
                 // We are swapping to insert mode anyway. Just set the line end clipping behavior now
                 editor.set_clip_at_line_ends(false, cx);
-                editor.change_selections(Default::default(), window, cx, |s| {
+                editor.change_selections(Some(Autoscroll::fit()), window, cx, |s| {
                     s.move_with(|map, selection| {
                         let kind = match motion {
                             Motion::NextWordStart { ignore_punctuation }
@@ -105,7 +106,6 @@ impl Vim {
         &mut self,
         object: Object,
         around: bool,
-        times: Option<usize>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -114,9 +114,9 @@ impl Vim {
             // We are swapping to insert mode anyway. Just set the line end clipping behavior now
             editor.set_clip_at_line_ends(false, cx);
             editor.transact(window, cx, |editor, window, cx| {
-                editor.change_selections(Default::default(), window, cx, |s| {
+                editor.change_selections(Some(Autoscroll::fit()), window, cx, |s| {
                     s.move_with(|map, selection| {
-                        objects_found |= object.expand_selection(map, selection, around, times);
+                        objects_found |= object.expand_selection(map, selection, around);
                     });
                 });
                 if objects_found {
