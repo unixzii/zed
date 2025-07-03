@@ -421,7 +421,7 @@ impl Selection {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct ParsedMarkdown {
     pub source: SharedString,
     pub events: Arc<[(Range<usize>, MarkdownEvent)]>,
@@ -504,6 +504,7 @@ impl MarkdownElement {
         let selection = self.markdown.read(cx).selection;
         let selection_start = rendered_text.position_for_source_index(selection.start);
         let selection_end = rendered_text.position_for_source_index(selection.end);
+
         if let Some(((start_position, start_line_height), (end_position, end_line_height))) =
             selection_start.zip(selection_end)
         {
@@ -1672,7 +1673,7 @@ struct RenderedText {
     links: Rc<[RenderedLink]>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 struct RenderedLink {
     source_range: Range<usize>,
     destination_url: SharedString,

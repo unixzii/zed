@@ -16,11 +16,9 @@ fn test_action_macros() {
 
     #[derive(PartialEq, Clone, Deserialize, JsonSchema, Action)]
     #[action(namespace = test_only)]
-    #[serde(deny_unknown_fields)]
-    struct AnotherAction;
+    struct AnotherSomeAction;
 
     #[derive(PartialEq, Clone, gpui::private::serde_derive::Deserialize)]
-    #[serde(deny_unknown_fields)]
     struct RegisterableAction {}
 
     register_action!(RegisterableAction);

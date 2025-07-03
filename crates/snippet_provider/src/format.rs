@@ -1,8 +1,11 @@
 use collections::HashMap;
-use schemars::{JsonSchema, json_schema};
+use schemars::{
+    JsonSchema,
+    r#gen::SchemaSettings,
+    schema::{ObjectValidation, Schema, SchemaObject},
+};
 use serde::Deserialize;
 use serde_json_lenient::Value;
-use std::borrow::Cow;
 
 #[derive(Deserialize)]
 pub struct VsSnippetsFile {
@@ -12,25 +15,29 @@ pub struct VsSnippetsFile {
 
 impl VsSnippetsFile {
     pub fn generate_json_schema() -> Value {
-        let schema = schemars::generate::SchemaSettings::draft2019_09()
+        let schema = SchemaSettings::draft07()
+            .with(|settings| settings.option_add_null_type = false)
             .into_generator()
-            .root_schema_for::<Self>();
+            .into_root_schema_for::<Self>();
 
         serde_json_lenient::to_value(schema).unwrap()
     }
 }
 
 impl JsonSchema for VsSnippetsFile {
-    fn schema_name() -> Cow<'static, str> {
+    fn schema_name() -> String {
         "VsSnippetsFile".into()
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        let snippet_schema = generator.subschema_for::<VsCodeSnippet>();
-        json_schema!({
-            "type": "object",
-            "additionalProperties": snippet_schema
-        })
+    fn json_schema(r#gen: &mut schemars::r#gen::SchemaGenerator) -> Schema {
+        SchemaObject {
+            object: Some(Box::new(ObjectValidation {
+                additional_properties: Some(Box::new(r#gen.subschema_for::<VsCodeSnippet>())),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+        .into()
     }
 }
 

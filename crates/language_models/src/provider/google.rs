@@ -37,8 +37,8 @@ use util::ResultExt;
 use crate::AllLanguageModelSettings;
 use crate::ui::InstructionListItem;
 
-const PROVIDER_ID: LanguageModelProviderId = language_model::GOOGLE_PROVIDER_ID;
-const PROVIDER_NAME: LanguageModelProviderName = language_model::GOOGLE_PROVIDER_NAME;
+const PROVIDER_ID: &str = "google";
+const PROVIDER_NAME: &str = "Google AI";
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct GoogleSettings {
@@ -207,11 +207,11 @@ impl LanguageModelProviderState for GoogleLanguageModelProvider {
 
 impl LanguageModelProvider for GoogleLanguageModelProvider {
     fn id(&self) -> LanguageModelProviderId {
-        PROVIDER_ID
+        LanguageModelProviderId(PROVIDER_ID.into())
     }
 
     fn name(&self) -> LanguageModelProviderName {
-        PROVIDER_NAME
+        LanguageModelProviderName(PROVIDER_NAME.into())
     }
 
     fn icon(&self) -> IconName {
@@ -334,11 +334,11 @@ impl LanguageModel for GoogleLanguageModel {
     }
 
     fn provider_id(&self) -> LanguageModelProviderId {
-        PROVIDER_ID
+        LanguageModelProviderId(PROVIDER_ID.into())
     }
 
     fn provider_name(&self) -> LanguageModelProviderName {
-        PROVIDER_NAME
+        LanguageModelProviderName(PROVIDER_NAME.into())
     }
 
     fn supports_tools(&self) -> bool {
@@ -423,7 +423,9 @@ impl LanguageModel for GoogleLanguageModel {
         );
         let request = self.stream_completion(request, cx);
         let future = self.request_limiter.stream(async move {
-            let response = request.await.map_err(LanguageModelCompletionError::from)?;
+            let response = request
+                .await
+                .map_err(|err| LanguageModelCompletionError::Other(anyhow!(err)))?;
             Ok(GoogleEventMapper::new().map_stream(response))
         });
         async move { Ok(future.await?.boxed()) }.boxed()
@@ -620,7 +622,7 @@ impl GoogleEventMapper {
                 futures::stream::iter(match event {
                     Some(Ok(event)) => self.map_event(event),
                     Some(Err(error)) => {
-                        vec![Err(LanguageModelCompletionError::from(error))]
+                        vec![Err(LanguageModelCompletionError::Other(anyhow!(error)))]
                     }
                     None => vec![Ok(LanguageModelCompletionEvent::Stop(self.stop_reason))],
                 })

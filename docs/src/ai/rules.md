@@ -16,7 +16,6 @@ Other names for this file are also supported for compatibility with other agents
 - `AGENT.md`
 - `AGENTS.md`
 - `CLAUDE.md`
-- `GEMINI.md`
 
 ## Rules Library {#rules-library}
 

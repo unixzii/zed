@@ -20,9 +20,6 @@ use workspace::{Workspace, with_active_or_new_workspace};
 
 use crate::appearance_settings_controls::AppearanceSettingsControls;
 
-pub mod keybindings;
-pub mod ui_components;
-
 pub struct SettingsUiFeatureFlag;
 
 impl FeatureFlag for SettingsUiFeatureFlag {
@@ -31,7 +28,6 @@ impl FeatureFlag for SettingsUiFeatureFlag {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct ImportVsCodeSettings {
     #[serde(default)]
     pub skip_prompt: bool,
@@ -39,7 +35,6 @@ pub struct ImportVsCodeSettings {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct ImportCursorSettings {
     #[serde(default)]
     pub skip_prompt: bool,
@@ -126,8 +121,6 @@ pub fn init(cx: &mut App) {
         .detach();
     })
     .detach();
-
-    keybindings::init(cx);
 }
 
 async fn handle_import_vscode_settings(

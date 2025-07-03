@@ -582,7 +582,7 @@ pub struct FontRun {
 }
 
 trait AsCacheKeyRef {
-    fn as_cache_key_ref(&self) -> CacheKeyRef<'_>;
+    fn as_cache_key_ref(&self) -> CacheKeyRef;
 }
 
 #[derive(Clone, Debug, Eq)]

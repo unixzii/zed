@@ -1720,11 +1720,6 @@
     //     }
     // }
   },
-  // Common language server settings.
-  "global_lsp_settings": {
-    // Whether to show the LSP servers button in the status bar.
-    "button": true
-  },
   // Jupyter settings
   "jupyter": {
     "enabled": true
@@ -1784,8 +1779,7 @@
   // `socks5h`. `http` will be used when no scheme is specified.
   //
   // By default no proxy will be used, or Zed will try get proxy settings from
-  // environment variables. If certain hosts should not be proxied,
-  // set the `no_proxy` environment variable and provide a comma-separated list.
+  // environment variables.
   //
   // Examples:
   //   - "proxy": "socks5h://localhost:10808"

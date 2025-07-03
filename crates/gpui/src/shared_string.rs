@@ -2,10 +2,7 @@ use derive_more::{Deref, DerefMut};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::{Borrow, Cow},
-    sync::Arc,
-};
+use std::{borrow::Borrow, sync::Arc};
 use util::arc_cow::ArcCow;
 
 /// A shared string is an immutable string that can be cheaply cloned in GPUI
@@ -26,16 +23,12 @@ impl SharedString {
 }
 
 impl JsonSchema for SharedString {
-    fn inline_schema() -> bool {
-        String::inline_schema()
-    }
-
-    fn schema_name() -> Cow<'static, str> {
+    fn schema_name() -> String {
         String::schema_name()
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        String::json_schema(generator)
+    fn json_schema(r#gen: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        String::json_schema(r#gen)
     }
 }
 

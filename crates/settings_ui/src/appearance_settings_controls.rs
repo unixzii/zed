@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use gpui::{App, FontFeatures, FontWeight};
 use settings::{EditableSettingControl, Settings};
-use theme::{
-    FontFamilyCache, FontFamilyName, SystemAppearance, ThemeMode, ThemeRegistry, ThemeSettings,
-};
+use theme::{FontFamilyCache, SystemAppearance, ThemeMode, ThemeRegistry, ThemeSettings};
 use ui::{
     CheckboxWithLabel, ContextMenu, DropdownMenu, NumericStepper, SettingsContainer, SettingsGroup,
     ToggleButton, prelude::*,
@@ -191,7 +189,7 @@ impl EditableSettingControl for UiFontFamilyControl {
         value: Self::Value,
         _cx: &App,
     ) {
-        settings.ui_font_family = Some(FontFamilyName(value.into()));
+        settings.ui_font_family = Some(value.to_string());
     }
 }
 

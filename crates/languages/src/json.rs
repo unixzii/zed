@@ -269,9 +269,10 @@ impl JsonLspAdapter {
 
 #[cfg(debug_assertions)]
 fn generate_inspector_style_schema() -> serde_json_lenient::Value {
-    let schema = schemars::generate::SchemaSettings::draft2019_09()
+    let schema = schemars::r#gen::SchemaSettings::draft07()
+        .with(|settings| settings.option_add_null_type = false)
         .into_generator()
-        .root_schema_for::<gpui::StyleRefinement>();
+        .into_root_schema_for::<gpui::StyleRefinement>();
 
     serde_json_lenient::to_value(schema).unwrap()
 }

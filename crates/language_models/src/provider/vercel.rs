@@ -25,13 +25,14 @@ use util::ResultExt;
 
 use crate::{AllLanguageModelSettings, ui::InstructionListItem};
 
-const PROVIDER_ID: LanguageModelProviderId = LanguageModelProviderId::new("vercel");
-const PROVIDER_NAME: LanguageModelProviderName = LanguageModelProviderName::new("Vercel");
+const PROVIDER_ID: &str = "vercel";
+const PROVIDER_NAME: &str = "Vercel";
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct VercelSettings {
     pub api_url: String,
     pub available_models: Vec<AvailableModel>,
+    pub needs_setting_migration: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -172,11 +173,11 @@ impl LanguageModelProviderState for VercelLanguageModelProvider {
 
 impl LanguageModelProvider for VercelLanguageModelProvider {
     fn id(&self) -> LanguageModelProviderId {
-        PROVIDER_ID
+        LanguageModelProviderId(PROVIDER_ID.into())
     }
 
     fn name(&self) -> LanguageModelProviderName {
-        PROVIDER_NAME
+        LanguageModelProviderName(PROVIDER_NAME.into())
     }
 
     fn icon(&self) -> IconName {
@@ -269,11 +270,7 @@ impl VercelLanguageModel {
         };
 
         let future = self.request_limiter.stream(async move {
-            let Some(api_key) = api_key else {
-                return Err(LanguageModelCompletionError::NoApiKey {
-                    provider: PROVIDER_NAME,
-                });
-            };
+            let api_key = api_key.context("Missing Vercel API Key")?;
             let request =
                 open_ai::stream_completion(http_client.as_ref(), &api_url, &api_key, request);
             let response = request.await?;
@@ -294,11 +291,11 @@ impl LanguageModel for VercelLanguageModel {
     }
 
     fn provider_id(&self) -> LanguageModelProviderId {
-        PROVIDER_ID
+        LanguageModelProviderId(PROVIDER_ID.into())
     }
 
     fn provider_name(&self) -> LanguageModelProviderName {
-        PROVIDER_NAME
+        LanguageModelProviderName(PROVIDER_NAME.into())
     }
 
     fn supports_tools(&self) -> bool {

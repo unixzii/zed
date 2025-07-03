@@ -1,4 +1,6 @@
-use gpui::{App, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, Task, WeakEntity};
+use gpui::{
+    AnyElement, App, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, Task, WeakEntity,
+};
 use itertools::Itertools;
 use picker::{Picker, PickerDelegate};
 use project::{Project, git_store::Repository};
@@ -203,6 +205,15 @@ impl PickerDelegate for RepositorySelectorDelegate {
         self.repository_selector
             .update(cx, |_this, cx| cx.emit(DismissEvent))
             .ok();
+    }
+
+    fn render_header(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Picker<Self>>,
+    ) -> Option<AnyElement> {
+        // TODO: Implement header rendering if needed
+        None
     }
 
     fn render_match(

@@ -58,7 +58,6 @@ pub enum ExtensionCategoryFilter {
 
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct Extensions {
     /// Filters the extensions page down to extensions that are in the specified category.
     #[serde(default)]
@@ -67,7 +66,6 @@ pub struct Extensions {
 
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct DecreaseBufferFontSize {
     #[serde(default)]
     pub persist: bool,
@@ -75,7 +73,6 @@ pub struct DecreaseBufferFontSize {
 
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct IncreaseBufferFontSize {
     #[serde(default)]
     pub persist: bool,
@@ -83,7 +80,6 @@ pub struct IncreaseBufferFontSize {
 
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct ResetBufferFontSize {
     #[serde(default)]
     pub persist: bool,
@@ -91,7 +87,6 @@ pub struct ResetBufferFontSize {
 
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct DecreaseUiFontSize {
     #[serde(default)]
     pub persist: bool,
@@ -99,7 +94,6 @@ pub struct DecreaseUiFontSize {
 
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct IncreaseUiFontSize {
     #[serde(default)]
     pub persist: bool,
@@ -107,7 +101,6 @@ pub struct IncreaseUiFontSize {
 
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
-#[serde(deny_unknown_fields)]
 pub struct ResetUiFontSize {
     #[serde(default)]
     pub persist: bool,

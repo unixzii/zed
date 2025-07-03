@@ -103,7 +103,6 @@ pub struct ActivateItem(pub usize);
 #[action(namespace = pane)]
 #[serde(deny_unknown_fields)]
 pub struct CloseActiveItem {
-    #[serde(default)]
     pub save_intent: Option<SaveIntent>,
     #[serde(default)]
     pub close_pinned: bool,
@@ -113,7 +112,6 @@ pub struct CloseActiveItem {
 #[action(namespace = pane)]
 #[serde(deny_unknown_fields)]
 pub struct CloseInactiveItems {
-    #[serde(default)]
     pub save_intent: Option<SaveIntent>,
     #[serde(default)]
     pub close_pinned: bool,
@@ -123,7 +121,6 @@ pub struct CloseInactiveItems {
 #[action(namespace = pane)]
 #[serde(deny_unknown_fields)]
 pub struct CloseAllItems {
-    #[serde(default)]
     pub save_intent: Option<SaveIntent>,
     #[serde(default)]
     pub close_pinned: bool,
@@ -2524,7 +2521,7 @@ impl Pane {
         let pane = cx.entity().downgrade();
         let menu_context = item.item_focus_handle(cx);
         right_click_menu(ix)
-            .trigger(|_, _, _| tab)
+            .trigger(|_| tab)
             .menu(move |window, cx| {
                 let pane = pane.clone();
                 let menu_context = menu_context.clone();

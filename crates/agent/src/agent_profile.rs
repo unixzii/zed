@@ -85,22 +85,19 @@ impl AgentProfile {
             .collect()
     }
 
-    pub fn is_tool_enabled(&self, source: ToolSource, tool_name: String, cx: &App) -> bool {
-        let Some(settings) = AgentSettings::get_global(cx).profiles.get(&self.id) else {
-            return false;
-        };
-
-        return Self::is_enabled(settings, source, tool_name);
-    }
-
     fn is_enabled(settings: &AgentProfileSettings, source: ToolSource, name: String) -> bool {
         match source {
             ToolSource::Native => *settings.tools.get(name.as_str()).unwrap_or(&false),
-            ToolSource::ContextServer { id } => settings
-                .context_servers
-                .get(id.as_ref())
-                .and_then(|preset| preset.tools.get(name.as_str()).copied())
-                .unwrap_or(settings.enable_all_context_servers),
+            ToolSource::ContextServer { id } => {
+                if settings.enable_all_context_servers {
+                    return true;
+                }
+
+                let Some(preset) = settings.context_servers.get(id.as_ref()) else {
+                    return false;
+                };
+                *preset.tools.get(name.as_str()).unwrap_or(&false)
+            }
         }
     }
 }

@@ -35,7 +35,6 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 pub use crate::default_colors::*;
-use crate::fallback_themes::apply_theme_color_defaults;
 pub use crate::font_family_cache::*;
 pub use crate::icon_theme::*;
 pub use crate::icon_theme_schema::*;
@@ -166,6 +165,12 @@ impl ThemeFamily {
             AppearanceContent::Dark => Appearance::Dark,
         };
 
+        let mut refined_theme_colors = match theme.appearance {
+            AppearanceContent::Light => ThemeColors::light(),
+            AppearanceContent::Dark => ThemeColors::dark(),
+        };
+        refined_theme_colors.refine(&theme.style.theme_colors_refinement());
+
         let mut refined_status_colors = match theme.appearance {
             AppearanceContent::Light => StatusColors::light(),
             AppearanceContent::Dark => StatusColors::dark(),
@@ -179,14 +184,6 @@ impl ThemeFamily {
             AppearanceContent::Dark => PlayerColors::dark(),
         };
         refined_player_colors.merge(&theme.style.players);
-
-        let mut refined_theme_colors = match theme.appearance {
-            AppearanceContent::Light => ThemeColors::light(),
-            AppearanceContent::Dark => ThemeColors::dark(),
-        };
-        let mut theme_colors_refinement = theme.style.theme_colors_refinement();
-        apply_theme_color_defaults(&mut theme_colors_refinement, &refined_player_colors);
-        refined_theme_colors.refine(&theme_colors_refinement);
 
         let mut refined_accent_colors = match theme.appearance {
             AppearanceContent::Light => AccentColors::light(),
@@ -268,7 +265,7 @@ pub fn refine_theme_family(theme_family_content: ThemeFamilyContent) -> ThemeFam
 }
 
 /// A theme is the primary mechanism for defining the appearance of the UI.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Theme {
     /// The unique identifier for the theme.
     pub id: String,

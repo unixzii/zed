@@ -196,6 +196,7 @@ impl TerminalElement {
             interactivity: Default::default(),
         }
         .track_focus(&focus)
+        .element
     }
 
     //Vec<Range<AlacPoint>> -> Clip out the parts of the ranges
@@ -681,10 +682,11 @@ impl Element for TerminalElement {
 
                 let terminal_settings = TerminalSettings::get_global(cx);
 
-                let font_family = terminal_settings.font_family.as_ref().map_or_else(
-                    || settings.buffer_font.family.clone(),
-                    |font_family| font_family.0.clone().into(),
-                );
+                let font_family = terminal_settings
+                    .font_family
+                    .as_ref()
+                    .unwrap_or(&settings.buffer_font.family)
+                    .clone();
 
                 let font_fallbacks = terminal_settings
                     .font_fallbacks

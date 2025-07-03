@@ -135,7 +135,6 @@ pub type ContextServerFactory =
     Box<dyn Fn(ContextServerId, Arc<ContextServerConfiguration>) -> Arc<ContextServer>>;
 
 pub struct ContextServerStore {
-    context_server_settings: HashMap<Arc<str>, ContextServerSettings>,
     servers: HashMap<ContextServerId, ContextServerState>,
     worktree_store: Entity<WorktreeStore>,
     registry: Entity<ContextServerDescriptorRegistry>,
@@ -203,11 +202,6 @@ impl ContextServerStore {
                     this.available_context_servers_changed(cx);
                 }),
                 cx.observe_global::<SettingsStore>(|this, cx| {
-                    let settings = Self::resolve_context_server_settings(&this.worktree_store, cx);
-                    if &this.context_server_settings == settings {
-                        return;
-                    }
-                    this.context_server_settings = settings.clone();
                     this.available_context_servers_changed(cx);
                 }),
             ]
@@ -217,8 +211,6 @@ impl ContextServerStore {
 
         let mut this = Self {
             _subscriptions: subscriptions,
-            context_server_settings: Self::resolve_context_server_settings(&worktree_store, cx)
-                .clone(),
             worktree_store,
             registry,
             needs_server_update: false,
@@ -276,8 +268,10 @@ impl ContextServerStore {
         cx.spawn(async move |this, cx| {
             let this = this.upgrade().context("Context server store dropped")?;
             let settings = this
-                .update(cx, |this, _| {
-                    this.context_server_settings.get(&server.id().0).cloned()
+                .update(cx, |this, cx| {
+                    this.context_server_settings(cx)
+                        .get(&server.id().0)
+                        .cloned()
                 })
                 .ok()
                 .flatten()
@@ -445,11 +439,12 @@ impl ContextServerStore {
         }
     }
 
-    fn resolve_context_server_settings<'a>(
-        worktree_store: &'a Entity<WorktreeStore>,
+    fn context_server_settings<'a>(
+        &'a self,
         cx: &'a App,
     ) -> &'a HashMap<Arc<str>, ContextServerSettings> {
-        let location = worktree_store
+        let location = self
+            .worktree_store
             .read(cx)
             .visible_worktrees(cx)
             .next()
@@ -497,9 +492,9 @@ impl ContextServerStore {
     }
 
     async fn maintain_servers(this: WeakEntity<Self>, cx: &mut AsyncApp) -> Result<()> {
-        let (mut configured_servers, registry, worktree_store) = this.update(cx, |this, _| {
+        let (mut configured_servers, registry, worktree_store) = this.update(cx, |this, cx| {
             (
-                this.context_server_settings.clone(),
+                this.context_server_settings(cx).clone(),
                 this.registry.clone(),
                 this.worktree_store.clone(),
             )
@@ -992,33 +987,6 @@ mod tests {
             cx.run_until_parked();
 
             cx.update(|cx| {
-                assert_eq!(store.read(cx).status_for_server(&server_2_id), None);
-            });
-        }
-
-        // Ensure that nothing happens if the settings do not change
-        {
-            let _server_events = assert_server_events(&store, vec![], cx);
-            set_context_server_configuration(
-                vec![(
-                    server_1_id.0.clone(),
-                    ContextServerSettings::Extension {
-                        enabled: true,
-                        settings: json!({
-                            "somevalue": false
-                        }),
-                    },
-                )],
-                cx,
-            );
-
-            cx.run_until_parked();
-
-            cx.update(|cx| {
-                assert_eq!(
-                    store.read(cx).status_for_server(&server_1_id),
-                    Some(ContextServerStatus::Running)
-                );
                 assert_eq!(store.read(cx).status_for_server(&server_2_id), None);
             });
         }

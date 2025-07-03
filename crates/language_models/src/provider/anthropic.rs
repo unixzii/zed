@@ -33,14 +33,15 @@ use theme::ThemeSettings;
 use ui::{Icon, IconName, List, Tooltip, prelude::*};
 use util::ResultExt;
 
-const PROVIDER_ID: LanguageModelProviderId = language_model::ANTHROPIC_PROVIDER_ID;
-const PROVIDER_NAME: LanguageModelProviderName = language_model::ANTHROPIC_PROVIDER_NAME;
+const PROVIDER_ID: &str = language_model::ANTHROPIC_PROVIDER_ID;
+const PROVIDER_NAME: &str = "Anthropic";
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct AnthropicSettings {
     pub api_url: String,
     /// Extend Zed's list of Anthropic models.
     pub available_models: Vec<AvailableModel>,
+    pub needs_setting_migration: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -218,11 +219,11 @@ impl LanguageModelProviderState for AnthropicLanguageModelProvider {
 
 impl LanguageModelProvider for AnthropicLanguageModelProvider {
     fn id(&self) -> LanguageModelProviderId {
-        PROVIDER_ID
+        LanguageModelProviderId(PROVIDER_ID.into())
     }
 
     fn name(&self) -> LanguageModelProviderName {
-        PROVIDER_NAME
+        LanguageModelProviderName(PROVIDER_NAME.into())
     }
 
     fn icon(&self) -> IconName {
@@ -403,11 +404,7 @@ impl AnthropicModel {
         };
 
         async move {
-            let Some(api_key) = api_key else {
-                return Err(LanguageModelCompletionError::NoApiKey {
-                    provider: PROVIDER_NAME,
-                });
-            };
+            let api_key = api_key.context("Missing Anthropic API Key")?;
             let request =
                 anthropic::stream_completion(http_client.as_ref(), &api_url, &api_key, request);
             request.await.map_err(Into::into)
@@ -426,11 +423,11 @@ impl LanguageModel for AnthropicModel {
     }
 
     fn provider_id(&self) -> LanguageModelProviderId {
-        PROVIDER_ID
+        LanguageModelProviderId(PROVIDER_ID.into())
     }
 
     fn provider_name(&self) -> LanguageModelProviderName {
-        PROVIDER_NAME
+        LanguageModelProviderName(PROVIDER_NAME.into())
     }
 
     fn supports_tools(&self) -> bool {
@@ -532,11 +529,6 @@ pub fn into_anthropic(
                     .into_iter()
                     .filter_map(|content| match content {
                         MessageContent::Text(text) => {
-                            let text = if text.chars().last().map_or(false, |c| c.is_whitespace()) {
-                                text.trim_end().to_string()
-                            } else {
-                                text
-                            };
                             if !text.is_empty() {
                                 Some(anthropic::RequestContent::Text {
                                     text,
@@ -810,14 +802,12 @@ impl AnthropicEventMapper {
                                 raw_input: tool_use.input_json.clone(),
                             },
                         )),
-                        Err(json_parse_err) => {
-                            Ok(LanguageModelCompletionEvent::ToolUseJsonParseError {
-                                id: tool_use.id.into(),
-                                tool_name: tool_use.name.into(),
-                                raw_input: input_json.into(),
-                                json_parse_error: json_parse_err.to_string(),
-                            })
-                        }
+                        Err(json_parse_err) => Err(LanguageModelCompletionError::BadInputJson {
+                            id: tool_use.id.into(),
+                            tool_name: tool_use.name.into(),
+                            raw_input: input_json.into(),
+                            json_parse_error: json_parse_err.to_string(),
+                        }),
                     };
 
                     vec![event_result]

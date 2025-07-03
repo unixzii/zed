@@ -1,4 +1,4 @@
-use crate::{Capslock, xcb_flush};
+use crate::Capslock;
 use core::str;
 use std::{
     cell::RefCell,
@@ -15,6 +15,7 @@ use calloop::{
     generic::{FdWrapper, Generic},
 };
 use collections::HashMap;
+use futures::channel::oneshot;
 use http_client::Url;
 use log::Level;
 use smallvec::SmallVec;
@@ -58,12 +59,13 @@ use crate::platform::{
         reveal_path_internal,
         xdg_desktop_portal::{Event as XDPEvent, XDPEventSource},
     },
+    scap_screen_capture::scap_screen_sources,
 };
 use crate::{
     AnyWindowHandle, Bounds, ClipboardItem, CursorStyle, DisplayId, FileDropEvent, Keystroke,
     LinuxKeyboardLayout, Modifiers, ModifiersChangedEvent, MouseButton, Pixels, Platform,
     PlatformDisplay, PlatformInput, PlatformKeyboardLayout, Point, RequestFrameOptions,
-    ScaledPixels, ScrollDelta, Size, TouchPhase, WindowParams, X11Window,
+    ScaledPixels, ScreenCaptureSource, ScrollDelta, Size, TouchPhase, WindowParams, X11Window,
     modifiers_from_xinput_info, point, px,
 };
 
@@ -376,7 +378,6 @@ impl X11Client {
             xcb_connection
                 .xkb_use_extension(XKB_X11_MIN_MAJOR_XKB_VERSION, XKB_X11_MIN_MINOR_XKB_VERSION),
         )?;
-        assert!(xkb.supported);
 
         let events = xkb::EventType::STATE_NOTIFY
             | xkb::EventType::MAP_NOTIFY
@@ -400,6 +401,7 @@ impl X11Client {
                 &xkb::SelectEventsAux::new(),
             ),
         )?;
+        assert!(xkb.supported);
 
         let xkb_context = xkbc::Context::new(xkbc::CONTEXT_NO_FLAGS);
         let xkb_device_id = xkbc::x11::get_core_keyboard_device_id(&xcb_connection);
@@ -481,8 +483,6 @@ impl X11Client {
                 }
             })
             .map_err(|err| anyhow!("Failed to initialize XDP event source: {err:?}"))?;
-
-        xcb_flush(&xcb_connection);
 
         Ok(X11Client(Rc::new(RefCell::new(X11ClientState {
             modifiers: Modifiers::default(),
@@ -1477,19 +1477,14 @@ impl LinuxClient for X11Client {
         ))
     }
 
-    #[cfg(feature = "screen-capture")]
     fn is_screen_capture_supported(&self) -> bool {
         true
     }
 
-    #[cfg(feature = "screen-capture")]
     fn screen_capture_sources(
         &self,
-    ) -> futures::channel::oneshot::Receiver<anyhow::Result<Vec<Box<dyn crate::ScreenCaptureSource>>>>
-    {
-        crate::platform::scap_screen_capture::scap_screen_sources(
-            &self.0.borrow().common.foreground_executor,
-        )
+    ) -> oneshot::Receiver<anyhow::Result<Vec<Box<dyn ScreenCaptureSource>>>> {
+        scap_screen_sources(&self.0.borrow().common.foreground_executor)
     }
 
     fn open_window(
@@ -1528,7 +1523,6 @@ impl LinuxClient for X11Client {
             ),
         )
         .log_err();
-        xcb_flush(&state.xcb_connection);
 
         let window_ref = WindowRef {
             window: window.0.clone(),
@@ -1560,18 +1554,19 @@ impl LinuxClient for X11Client {
         };
 
         state.cursor_styles.insert(focused_window, style);
-        check_reply(
-            || "Failed to set cursor style",
-            state.xcb_connection.change_window_attributes(
+        state
+            .xcb_connection
+            .change_window_attributes(
                 focused_window,
                 &ChangeWindowAttributesAux {
                     cursor: Some(cursor),
                     ..Default::default()
                 },
-            ),
-        )
-        .log_err();
-        state.xcb_connection.flush().log_err();
+            )
+            .anyhow()
+            .and_then(|cookie| cookie.check().anyhow())
+            .context("X11: Failed to set cursor style")
+            .log_err();
     }
 
     fn open_uri(&self, uri: &str) {
@@ -2092,7 +2087,6 @@ fn xdnd_send_finished(
         xcb_connection.send_event(false, target, EventMask::default(), message),
     )
     .log_err();
-    xcb_connection.flush().log_err();
 }
 
 fn xdnd_send_status(
@@ -2115,7 +2109,6 @@ fn xdnd_send_status(
         xcb_connection.send_event(false, target, EventMask::default(), message),
     )
     .log_err();
-    xcb_connection.flush().log_err();
 }
 
 /// Recomputes `pointer_device_states` by querying all pointer devices.
@@ -2269,6 +2262,6 @@ fn create_invisible_cursor(
 
     connection.free_pixmap(empty_pixmap)?;
 
-    xcb_flush(connection);
+    connection.flush()?;
     Ok(cursor)
 }

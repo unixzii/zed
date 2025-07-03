@@ -1334,11 +1334,6 @@ impl App {
         self.pending_effects.push_back(Effect::RefreshWindows);
     }
 
-    /// Get all key bindings in the app.
-    pub fn key_bindings(&self) -> Rc<RefCell<Keymap>> {
-        self.keymap.clone()
-    }
-
     /// Register a global listener for actions invoked via the keyboard.
     pub fn on_action<A: Action>(&mut self, listener: impl Fn(&A, &mut Self) + 'static) {
         self.global_action_listeners
@@ -1393,8 +1388,8 @@ impl App {
     /// Get all non-internal actions that have been registered, along with their schemas.
     pub fn action_schemas(
         &self,
-        generator: &mut schemars::SchemaGenerator,
-    ) -> Vec<(&'static str, Option<schemars::Schema>)> {
+        generator: &mut schemars::r#gen::SchemaGenerator,
+    ) -> Vec<(&'static str, Option<schemars::schema::Schema>)> {
         self.actions.action_schemas(generator)
     }
 

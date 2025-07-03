@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use collections::HashMap;
 
-use crate::{Action, InvalidKeystrokeError, KeyBindingContextPredicate, Keystroke, SharedString};
+use crate::{Action, InvalidKeystrokeError, KeyBindingContextPredicate, Keystroke};
 use smallvec::SmallVec;
 
 /// A keybinding and its associated metadata, from the keymap.
@@ -11,8 +11,6 @@ pub struct KeyBinding {
     pub(crate) keystrokes: SmallVec<[Keystroke; 2]>,
     pub(crate) context_predicate: Option<Rc<KeyBindingContextPredicate>>,
     pub(crate) meta: Option<KeyBindingMetaIndex>,
-    /// The json input string used when building the keybinding, if any
-    pub(crate) action_input: Option<SharedString>,
 }
 
 impl Clone for KeyBinding {
@@ -22,7 +20,6 @@ impl Clone for KeyBinding {
             keystrokes: self.keystrokes.clone(),
             context_predicate: self.context_predicate.clone(),
             meta: self.meta,
-            action_input: self.action_input.clone(),
         }
     }
 }
@@ -35,7 +32,7 @@ impl KeyBinding {
         } else {
             None
         };
-        Self::load(keystrokes, Box::new(action), context_predicate, None, None).unwrap()
+        Self::load(keystrokes, Box::new(action), context_predicate, None).unwrap()
     }
 
     /// Load a keybinding from the given raw data.
@@ -44,7 +41,6 @@ impl KeyBinding {
         action: Box<dyn Action>,
         context_predicate: Option<Rc<KeyBindingContextPredicate>>,
         key_equivalents: Option<&HashMap<char, char>>,
-        action_input: Option<SharedString>,
     ) -> std::result::Result<Self, InvalidKeystrokeError> {
         let mut keystrokes: SmallVec<[Keystroke; 2]> = keystrokes
             .split_whitespace()
@@ -66,7 +62,6 @@ impl KeyBinding {
             action,
             context_predicate,
             meta: None,
-            action_input,
         })
     }
 
@@ -114,11 +109,6 @@ impl KeyBinding {
     /// Get the metadata for this binding
     pub fn meta(&self) -> Option<KeyBindingMetaIndex> {
         self.meta
-    }
-
-    /// Get the action input associated with the action for this binding
-    pub fn action_input(&self) -> Option<SharedString> {
-        self.action_input.clone()
     }
 }
 
