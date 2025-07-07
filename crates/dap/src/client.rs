@@ -2,7 +2,7 @@ use crate::{
     adapters::DebugAdapterBinary,
     transport::{IoKind, LogKind, TransportDelegate},
 };
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use dap_types::{
     messages::{Message, Response},
     requests::Request,
@@ -108,11 +108,7 @@ impl DebugAdapterClient {
             arguments: Some(serialized_arguments),
         };
         self.transport_delegate
-            .pending_requests
-            .lock()
-            .as_mut()
-            .context("client is closed")?
-            .insert(sequence_id, callback_tx);
+            .add_pending_request(sequence_id, callback_tx);
 
         log::debug!(
             "Client {} send `{}` request with sequence_id: {}",

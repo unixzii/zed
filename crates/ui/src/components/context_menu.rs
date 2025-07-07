@@ -24,7 +24,6 @@ pub enum ContextMenuItem {
         entry_render: Box<dyn Fn(&mut Window, &mut App) -> AnyElement>,
         handler: Rc<dyn Fn(Option<&FocusHandle>, &mut Window, &mut App)>,
         selectable: bool,
-        documentation_aside: Option<DocumentationAside>,
     },
 }
 
@@ -32,13 +31,11 @@ impl ContextMenuItem {
     pub fn custom_entry(
         entry_render: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
         handler: impl Fn(&mut Window, &mut App) + 'static,
-        documentation_aside: Option<DocumentationAside>,
     ) -> Self {
         Self::CustomEntry {
             entry_render: Box::new(entry_render),
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             selectable: true,
-            documentation_aside,
         }
     }
 }
@@ -171,12 +168,6 @@ pub enum DocumentationSide {
 pub struct DocumentationAside {
     side: DocumentationSide,
     render: Rc<dyn Fn(&mut App) -> AnyElement>,
-}
-
-impl DocumentationAside {
-    pub fn new(side: DocumentationSide, render: Rc<dyn Fn(&mut App) -> AnyElement>) -> Self {
-        Self { side, render }
-    }
 }
 
 impl Focusable for ContextMenu {
@@ -465,7 +456,6 @@ impl ContextMenu {
             entry_render: Box::new(entry_render),
             handler: Rc::new(|_, _, _| {}),
             selectable: false,
-            documentation_aside: None,
         });
         self
     }
@@ -479,7 +469,6 @@ impl ContextMenu {
             entry_render: Box::new(entry_render),
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             selectable: true,
-            documentation_aside: None,
         });
         self
     }
@@ -716,19 +705,10 @@ impl ContextMenu {
         let item = self.items.get(ix)?;
         if item.is_selectable() {
             self.selected_index = Some(ix);
-            match item {
-                ContextMenuItem::Entry(entry) => {
-                    if let Some(callback) = &entry.documentation_aside {
-                        self.documentation_aside = Some((ix, callback.clone()));
-                    }
-                }
-                ContextMenuItem::CustomEntry {
-                    documentation_aside: Some(callback),
-                    ..
-                } => {
+            if let ContextMenuItem::Entry(entry) = item {
+                if let Some(callback) = &entry.documentation_aside {
                     self.documentation_aside = Some((ix, callback.clone()));
                 }
-                _ => (),
             }
         }
         Some(ix)
@@ -826,7 +806,6 @@ impl ContextMenu {
                 entry_render,
                 handler,
                 selectable,
-                ..
             } => {
                 let handler = handler.clone();
                 let menu = cx.entity().downgrade();

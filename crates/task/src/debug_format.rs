@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
-use util::{debug_panic, schemars::add_new_subschema};
+use util::debug_panic;
 
 use crate::{TaskTemplate, adapter_schema::AdapterSchemas};
 
@@ -286,10 +286,11 @@ pub struct DebugScenario {
 pub struct DebugTaskFile(pub Vec<DebugScenario>);
 
 impl DebugTaskFile {
-    pub fn generate_json_schema(schemas: &AdapterSchemas) -> serde_json::Value {
+    pub fn generate_json_schema(schemas: &AdapterSchemas) -> serde_json_lenient::Value {
         let mut generator = schemars::generate::SchemaSettings::draft2019_09().into_generator();
-
-        let mut build_task_value = BuildTaskDefinition::json_schema(&mut generator).to_value();
+        let build_task_schema = generator.root_schema_for::<BuildTaskDefinition>();
+        let mut build_task_value =
+            serde_json_lenient::to_value(&build_task_schema).unwrap_or_default();
 
         if let Some(template_object) = build_task_value
             .get_mut("anyOf")
@@ -321,54 +322,32 @@ impl DebugTaskFile {
             );
         }
 
+        let task_definitions = build_task_value.get("$defs").cloned().unwrap_or_default();
+
         let adapter_conditions = schemas
             .0
             .iter()
             .map(|adapter_schema| {
                 let adapter_name = adapter_schema.adapter.to_string();
-                add_new_subschema(
-                    &mut generator,
-                    &format!("{adapter_name}DebugSettings"),
-                    serde_json::json!({
-                        "if": {
-                            "properties": {
-                                "adapter": { "const": adapter_name }
-                            }
-                        },
-                        "then": adapter_schema.schema
-                    }),
-                )
+                serde_json::json!({
+                    "if": {
+                        "properties": {
+                            "adapter": { "const": adapter_name }
+                        }
+                    },
+                    "then": adapter_schema.schema
+                })
             })
             .collect::<Vec<_>>();
 
-        let build_task_definition_ref = add_new_subschema(
-            &mut generator,
-            BuildTaskDefinition::schema_name().as_ref(),
-            build_task_value,
-        );
-
-        let meta_schema = generator
-            .settings()
-            .meta_schema
-            .as_ref()
-            .expect("meta_schema should be present in schemars settings")
-            .to_string();
-
-        serde_json::json!({
-            "$schema": meta_schema,
+        serde_json_lenient::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "title": "Debug Configurations",
             "description": "Configuration for debug scenarios",
             "type": "array",
             "items": {
                 "type": "object",
                 "required": ["adapter", "label"],
-                // TODO: Uncommenting this will cause json-language-server to provide warnings for
-                // unrecognized properties. It should be enabled if/when there's an adapter JSON
-                // schema that's comprehensive. In order to not get warnings for the other schemas,
-                // `additionalProperties` or `unevaluatedProperties` (to handle "allOf" etc style
-                // schema combinations) could be set to `true` for that schema.
-                //
-                // "unevaluatedProperties": false,
                 "properties": {
                     "adapter": {
                         "type": "string",
@@ -378,7 +357,7 @@ impl DebugTaskFile {
                         "type": "string",
                         "description": "The name of the debug configuration"
                     },
-                    "build": build_task_definition_ref,
+                    "build": build_task_value,
                     "tcp_connection": {
                         "type": "object",
                         "description": "Optional TCP connection information for connecting to an already running debug adapter",
@@ -401,7 +380,7 @@ impl DebugTaskFile {
                 },
                 "allOf": adapter_conditions
             },
-            "$defs": generator.take_definitions(true),
+            "$defs": task_definitions
         })
     }
 }

@@ -25,13 +25,7 @@ mod base_keymap_setting;
 mod multibuffer_hint;
 mod welcome_ui;
 
-actions!(
-    welcome,
-    [
-        /// Resets the welcome screen hints to their initial state.
-        ResetHints
-    ]
-);
+actions!(welcome, [ResetHints]);
 
 pub const FIRST_OPEN: &str = "first_open";
 pub const DOCS_URL: &str = "https://zed.dev/docs/";

@@ -74,13 +74,7 @@ pub struct NotificationPresenter {
     pub can_navigate: bool,
 }
 
-actions!(
-    notification_panel,
-    [
-        /// Toggles focus on the notification panel.
-        ToggleFocus
-    ]
-);
+actions!(notification_panel, [ToggleFocus]);
 
 pub fn init(cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, _, _| {

@@ -1,10 +1,9 @@
 use adapters::latest_github_release;
 use anyhow::Context as _;
-use collections::HashMap;
 use dap::{StartDebuggingRequestArguments, adapters::DebugTaskDefinition};
 use gpui::AsyncApp;
 use serde_json::Value;
-use std::{path::PathBuf, sync::OnceLock};
+use std::{collections::HashMap, path::PathBuf, sync::OnceLock};
 use task::DebugRequest;
 use util::{ResultExt, maybe};
 
@@ -71,8 +70,6 @@ impl JsDebugAdapter {
         let tcp_connection = task_definition.tcp_connection.clone().unwrap_or_default();
         let (host, port, timeout) = crate::configure_tcp_connection(tcp_connection).await?;
 
-        let mut envs = HashMap::default();
-
         let mut configuration = task_definition.config.clone();
         if let Some(configuration) = configuration.as_object_mut() {
             maybe!({
@@ -82,9 +79,9 @@ impl JsDebugAdapter {
                 let command = configuration.get("command")?.as_str()?.to_owned();
                 let mut args = shlex::split(&command)?.into_iter();
                 let program = args.next()?;
-                configuration.insert("runtimeExecutable".to_owned(), program.into());
+                configuration.insert("program".to_owned(), program.into());
                 configuration.insert(
-                    "runtimeArgs".to_owned(),
+                    "args".to_owned(),
                     args.map(Value::from).collect::<Vec<_>>().into(),
                 );
                 configuration.insert("console".to_owned(), "externalTerminal".into());
@@ -110,12 +107,6 @@ impl JsDebugAdapter {
                         }
                     }
                     _ => {}
-                }
-            }
-
-            if let Some(env) = configuration.get("env").cloned() {
-                if let Ok(env) = serde_json::from_value(env) {
-                    envs = env;
                 }
             }
 
@@ -167,7 +158,7 @@ impl JsDebugAdapter {
             ),
             arguments,
             cwd: Some(delegate.worktree_root_path().to_path_buf()),
-            envs,
+            envs: HashMap::default(),
             connection: Some(adapters::TcpArguments {
                 host,
                 port,
@@ -254,7 +245,7 @@ impl DebugAdapter for JsDebugAdapter {
                             "properties": {
                                 "type": {
                                     "type": "string",
-                                    "enum": ["pwa-node", "node", "chrome", "pwa-chrome", "msedge", "pwa-msedge", "node-terminal"],
+                                    "enum": ["pwa-node", "node", "chrome", "pwa-chrome", "msedge", "pwa-msedge"],
                                     "description": "The type of debug session",
                                     "default": "pwa-node"
                                 },
@@ -388,6 +379,10 @@ impl DebugAdapter for JsDebugAdapter {
                                     }
                                 }
                             },
+                            "oneOf": [
+                                { "required": ["program"] },
+                                { "required": ["url"] }
+                            ]
                         }
                     ]
                 },

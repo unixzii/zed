@@ -2076,7 +2076,7 @@ dependencies = [
 [[package]]
 name = "blade-graphics"
 version = "0.6.0"
-source = "git+https://github.com/kvark/blade?rev=416375211bb0b5826b3584dccdb6a43369e499ad#416375211bb0b5826b3584dccdb6a43369e499ad"
+source = "git+https://github.com/kvark/blade?rev=e0ec4e720957edd51b945b64dd85605ea54bcfe5#e0ec4e720957edd51b945b64dd85605ea54bcfe5"
 dependencies = [
  "ash",
  "ash-window",
@@ -2109,7 +2109,7 @@ dependencies = [
 [[package]]
 name = "blade-macros"
 version = "0.3.0"
-source = "git+https://github.com/kvark/blade?rev=416375211bb0b5826b3584dccdb6a43369e499ad#416375211bb0b5826b3584dccdb6a43369e499ad"
+source = "git+https://github.com/kvark/blade?rev=e0ec4e720957edd51b945b64dd85605ea54bcfe5#e0ec4e720957edd51b945b64dd85605ea54bcfe5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2119,7 +2119,7 @@ dependencies = [
 [[package]]
 name = "blade-util"
 version = "0.2.0"
-source = "git+https://github.com/kvark/blade?rev=416375211bb0b5826b3584dccdb6a43369e499ad#416375211bb0b5826b3584dccdb6a43369e499ad"
+source = "git+https://github.com/kvark/blade?rev=e0ec4e720957edd51b945b64dd85605ea54bcfe5#e0ec4e720957edd51b945b64dd85605ea54bcfe5"
 dependencies = [
  "blade-graphics",
  "bytemuck",
@@ -4324,7 +4324,6 @@ dependencies = [
  "futures 0.3.31",
  "fuzzy",
  "gpui",
- "indoc",
  "itertools 0.14.0",
  "language",
  "log",
@@ -4345,7 +4344,6 @@ dependencies = [
  "tasks_ui",
  "telemetry",
  "terminal_view",
- "text",
  "theme",
  "tree-sitter",
  "tree-sitter-go",
@@ -4832,7 +4830,6 @@ dependencies = [
  "tree-sitter-python",
  "tree-sitter-rust",
  "tree-sitter-typescript",
- "tree-sitter-yaml",
  "ui",
  "unicode-script",
  "unicode-segmentation",
@@ -9025,6 +9022,7 @@ dependencies = [
  "itertools 0.14.0",
  "language",
  "lsp",
+ "picker",
  "project",
  "release_channel",
  "serde_json",
@@ -12260,7 +12258,6 @@ dependencies = [
  "language",
  "log",
  "lsp",
- "markdown",
  "node_runtime",
  "parking_lot",
  "pathdiff",
@@ -14592,7 +14589,6 @@ dependencies = [
  "settings",
  "theme",
  "tree-sitter-json",
- "tree-sitter-rust",
  "ui",
  "util",
  "workspace",
@@ -17349,7 +17345,6 @@ dependencies = [
  "rand 0.8.5",
  "regex",
  "rust-embed",
- "schemars",
  "serde",
  "serde_json",
  "serde_json_lenient",
@@ -19947,7 +19942,7 @@ dependencies = [
 
 [[package]]
 name = "zed"
-version = "0.195.0"
+version = "0.194.3"
 dependencies = [
  "activity_indicator",
  "agent",

@@ -13,13 +13,7 @@ use ui::{
 };
 use workspace::{Item, SplitDirection, Workspace};
 
-actions!(
-    dev,
-    [
-        /// Opens the key context view for debugging keybindings.
-        OpenKeyContextView
-    ]
-);
+actions!(dev, [OpenKeyContextView]);
 
 pub fn init(cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, _, _| {

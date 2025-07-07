@@ -29,7 +29,6 @@ impl FeatureFlag for SettingsUiFeatureFlag {
     const NAME: &'static str = "settings-ui";
 }
 
-/// Imports settings from Visual Studio Code.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -38,7 +37,6 @@ pub struct ImportVsCodeSettings {
     pub skip_prompt: bool,
 }
 
-/// Imports settings from Cursor editor.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -46,13 +44,7 @@ pub struct ImportCursorSettings {
     #[serde(default)]
     pub skip_prompt: bool,
 }
-actions!(
-    zed,
-    [
-        /// Opens the settings editor.
-        OpenSettingsEditor
-    ]
-);
+actions!(zed, [OpenSettingsEditor]);
 
 pub fn init(cx: &mut App) {
     cx.on_action(|_: &OpenSettingsEditor, cx| {

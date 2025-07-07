@@ -12,13 +12,7 @@ use ui::{ListItem, ListItemSpacing, prelude::*};
 use util::ResultExt;
 use workspace::{ModalView, Workspace, ui::HighlightedLabel};
 
-actions!(
-    welcome,
-    [
-        /// Toggles the base keymap selector modal.
-        ToggleBaseKeymapSelector
-    ]
-);
+actions!(welcome, [ToggleBaseKeymapSelector]);
 
 pub fn init(cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {

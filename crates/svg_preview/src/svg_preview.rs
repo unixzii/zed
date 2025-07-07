@@ -5,14 +5,7 @@ pub mod svg_preview_view;
 
 actions!(
     svg,
-    [
-        /// Opens an SVG preview for the current file.
-        OpenPreview,
-        /// Opens an SVG preview in a split pane.
-        OpenPreviewToTheSide,
-        /// Opens a following SVG preview that syncs with the editor.
-        OpenFollowingPreview
-    ]
+    [OpenPreview, OpenPreviewToTheSide, OpenFollowingPreview]
 );
 
 pub fn init(cx: &mut App) {

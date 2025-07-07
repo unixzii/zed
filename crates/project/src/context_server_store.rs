@@ -21,13 +21,7 @@ pub fn init(cx: &mut App) {
     extension::init(cx);
 }
 
-actions!(
-    context_server,
-    [
-        /// Restarts the context server.
-        Restart
-    ]
-);
+actions!(context_server, [Restart]);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ContextServerStatus {
@@ -169,15 +163,6 @@ impl ContextServerStore {
             worktree_store,
             cx,
         )
-    }
-
-    /// Returns all configured context server ids, regardless of enabled state.
-    pub fn configured_server_ids(&self) -> Vec<ContextServerId> {
-        self.context_server_settings
-            .keys()
-            .cloned()
-            .map(ContextServerId)
-            .collect()
     }
 
     #[cfg(any(test, feature = "test-support"))]

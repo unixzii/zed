@@ -409,6 +409,17 @@ impl RunningMode {
         };
 
         let configuration_done_supported = ConfigurationDone::is_supported(capabilities);
+        let exception_filters = capabilities
+            .exception_breakpoint_filters
+            .as_ref()
+            .map(|exception_filters| {
+                exception_filters
+                    .iter()
+                    .filter(|filter| filter.default == Some(true))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         // From spec (on initialization sequence):
         // client sends a setExceptionBreakpoints request if one or more exceptionBreakpointFilters have been defined (or if supportsConfigurationDoneRequest is not true)
         //
@@ -423,20 +434,10 @@ impl RunningMode {
             .unwrap_or_default();
         let this = self.clone();
         let worktree = self.worktree().clone();
-        let mut filters = capabilities
-            .exception_breakpoint_filters
-            .clone()
-            .unwrap_or_default();
         let configuration_sequence = cx.spawn({
-            async move |session, cx| {
-                let adapter_name = session.read_with(cx, |this, _| this.adapter())?;
-                let (breakpoint_store, adapter_defaults) =
-                    dap_store.read_with(cx, |dap_store, _| {
-                        (
-                            dap_store.breakpoint_store().clone(),
-                            dap_store.adapter_options(&adapter_name),
-                        )
-                    })?;
+            async move |_, cx| {
+                let breakpoint_store =
+                    dap_store.read_with(cx, |dap_store, _| dap_store.breakpoint_store().clone())?;
                 initialized_rx.await?;
                 let errors_by_path = cx
                     .update(|cx| this.send_source_breakpoints(false, &breakpoint_store, cx))?
@@ -470,25 +471,7 @@ impl RunningMode {
                 })?;
 
                 if should_send_exception_breakpoints {
-                    _ = session.update(cx, |this, _| {
-                        filters.retain(|filter| {
-                            let is_enabled = if let Some(defaults) = adapter_defaults.as_ref() {
-                                defaults
-                                    .exception_breakpoints
-                                    .get(&filter.filter)
-                                    .map(|options| options.enabled)
-                                    .unwrap_or_else(|| filter.default.unwrap_or_default())
-                            } else {
-                                filter.default.unwrap_or_default()
-                            };
-                            this.exception_breakpoints
-                                .entry(filter.filter.clone())
-                                .or_insert_with(|| (filter.clone(), is_enabled));
-                            is_enabled
-                        });
-                    });
-
-                    this.send_exception_breakpoints(filters, supports_exception_filters)
+                    this.send_exception_breakpoints(exception_filters, supports_exception_filters)
                         .await
                         .ok();
                 }
@@ -677,7 +660,6 @@ pub struct Session {
     ignore_breakpoints: bool,
     exception_breakpoints: BTreeMap<String, (ExceptionBreakpointsFilter, IsEnabled)>,
     background_tasks: Vec<Task<()>>,
-    restart_task: Option<Task<()>>,
     task_context: TaskContext,
 }
 
@@ -839,7 +821,6 @@ impl Session {
                 loaded_sources: Vec::default(),
                 threads: IndexMap::default(),
                 background_tasks: Vec::default(),
-                restart_task: None,
                 locations: Default::default(),
                 is_session_terminated: false,
                 ignore_breakpoints: false,
@@ -1035,7 +1016,7 @@ impl Session {
 
         cx.spawn(async move |this, cx| {
             while let Some(output) = rx.next().await {
-                this.update(cx, |this, _| {
+                this.update(cx, |this, cx| {
                     let event = dap::OutputEvent {
                         category: None,
                         output,
@@ -1047,7 +1028,7 @@ impl Session {
                         data: None,
                         location_reference: None,
                     };
-                    this.push_output(event);
+                    this.push_output(event, cx);
                 })?;
             }
             anyhow::Ok(())
@@ -1252,7 +1233,18 @@ impl Session {
                     Ok(capabilities) => {
                         this.update(cx, |session, cx| {
                             session.capabilities = capabilities;
-
+                            let filters = session
+                                .capabilities
+                                .exception_breakpoint_filters
+                                .clone()
+                                .unwrap_or_default();
+                            for filter in filters {
+                                let default = filter.default.unwrap_or_default();
+                                session
+                                    .exception_breakpoints
+                                    .entry(filter.filter.clone())
+                                    .or_insert_with(|| (filter, default));
+                            }
                             cx.emit(SessionEvent::CapabilitiesLoaded);
                         })?;
                         return Ok(());
@@ -1466,7 +1458,7 @@ impl Session {
                     return;
                 }
 
-                self.push_output(event);
+                self.push_output(event, cx);
                 cx.notify();
             }
             Events::Breakpoint(event) => self.breakpoint_store.update(cx, |store, _| {
@@ -1653,9 +1645,10 @@ impl Session {
             });
     }
 
-    fn push_output(&mut self, event: OutputEvent) {
+    fn push_output(&mut self, event: OutputEvent, cx: &mut Context<Self>) {
         self.output.push_back(event);
         self.output_token.0 += 1;
+        cx.emit(SessionEvent::ConsoleOutput);
     }
 
     pub fn any_stopped_thread(&self) -> bool {
@@ -1872,30 +1865,18 @@ impl Session {
     }
 
     pub fn restart(&mut self, args: Option<Value>, cx: &mut Context<Self>) {
-        if self.restart_task.is_some() || self.as_running().is_none() {
-            return;
+        if self.capabilities.supports_restart_request.unwrap_or(false) && !self.is_terminated() {
+            self.request(
+                RestartCommand {
+                    raw: args.unwrap_or(Value::Null),
+                },
+                Self::fallback_to_manual_restart,
+                cx,
+            )
+            .detach();
+        } else {
+            cx.emit(SessionStateEvent::Restart);
         }
-
-        let supports_dap_restart =
-            self.capabilities.supports_restart_request.unwrap_or(false) && !self.is_terminated();
-
-        self.restart_task = Some(cx.spawn(async move |this, cx| {
-            let _ = this.update(cx, |session, cx| {
-                if supports_dap_restart {
-                    session
-                        .request(
-                            RestartCommand {
-                                raw: args.unwrap_or(Value::Null),
-                            },
-                            Self::fallback_to_manual_restart,
-                            cx,
-                        )
-                        .detach();
-                } else {
-                    cx.emit(SessionStateEvent::Restart);
-                }
-            });
-        }));
     }
 
     pub fn shutdown(&mut self, cx: &mut Context<Self>) -> Task<()> {
@@ -1933,13 +1914,8 @@ impl Session {
 
         cx.emit(SessionStateEvent::Shutdown);
 
-        cx.spawn(async move |this, cx| {
+        cx.spawn(async move |_, _| {
             task.await;
-            let _ = this.update(cx, |this, _| {
-                if let Some(adapter_client) = this.adapter_client() {
-                    adapter_client.kill();
-                }
-            });
         })
     }
 
@@ -1960,14 +1936,12 @@ impl Session {
     }
 
     pub fn continue_thread(&mut self, thread_id: ThreadId, cx: &mut Context<Self>) {
-        let supports_single_thread_execution_requests =
-            self.capabilities.supports_single_thread_execution_requests;
         self.thread_states.continue_thread(thread_id);
         self.request(
             ContinueCommand {
                 args: ContinueArguments {
                     thread_id: thread_id.0,
-                    single_thread: supports_single_thread_execution_requests,
+                    single_thread: Some(true),
                 },
             },
             Self::on_step_response::<ContinueCommand>(thread_id),
@@ -2378,7 +2352,7 @@ impl Session {
             data: None,
             location_reference: None,
         };
-        self.push_output(event);
+        self.push_output(event, cx);
         let request = self.mode.request_dap(EvaluateCommand {
             expression,
             context,
@@ -2401,7 +2375,7 @@ impl Session {
                             data: None,
                             location_reference: None,
                         };
-                        this.push_output(event);
+                        this.push_output(event, cx);
                     }
                     Err(e) => {
                         let event = dap::OutputEvent {
@@ -2415,7 +2389,7 @@ impl Session {
                             data: None,
                             location_reference: None,
                         };
-                        this.push_output(event);
+                        this.push_output(event, cx);
                     }
                 };
                 cx.notify();

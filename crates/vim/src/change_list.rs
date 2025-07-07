@@ -3,15 +3,7 @@ use gpui::{Context, Window, actions};
 
 use crate::{Vim, state::Mode};
 
-actions!(
-    vim,
-    [
-        /// Navigates to an older position in the change list.
-        ChangeListOlder,
-        /// Navigates to a newer position in the change list.
-        ChangeListNewer
-    ]
-);
+actions!(vim, [ChangeListOlder, ChangeListNewer]);
 
 pub(crate) fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
     Vim::action(editor, cx, |vim, _: &ChangeListOlder, window, cx| {

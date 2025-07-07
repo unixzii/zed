@@ -12,15 +12,7 @@ use smallvec::SmallVec;
 use ui::{ContextMenu, PopoverMenu, PopoverMenuHandle, Tooltip, prelude::*};
 
 #[cfg(not(target_os = "macos"))]
-actions!(
-    app_menu,
-    [
-        /// Navigates to the menu item on the right.
-        ActivateMenuRight,
-        /// Navigates to the menu item on the left.
-        ActivateMenuLeft
-    ]
-);
+actions!(app_menu, [ActivateMenuRight, ActivateMenuLeft]);
 
 #[cfg(not(target_os = "macos"))]
 #[derive(Clone, Deserialize, JsonSchema, PartialEq, Default, Action)]

@@ -48,14 +48,7 @@ use workspace::{
 
 actions!(
     diagnostics,
-    [
-        /// Opens the project diagnostics view.
-        Deploy,
-        /// Toggles the display of warning-level diagnostics.
-        ToggleWarnings,
-        /// Toggles automatic refresh of diagnostics.
-        ToggleDiagnosticsRefresh
-    ]
+    [Deploy, ToggleWarnings, ToggleDiagnosticsRefresh]
 );
 
 #[derive(Default)]

@@ -11,19 +11,7 @@ use editor::Editor;
 use gpui::{Action, App, Context, Window, actions};
 use workspace::Workspace;
 
-actions!(
-    vim,
-    [
-        /// Repeats the last change.
-        Repeat,
-        /// Ends the repeat recording.
-        EndRepeat,
-        /// Toggles macro recording.
-        ToggleRecord,
-        /// Replays the last recorded macro.
-        ReplayLastRecording
-    ]
-);
+actions!(vim, [Repeat, EndRepeat, ToggleRecord, ReplayLastRecording]);
 
 fn should_replay(action: &dyn Action) -> bool {
     // skip so that we don't leave the character palette open
