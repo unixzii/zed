@@ -2,9 +2,10 @@ use anyhow::Result;
 use collections::{HashMap, HashSet};
 use command_palette_hooks::CommandInterceptResult;
 use editor::{
-    Bias, Editor, SelectionEffects, ToPoint,
+    Bias, Editor, ToPoint,
     actions::{SortLinesCaseInsensitive, SortLinesCaseSensitive},
     display_map::ToDisplayPoint,
+    scroll::Autoscroll,
 };
 use gpui::{Action, App, AppContext as _, Context, Global, Window, actions};
 use itertools::Itertools;
@@ -44,21 +45,18 @@ use crate::{
     visual::VisualDeleteLine,
 };
 
-/// Goes to the specified line number in the editor.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct GoToLine {
     range: CommandRange,
 }
 
-/// Yanks (copies) text based on the specified range.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct YankCommand {
     range: CommandRange,
 }
 
-/// Executes a command with the specified range.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct WithRange {
@@ -67,7 +65,6 @@ pub struct WithRange {
     action: WrappedAction,
 }
 
-/// Executes a command with the specified count.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct WithCount {
@@ -159,14 +156,12 @@ impl VimOption {
     }
 }
 
-/// Sets vim options and configuration values.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct VimSet {
     options: Vec<VimOption>,
 }
 
-/// Saves the current file with optional save intent.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 struct VimSave {
@@ -174,7 +169,6 @@ struct VimSave {
     pub filename: String,
 }
 
-/// Deletes the specified marks from the editor.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 enum DeleteMarks {
@@ -184,18 +178,8 @@ enum DeleteMarks {
 
 actions!(
     vim,
-    [
-        /// Executes a command in visual mode.
-        VisualCommand,
-        /// Executes a command with a count prefix.
-        CountCommand,
-        /// Executes a shell command.
-        ShellCommand,
-        /// Indicates that an argument is required for the command.
-        ArgumentRequired
-    ]
+    [VisualCommand, CountCommand, ShellCommand, ArgumentRequired]
 );
-/// Opens the specified file for editing.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 struct VimEdit {
@@ -438,7 +422,7 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
             let target = snapshot
                 .buffer_snapshot
                 .clip_point(Point::new(buffer_row.0, current.head().column), Bias::Left);
-            editor.change_selections(Default::default(), window, cx, |s| {
+            editor.change_selections(Some(Autoscroll::fit()), window, cx, |s| {
                 s.select_ranges([target..target]);
             });
 
@@ -509,7 +493,7 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
                         .disjoint_anchor_ranges()
                         .collect::<Vec<_>>()
                 });
-                editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                editor.change_selections(None, window, cx, |s| {
                     let end = Point::new(range.end.0, s.buffer().line_len(range.end));
                     s.select_ranges([end..Point::new(range.start.0, 0)]);
                 });
@@ -519,7 +503,7 @@ pub fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
         window.dispatch_action(action.action.boxed_clone(), cx);
         cx.defer_in(window, move |vim, window, cx| {
             vim.update_editor(window, cx, |_, editor, window, cx| {
-                editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                editor.change_selections(None, window, cx, |s| {
                     if let Some(previous_selections) = previous_selections {
                         s.select_ranges(previous_selections);
                     } else {
@@ -1084,7 +1068,6 @@ fn generate_commands(_: &App) -> Vec<VimCommand> {
             )
         }),
         VimCommand::new(("reg", "isters"), ToggleRegistersView).bang(ToggleRegistersView),
-        VimCommand::new(("di", "splay"), ToggleRegistersView).bang(ToggleRegistersView),
         VimCommand::new(("marks", ""), ToggleMarksView).bang(ToggleMarksView),
         VimCommand::new(("delm", "arks"), ArgumentRequired)
             .bang(DeleteMarks::AllLocal)
@@ -1103,7 +1086,6 @@ fn generate_commands(_: &App) -> Vec<VimCommand> {
         VimCommand::str(("No", "tifications"), "notification_panel::ToggleFocus"),
         VimCommand::str(("A", "I"), "agent::ToggleFocus"),
         VimCommand::str(("G", "it"), "git_panel::ToggleFocus"),
-        VimCommand::str(("D", "ebug"), "debug_panel::ToggleFocus"),
         VimCommand::new(("noh", "lsearch"), search::buffer_search::Dismiss),
         VimCommand::new(("$", ""), EndOfDocument),
         VimCommand::new(("%", ""), EndOfDocument),
@@ -1299,7 +1281,6 @@ fn generate_positions(string: &str, query: &str) -> Vec<usize> {
     positions
 }
 
-/// Applies a command to all lines matching a pattern.
 #[derive(Debug, PartialEq, Clone, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub(crate) struct OnMatchingLines {
@@ -1474,20 +1455,15 @@ impl OnMatchingLines {
                 editor
                     .update_in(cx, |editor, window, cx| {
                         editor.start_transaction_at(Instant::now(), window, cx);
-                        editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                        editor.change_selections(None, window, cx, |s| {
                             s.replace_cursors_with(|_| new_selections);
                         });
                         window.dispatch_action(action, cx);
                         cx.defer_in(window, move |editor, window, cx| {
                             let newest = editor.selections.newest::<Point>(cx).clone();
-                            editor.change_selections(
-                                SelectionEffects::no_scroll(),
-                                window,
-                                cx,
-                                |s| {
-                                    s.select(vec![newest]);
-                                },
-                            );
+                            editor.change_selections(None, window, cx, |s| {
+                                s.select(vec![newest]);
+                            });
                             editor.end_transaction_at(Instant::now(), cx);
                         })
                     })
@@ -1498,7 +1474,6 @@ impl OnMatchingLines {
     }
 }
 
-/// Executes a shell command and returns the output.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct ShellExec {
@@ -1591,7 +1566,7 @@ impl Vim {
                 )
                 .unwrap_or((start.range(), MotionKind::Exclusive));
             if range.start != start.start {
-                editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                editor.change_selections(None, window, cx, |s| {
                     s.select_ranges([
                         range.start.to_point(&snapshot)..range.start.to_point(&snapshot)
                     ]);
@@ -1628,10 +1603,10 @@ impl Vim {
             let snapshot = editor.snapshot(window, cx);
             let start = editor.selections.newest_display(cx);
             let range = object
-                .range(&snapshot, start.clone(), around, None)
+                .range(&snapshot, start.clone(), around)
                 .unwrap_or(start.range());
             if range.start != start.start {
-                editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
+                editor.change_selections(None, window, cx, |s| {
                     s.select_ranges([
                         range.start.to_point(&snapshot)..range.start.to_point(&snapshot)
                     ]);
@@ -1688,7 +1663,7 @@ impl ShellExec {
                     id: TaskId("vim".to_string()),
                     full_label: command.clone(),
                     label: command.clone(),
-                    command: Some(command.clone()),
+                    command: command.clone(),
                     args: Vec::new(),
                     command_label: command.clone(),
                     cwd,
@@ -1824,7 +1799,7 @@ impl ShellExec {
                     editor.transact(window, cx, |editor, window, cx| {
                         editor.edit([(range.clone(), text)], cx);
                         let snapshot = editor.buffer().read(cx).snapshot(cx);
-                        editor.change_selections(Default::default(), window, cx, |s| {
+                        editor.change_selections(Some(Autoscroll::fit()), window, cx, |s| {
                             let point = if is_read {
                                 let point = range.end.to_point(&snapshot);
                                 Point::new(point.row.saturating_sub(1), 0)

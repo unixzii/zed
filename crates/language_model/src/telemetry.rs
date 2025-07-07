@@ -1,4 +1,3 @@
-use crate::ANTHROPIC_PROVIDER_ID;
 use anthropic::ANTHROPIC_API_URL;
 use anyhow::{Context as _, anyhow};
 use client::telemetry::Telemetry;
@@ -9,6 +8,8 @@ use std::sync::Arc;
 use telemetry_events::{AssistantEventData, AssistantKind, AssistantPhase};
 use util::ResultExt;
 
+pub const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
+
 pub fn report_assistant_event(
     event: AssistantEventData,
     telemetry: Option<Arc<Telemetry>>,
@@ -18,7 +19,7 @@ pub fn report_assistant_event(
 ) {
     if let Some(telemetry) = telemetry.as_ref() {
         telemetry.report_assistant_event(event.clone());
-        if telemetry.metrics_enabled() && event.model_provider == ANTHROPIC_PROVIDER_ID.0 {
+        if telemetry.metrics_enabled() && event.model_provider == ANTHROPIC_PROVIDER_ID {
             if let Some(api_key) = model_api_key {
                 executor
                     .spawn(async move {

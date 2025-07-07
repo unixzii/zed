@@ -31,13 +31,7 @@ pub mod project_diff;
 pub(crate) mod remote_output;
 pub mod repository_selector;
 
-actions!(
-    git,
-    [
-        /// Resets the git onboarding state to show the tutorial again.
-        ResetOnboarding
-    ]
-);
+actions!(git, [ResetOnboarding]);
 
 pub fn init(cx: &mut App) {
     GitPanelSettings::register(cx);

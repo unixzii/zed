@@ -81,17 +81,7 @@ pub const INITIAL_RECONNECTION_DELAY: Duration = Duration::from_millis(500);
 pub const MAX_RECONNECTION_DELAY: Duration = Duration::from_secs(10);
 pub const CONNECTION_TIMEOUT: Duration = Duration::from_secs(20);
 
-actions!(
-    client,
-    [
-        /// Signs in to Zed account.
-        SignIn,
-        /// Signs out of Zed account.
-        SignOut,
-        /// Reconnects to the collaboration server.
-        Reconnect
-    ]
-);
+actions!(client, [SignIn, SignOut, Reconnect]);
 
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ClientSettingsContent {

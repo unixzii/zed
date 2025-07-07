@@ -1,9 +1,8 @@
 use anyhow::Result;
 use language_model::LanguageModelToolSchemaFormat;
 use schemars::{
-    JsonSchema, Schema,
-    generate::SchemaSettings,
-    transform::{Transform, transform_subschemas},
+    JsonSchema,
+    schema::{RootSchema, Schema, SchemaObject},
 };
 
 pub fn json_schema_for<T: JsonSchema>(
@@ -14,7 +13,7 @@ pub fn json_schema_for<T: JsonSchema>(
 }
 
 fn schema_to_json(
-    schema: &Schema,
+    schema: &RootSchema,
     format: LanguageModelToolSchemaFormat,
 ) -> Result<serde_json::Value> {
     let mut value = serde_json::to_value(schema)?;
@@ -22,40 +21,58 @@ fn schema_to_json(
     Ok(value)
 }
 
-fn root_schema_for<T: JsonSchema>(format: LanguageModelToolSchemaFormat) -> Schema {
+fn root_schema_for<T: JsonSchema>(format: LanguageModelToolSchemaFormat) -> RootSchema {
     let mut generator = match format {
-        LanguageModelToolSchemaFormat::JsonSchema => SchemaSettings::draft07().into_generator(),
-        LanguageModelToolSchemaFormat::JsonSchemaSubset => SchemaSettings::openapi3()
-            .with(|settings| {
-                settings.meta_schema = None;
-                settings.inline_subschemas = true;
-            })
-            .with_transform(ToJsonSchemaSubsetTransform)
-            .into_generator(),
+        LanguageModelToolSchemaFormat::JsonSchema => schemars::SchemaGenerator::default(),
+        LanguageModelToolSchemaFormat::JsonSchemaSubset => {
+            schemars::r#gen::SchemaSettings::default()
+                .with(|settings| {
+                    settings.meta_schema = None;
+                    settings.inline_subschemas = true;
+                    settings
+                        .visitors
+                        .push(Box::new(TransformToJsonSchemaSubsetVisitor));
+                })
+                .into_generator()
+        }
     };
     generator.root_schema_for::<T>()
 }
 
 #[derive(Debug, Clone)]
-struct ToJsonSchemaSubsetTransform;
+struct TransformToJsonSchemaSubsetVisitor;
 
-impl Transform for ToJsonSchemaSubsetTransform {
-    fn transform(&mut self, schema: &mut Schema) {
+impl schemars::visit::Visitor for TransformToJsonSchemaSubsetVisitor {
+    fn visit_root_schema(&mut self, root: &mut RootSchema) {
+        schemars::visit::visit_root_schema(self, root)
+    }
+
+    fn visit_schema(&mut self, schema: &mut Schema) {
+        schemars::visit::visit_schema(self, schema)
+    }
+
+    fn visit_schema_object(&mut self, schema: &mut SchemaObject) {
         // Ensure that the type field is not an array, this happens when we use
         // Option<T>, the type will be [T, "null"].
-        if let Some(type_field) = schema.get_mut("type") {
-            if let Some(types) = type_field.as_array() {
-                if let Some(first_type) = types.first() {
-                    *type_field = first_type.clone();
+        if let Some(instance_type) = schema.instance_type.take() {
+            schema.instance_type = match instance_type {
+                schemars::schema::SingleOrVec::Single(t) => {
+                    Some(schemars::schema::SingleOrVec::Single(t))
                 }
+                schemars::schema::SingleOrVec::Vec(items) => items
+                    .into_iter()
+                    .next()
+                    .map(schemars::schema::SingleOrVec::from),
+            };
+        }
+
+        // One of is not supported, use anyOf instead.
+        if let Some(subschema) = schema.subschemas.as_mut() {
+            if let Some(one_of) = subschema.one_of.take() {
+                subschema.any_of = Some(one_of);
             }
         }
 
-        // oneOf is not supported, use anyOf instead
-        if let Some(one_of) = schema.remove("oneOf") {
-            schema.insert("anyOf".to_string(), one_of);
-        }
-
-        transform_subschemas(self, schema);
+        schemars::visit::visit_schema_object(self, schema)
     }
 }

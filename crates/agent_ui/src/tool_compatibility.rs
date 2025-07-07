@@ -42,8 +42,8 @@ impl IncompatibleToolsState {
                     .profile()
                     .enabled_tools(cx)
                     .iter()
-                    .filter(|(_, tool)| tool.input_schema(model.tool_input_format()).is_err())
-                    .map(|(_, tool)| tool.clone())
+                    .filter(|tool| tool.input_schema(model.tool_input_format()).is_err())
+                    .cloned()
                     .collect()
             })
     }

@@ -11,19 +11,7 @@ use editor::Editor;
 use gpui::{Action, App, Context, Window, actions};
 use workspace::Workspace;
 
-actions!(
-    vim,
-    [
-        /// Repeats the last change.
-        Repeat,
-        /// Ends the repeat recording.
-        EndRepeat,
-        /// Toggles macro recording.
-        ToggleRecord,
-        /// Replays the last recorded macro.
-        ReplayLastRecording
-    ]
-);
+actions!(vim, [Repeat, EndRepeat, ToggleRecord, ReplayLastRecording]);
 
 fn should_replay(action: &dyn Action) -> bool {
     // skip so that we don't leave the character palette open
@@ -257,63 +245,61 @@ impl Vim {
         }) else {
             return;
         };
-        if mode != Some(self.mode) {
-            if let Some(mode) = mode {
-                self.switch_mode(mode, false, window, cx)
-            }
+        if let Some(mode) = mode {
+            self.switch_mode(mode, false, window, cx)
+        }
 
-            match selection {
-                RecordedSelection::SingleLine { cols } => {
-                    if cols > 1 {
-                        self.visual_motion(Motion::Right, Some(cols as usize - 1), window, cx)
-                    }
+        match selection {
+            RecordedSelection::SingleLine { cols } => {
+                if cols > 1 {
+                    self.visual_motion(Motion::Right, Some(cols as usize - 1), window, cx)
                 }
-                RecordedSelection::Visual { rows, cols } => {
-                    self.visual_motion(
-                        Motion::Down {
-                            display_lines: false,
-                        },
-                        Some(rows as usize),
-                        window,
-                        cx,
-                    );
-                    self.visual_motion(
-                        Motion::StartOfLine {
-                            display_lines: false,
-                        },
-                        None,
-                        window,
-                        cx,
-                    );
-                    if cols > 1 {
-                        self.visual_motion(Motion::Right, Some(cols as usize - 1), window, cx)
-                    }
-                }
-                RecordedSelection::VisualBlock { rows, cols } => {
-                    self.visual_motion(
-                        Motion::Down {
-                            display_lines: false,
-                        },
-                        Some(rows as usize),
-                        window,
-                        cx,
-                    );
-                    if cols > 1 {
-                        self.visual_motion(Motion::Right, Some(cols as usize - 1), window, cx);
-                    }
-                }
-                RecordedSelection::VisualLine { rows } => {
-                    self.visual_motion(
-                        Motion::Down {
-                            display_lines: false,
-                        },
-                        Some(rows as usize),
-                        window,
-                        cx,
-                    );
-                }
-                RecordedSelection::None => {}
             }
+            RecordedSelection::Visual { rows, cols } => {
+                self.visual_motion(
+                    Motion::Down {
+                        display_lines: false,
+                    },
+                    Some(rows as usize),
+                    window,
+                    cx,
+                );
+                self.visual_motion(
+                    Motion::StartOfLine {
+                        display_lines: false,
+                    },
+                    None,
+                    window,
+                    cx,
+                );
+                if cols > 1 {
+                    self.visual_motion(Motion::Right, Some(cols as usize - 1), window, cx)
+                }
+            }
+            RecordedSelection::VisualBlock { rows, cols } => {
+                self.visual_motion(
+                    Motion::Down {
+                        display_lines: false,
+                    },
+                    Some(rows as usize),
+                    window,
+                    cx,
+                );
+                if cols > 1 {
+                    self.visual_motion(Motion::Right, Some(cols as usize - 1), window, cx);
+                }
+            }
+            RecordedSelection::VisualLine { rows } => {
+                self.visual_motion(
+                    Motion::Down {
+                        display_lines: false,
+                    },
+                    Some(rows as usize),
+                    window,
+                    cx,
+                );
+            }
+            RecordedSelection::None => {}
         }
 
         // insert internally uses repeat to handle counts

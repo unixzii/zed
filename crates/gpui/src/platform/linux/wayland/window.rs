@@ -252,11 +252,11 @@ impl Drop for WaylandWindow {
 }
 
 impl WaylandWindow {
-    fn borrow(&self) -> Ref<'_, WaylandWindowState> {
+    fn borrow(&self) -> Ref<WaylandWindowState> {
         self.0.state.borrow()
     }
 
-    fn borrow_mut(&self) -> RefMut<'_, WaylandWindowState> {
+    fn borrow_mut(&self) -> RefMut<WaylandWindowState> {
         self.0.state.borrow_mut()
     }
 
@@ -699,14 +699,12 @@ impl WaylandWindowStatePtr {
             }
         }
         if let PlatformInput::KeyDown(event) = input {
-            if event.keystroke.modifiers.is_subset_of(&Modifiers::shift()) {
-                if let Some(key_char) = &event.keystroke.key_char {
-                    let mut state = self.state.borrow_mut();
-                    if let Some(mut input_handler) = state.input_handler.take() {
-                        drop(state);
-                        input_handler.replace_text_in_range(None, key_char);
-                        self.state.borrow_mut().input_handler = Some(input_handler);
-                    }
+            if let Some(key_char) = &event.keystroke.key_char {
+                let mut state = self.state.borrow_mut();
+                if let Some(mut input_handler) = state.input_handler.take() {
+                    drop(state);
+                    input_handler.replace_text_in_range(None, key_char);
+                    self.state.borrow_mut().input_handler = Some(input_handler);
                 }
             }
         }

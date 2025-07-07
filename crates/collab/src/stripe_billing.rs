@@ -16,9 +16,9 @@ use crate::stripe_client::{
     StripeCreateCheckoutSessionLineItems, StripeCreateCheckoutSessionParams,
     StripeCreateCheckoutSessionSubscriptionData, StripeCreateMeterEventParams,
     StripeCreateMeterEventPayload, StripeCreateSubscriptionItems, StripeCreateSubscriptionParams,
-    StripeCustomerId, StripeCustomerUpdate, StripeCustomerUpdateAddress, StripeCustomerUpdateName,
-    StripeMeter, StripePrice, StripePriceId, StripeSubscription, StripeSubscriptionId,
-    StripeSubscriptionTrialSettings, StripeSubscriptionTrialSettingsEndBehavior,
+    StripeCustomerId, StripeMeter, StripePrice, StripePriceId, StripeSubscription,
+    StripeSubscriptionId, StripeSubscriptionTrialSettings,
+    StripeSubscriptionTrialSettingsEndBehavior,
     StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, UpdateSubscriptionItems,
     UpdateSubscriptionParams,
 };
@@ -247,11 +247,6 @@ impl StripeBilling {
         }]);
         params.success_url = Some(success_url);
         params.billing_address_collection = Some(StripeBillingAddressCollection::Required);
-        params.customer_update = Some(StripeCustomerUpdate {
-            address: Some(StripeCustomerUpdateAddress::Auto),
-            name: Some(StripeCustomerUpdateName::Auto),
-            shipping: None,
-        });
 
         let session = self.client.create_checkout_session(params).await?;
         Ok(session.url.context("no checkout session URL")?)
@@ -306,11 +301,6 @@ impl StripeBilling {
         }]);
         params.success_url = Some(success_url);
         params.billing_address_collection = Some(StripeBillingAddressCollection::Required);
-        params.customer_update = Some(StripeCustomerUpdate {
-            address: Some(StripeCustomerUpdateAddress::Auto),
-            name: Some(StripeCustomerUpdateName::Auto),
-            shipping: None,
-        });
 
         let session = self.client.create_checkout_session(params).await?;
         Ok(session.url.context("no checkout session URL")?)

@@ -107,7 +107,11 @@ impl Render for MarkdownExample {
                 ..Default::default()
             },
             syntax: cx.theme().syntax().clone(),
-            selection_background_color: cx.theme().colors().element_selection_background,
+            selection_background_color: {
+                let mut selection = cx.theme().players().local().selection;
+                selection.fade_out(0.7);
+                selection
+            },
             ..Default::default()
         };
 

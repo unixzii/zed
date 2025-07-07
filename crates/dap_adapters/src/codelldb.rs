@@ -22,16 +22,17 @@ impl CodeLldbDebugAdapter {
     async fn request_args(
         &self,
         delegate: &Arc<dyn DapDelegate>,
-        mut configuration: Value,
-        label: &str,
+        task_definition: &DebugTaskDefinition,
     ) -> Result<dap::StartDebuggingRequestArguments> {
+        // CodeLLDB uses `name` for a terminal label.
+        let mut configuration = task_definition.config.clone();
+
         let obj = configuration
             .as_object_mut()
             .context("CodeLLDB is not a valid json object")?;
 
-        // CodeLLDB uses `name` for a terminal label.
         obj.entry("name")
-            .or_insert(Value::String(String::from(label)));
+            .or_insert(Value::String(String::from(task_definition.label.as_ref())));
 
         obj.entry("cwd")
             .or_insert(delegate.worktree_root_path().to_string_lossy().into());
@@ -360,31 +361,17 @@ impl DebugAdapter for CodeLldbDebugAdapter {
             self.path_to_codelldb.set(path.clone()).ok();
             command = Some(path);
         };
-        let mut json_config = config.config.clone();
+
         Ok(DebugAdapterBinary {
             command: Some(command.unwrap()),
             cwd: Some(delegate.worktree_root_path().to_path_buf()),
             arguments: user_args.unwrap_or_else(|| {
-                if let Some(config) = json_config.as_object_mut()
-                    && let Some(source_languages) = config.get("sourceLanguages").filter(|value| {
-                        value
-                            .as_array()
-                            .map_or(false, |array| array.iter().all(Value::is_string))
-                    })
-                {
-                    let ret = vec![
-                        "--settings".into(),
-                        json!({"sourceLanguages": source_languages}).to_string(),
-                    ];
-                    config.remove("sourceLanguages");
-                    ret
-                } else {
-                    vec![]
-                }
+                vec![
+                    "--settings".into(),
+                    json!({"sourceLanguages": ["cpp", "rust"]}).to_string(),
+                ]
             }),
-            request_args: self
-                .request_args(delegate, json_config, &config.label)
-                .await?,
+            request_args: self.request_args(delegate, &config).await?,
             envs: HashMap::default(),
             connection: None,
         })

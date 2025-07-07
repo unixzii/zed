@@ -17,7 +17,7 @@ fn main() {
             #[cfg(target_os = "macos")]
             macos::build();
         }
-        #[cfg(all(target_os = "windows", feature = "windows-manifest"))]
+        #[cfg(target_os = "windows")]
         Ok("windows") => {
             let manifest = std::path::Path::new("resources/windows/gpui.manifest.xml");
             let rc_file = std::path::Path::new("resources/windows/gpui.rc");
@@ -126,7 +126,7 @@ mod macos {
             "ContentMask".into(),
             "Uniforms".into(),
             "AtlasTile".into(),
-            "PathInputIndex".into(),
+            "PathRasterizationInputIndex".into(),
             "PathVertex_ScaledPixels".into(),
             "ShadowInputIndex".into(),
             "Shadow".into(),

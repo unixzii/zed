@@ -79,34 +79,20 @@ h6 code {
   display: none !important;
 }
 
-h1 {
-  font-size: 3.4rem;
-}
-
 h2 {
   padding-bottom: 1rem;
   border-bottom: 1px solid;
   border-color: var(--border-light);
 }
 
-h3 {
-  font-size: 2rem;
-}
-
-h4 {
-  font-size: 1.8rem;
-}
-
-h5 {
-  font-size: 1.6rem;
-}
-
 h2,
-h3,
-h4,
-h5 {
+h3 {
   margin-block-start: 1.5em;
   margin-block-end: 0;
+}
+h4,
+h5 {
+  margin-block-start: 2em;
 }
 
 .header + .header h3,

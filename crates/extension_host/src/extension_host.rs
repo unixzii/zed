@@ -178,13 +178,7 @@ pub struct ExtensionIndexLanguageEntry {
     pub grammar: Option<Arc<str>>,
 }
 
-actions!(
-    zed,
-    [
-        /// Reloads all installed extensions.
-        ReloadExtensions
-    ]
-);
+actions!(zed, [ReloadExtensions]);
 
 pub fn init(
     extension_host_proxy: Arc<ExtensionHostProxy>,
@@ -1670,7 +1664,7 @@ impl ExtensionStore {
                 .extensions
                 .iter()
                 .filter_map(|(id, entry)| {
-                    if !entry.manifest.allow_remote_load() {
+                    if entry.manifest.language_servers.is_empty() {
                         return None;
                     }
                     Some(proto::Extension {

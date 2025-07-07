@@ -125,7 +125,7 @@ impl HeadlessExtensionStore {
 
         let manifest = Arc::new(ExtensionManifest::load(fs.clone(), &extension_dir).await?);
 
-        debug_assert!(!manifest.languages.is_empty() || manifest.allow_remote_load());
+        debug_assert!(!manifest.languages.is_empty() || !manifest.language_servers.is_empty());
 
         if manifest.version.as_ref() != extension.version.as_str() {
             anyhow::bail!(
@@ -165,7 +165,7 @@ impl HeadlessExtensionStore {
             })?;
         }
 
-        if !manifest.allow_remote_load() {
+        if manifest.language_servers.is_empty() {
             return Ok(());
         }
 
@@ -187,28 +187,24 @@ impl HeadlessExtensionStore {
                     );
                 })?;
             }
-            log::info!("Loaded language server: {}", language_server_id);
-        }
+            for (debug_adapter, meta) in &manifest.debug_adapters {
+                let schema_path = extension::build_debug_adapter_schema_path(debug_adapter, meta);
 
-        for (debug_adapter, meta) in &manifest.debug_adapters {
-            let schema_path = extension::build_debug_adapter_schema_path(debug_adapter, meta);
+                this.update(cx, |this, _cx| {
+                    this.proxy.register_debug_adapter(
+                        wasm_extension.clone(),
+                        debug_adapter.clone(),
+                        &extension_dir.join(schema_path),
+                    );
+                })?;
+            }
 
-            this.update(cx, |this, _cx| {
-                this.proxy.register_debug_adapter(
-                    wasm_extension.clone(),
-                    debug_adapter.clone(),
-                    &extension_dir.join(schema_path),
-                );
-            })?;
-            log::info!("Loaded debug adapter: {}", debug_adapter);
-        }
-
-        for debug_locator in manifest.debug_locators.keys() {
-            this.update(cx, |this, _cx| {
-                this.proxy
-                    .register_debug_locator(wasm_extension.clone(), debug_locator.clone());
-            })?;
-            log::info!("Loaded debug locator: {}", debug_locator);
+            for debug_adapter in manifest.debug_locators.keys() {
+                this.update(cx, |this, _cx| {
+                    this.proxy
+                        .register_debug_locator(wasm_extension.clone(), debug_adapter.clone());
+                })?;
+            }
         }
 
         Ok(())

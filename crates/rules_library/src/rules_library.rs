@@ -1,6 +1,6 @@
 use anyhow::Result;
 use collections::{HashMap, HashSet};
-use editor::{CompletionProvider, SelectionEffects};
+use editor::CompletionProvider;
 use editor::{CurrentLineHighlight, Editor, EditorElement, EditorEvent, EditorStyle, actions::Tab};
 use gpui::{
     Action, App, Bounds, Entity, EventEmitter, Focusable, PromptLevel, Subscription, Task,
@@ -37,16 +37,7 @@ pub fn init(cx: &mut App) {
 
 actions!(
     rules_library,
-    [
-        /// Creates a new rule in the rules library.
-        NewRule,
-        /// Deletes the selected rule.
-        DeleteRule,
-        /// Duplicates the selected rule.
-        DuplicateRule,
-        /// Toggles whether the selected rule is a default rule.
-        ToggleDefaultRule
-    ]
+    [NewRule, DeleteRule, DuplicateRule, ToggleDefaultRule]
 );
 
 const BUILT_IN_TOOLTIP_TEXT: &'static str = concat!(
@@ -904,15 +895,10 @@ impl RulesLibrary {
             }
             EditorEvent::Blurred => {
                 title_editor.update(cx, |title_editor, cx| {
-                    title_editor.change_selections(
-                        SelectionEffects::no_scroll(),
-                        window,
-                        cx,
-                        |selections| {
-                            let cursor = selections.oldest_anchor().head();
-                            selections.select_anchor_ranges([cursor..cursor]);
-                        },
-                    );
+                    title_editor.change_selections(None, window, cx, |selections| {
+                        let cursor = selections.oldest_anchor().head();
+                        selections.select_anchor_ranges([cursor..cursor]);
+                    });
                 });
             }
             _ => {}
@@ -934,15 +920,10 @@ impl RulesLibrary {
             }
             EditorEvent::Blurred => {
                 body_editor.update(cx, |body_editor, cx| {
-                    body_editor.change_selections(
-                        SelectionEffects::no_scroll(),
-                        window,
-                        cx,
-                        |selections| {
-                            let cursor = selections.oldest_anchor().head();
-                            selections.select_anchor_ranges([cursor..cursor]);
-                        },
-                    );
+                    body_editor.change_selections(None, window, cx, |selections| {
+                        let cursor = selections.oldest_anchor().head();
+                        selections.select_anchor_ranges([cursor..cursor]);
+                    });
                 });
             }
             _ => {}

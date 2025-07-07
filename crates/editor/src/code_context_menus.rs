@@ -1083,10 +1083,11 @@ impl CompletionsMenu {
                 if lsp_completion.kind == Some(CompletionItemKind::SNIPPET)
             );
 
-            let sort_text = match &completion.source {
-                CompletionSource::Lsp { lsp_completion, .. } => lsp_completion.sort_text.as_deref(),
-                CompletionSource::Dap { sort_text } => Some(sort_text.as_str()),
-                _ => None,
+            let sort_text = if let CompletionSource::Lsp { lsp_completion, .. } = &completion.source
+            {
+                lsp_completion.sort_text.as_deref()
+            } else {
+                None
             };
 
             let (sort_kind, sort_label) = completion.sort_key();
@@ -1204,7 +1205,7 @@ impl CodeActionContents {
         tasks_len + code_actions_len + self.debug_scenarios.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.len() == 0
     }
 

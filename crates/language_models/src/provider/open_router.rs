@@ -11,8 +11,8 @@ use language_model::{
     AuthenticateError, LanguageModel, LanguageModelCompletionError, LanguageModelCompletionEvent,
     LanguageModelId, LanguageModelName, LanguageModelProvider, LanguageModelProviderId,
     LanguageModelProviderName, LanguageModelProviderState, LanguageModelRequest,
-    LanguageModelToolChoice, LanguageModelToolResultContent, LanguageModelToolSchemaFormat,
-    LanguageModelToolUse, MessageContent, RateLimiter, Role, StopReason, TokenUsage,
+    LanguageModelToolChoice, LanguageModelToolResultContent, LanguageModelToolUse, MessageContent,
+    RateLimiter, Role, StopReason, TokenUsage,
 };
 use open_router::{
     Model, ModelMode as OpenRouterModelMode, ResponseStreamEvent, list_models, stream_completion,
@@ -29,8 +29,8 @@ use util::ResultExt;
 
 use crate::{AllLanguageModelSettings, ui::InstructionListItem};
 
-const PROVIDER_ID: LanguageModelProviderId = LanguageModelProviderId::new("openrouter");
-const PROVIDER_NAME: LanguageModelProviderName = LanguageModelProviderName::new("OpenRouter");
+const PROVIDER_ID: &str = "openrouter";
+const PROVIDER_NAME: &str = "OpenRouter";
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct OpenRouterSettings {
@@ -244,11 +244,11 @@ impl LanguageModelProviderState for OpenRouterLanguageModelProvider {
 
 impl LanguageModelProvider for OpenRouterLanguageModelProvider {
     fn id(&self) -> LanguageModelProviderId {
-        PROVIDER_ID
+        LanguageModelProviderId(PROVIDER_ID.into())
     }
 
     fn name(&self) -> LanguageModelProviderName {
-        PROVIDER_NAME
+        LanguageModelProviderName(PROVIDER_NAME.into())
     }
 
     fn icon(&self) -> IconName {
@@ -363,24 +363,15 @@ impl LanguageModel for OpenRouterLanguageModel {
     }
 
     fn provider_id(&self) -> LanguageModelProviderId {
-        PROVIDER_ID
+        LanguageModelProviderId(PROVIDER_ID.into())
     }
 
     fn provider_name(&self) -> LanguageModelProviderName {
-        PROVIDER_NAME
+        LanguageModelProviderName(PROVIDER_NAME.into())
     }
 
     fn supports_tools(&self) -> bool {
         self.model.supports_tool_calls()
-    }
-
-    fn tool_input_format(&self) -> LanguageModelToolSchemaFormat {
-        let model_id = self.model.id().trim().to_lowercase();
-        if model_id.contains("gemini") {
-            LanguageModelToolSchemaFormat::JsonSchemaSubset
-        } else {
-            LanguageModelToolSchemaFormat::JsonSchema
-        }
     }
 
     fn telemetry_id(&self) -> String {
@@ -607,7 +598,7 @@ impl OpenRouterEventMapper {
         events.flat_map(move |event| {
             futures::stream::iter(match event {
                 Ok(event) => self.map_event(event),
-                Err(error) => vec![Err(LanguageModelCompletionError::from(anyhow!(error)))],
+                Err(error) => vec![Err(LanguageModelCompletionError::Other(anyhow!(error)))],
             })
         })
     }
@@ -617,7 +608,7 @@ impl OpenRouterEventMapper {
         event: ResponseStreamEvent,
     ) -> Vec<Result<LanguageModelCompletionEvent, LanguageModelCompletionError>> {
         let Some(choice) = event.choices.first() else {
-            return vec![Err(LanguageModelCompletionError::from(anyhow!(
+            return vec![Err(LanguageModelCompletionError::Other(anyhow!(
                 "Response contained no choices"
             )))];
         };
@@ -683,10 +674,10 @@ impl OpenRouterEventMapper {
                                 raw_input: tool_call.arguments.clone(),
                             },
                         )),
-                        Err(error) => Ok(LanguageModelCompletionEvent::ToolUseJsonParseError {
-                            id: tool_call.id.clone().into(),
+                        Err(error) => Err(LanguageModelCompletionError::BadInputJson {
+                            id: tool_call.id.into(),
                             tool_name: tool_call.name.as_str().into(),
-                            raw_input: tool_call.arguments.clone().into(),
+                            raw_input: tool_call.arguments.into(),
                             json_parse_error: error.to_string(),
                         }),
                     }

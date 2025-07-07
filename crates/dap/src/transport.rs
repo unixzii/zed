@@ -49,6 +49,7 @@ pub enum IoKind {
     StdErr,
 }
 
+type Requests = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Response>>>>>;
 type LogHandlers = Arc<Mutex<SmallVec<[(LogKind, IoHandler); 2]>>>;
 
 pub trait Transport: Send + Sync {
@@ -92,12 +93,16 @@ async fn start(
 
 pub(crate) struct TransportDelegate {
     log_handlers: LogHandlers,
-    // TODO this should really be some kind of associative channel
-    pub(crate) pending_requests:
-        Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Response>>>>>>,
+    pub(crate) pending_requests: Requests,
     pub(crate) transport: Mutex<Box<dyn Transport>>,
     pub(crate) server_tx: smol::lock::Mutex<Option<Sender<Message>>>,
     tasks: Mutex<Vec<Task<()>>>,
+}
+
+impl Drop for TransportDelegate {
+    fn drop(&mut self) {
+        self.transport.lock().kill()
+    }
 }
 
 impl TransportDelegate {
@@ -108,7 +113,7 @@ impl TransportDelegate {
             transport: Mutex::new(transport),
             log_handlers,
             server_tx: Default::default(),
-            pending_requests: Arc::new(Mutex::new(Some(HashMap::default()))),
+            pending_requests: Default::default(),
             tasks: Default::default(),
         })
     }
@@ -149,26 +154,16 @@ impl TransportDelegate {
                 .await
                 {
                     Ok(()) => {
-                        pending_requests
-                            .lock()
-                            .take()
-                            .into_iter()
-                            .flatten()
-                            .for_each(|(_, request)| {
-                                request
-                                    .send(Err(anyhow!("debugger shutdown unexpectedly")))
-                                    .ok();
-                            });
+                        pending_requests.lock().drain().for_each(|(_, request)| {
+                            request
+                                .send(Err(anyhow!("debugger shutdown unexpectedly")))
+                                .ok();
+                        });
                     }
                     Err(e) => {
-                        pending_requests
-                            .lock()
-                            .take()
-                            .into_iter()
-                            .flatten()
-                            .for_each(|(_, request)| {
-                                request.send(Err(e.cloned())).ok();
-                            });
+                        pending_requests.lock().drain().for_each(|(_, request)| {
+                            request.send(Err(e.cloned())).ok();
+                        });
                     }
                 }
             }));
@@ -191,6 +186,15 @@ impl TransportDelegate {
 
     pub(crate) fn tcp_arguments(&self) -> Option<TcpArguments> {
         self.transport.lock().tcp_arguments()
+    }
+
+    pub(crate) fn add_pending_request(
+        &self,
+        sequence_id: u64,
+        request: oneshot::Sender<Result<Response>>,
+    ) {
+        let mut pending_requests = self.pending_requests.lock();
+        pending_requests.insert(sequence_id, request);
     }
 
     pub(crate) async fn send_message(&self, message: Message) -> Result<()> {
@@ -286,7 +290,7 @@ impl TransportDelegate {
     async fn recv_from_server<Stdout>(
         server_stdout: Stdout,
         mut message_handler: DapMessageHandler,
-        pending_requests: Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Response>>>>>>,
+        pending_requests: Requests,
         log_handlers: Option<LogHandlers>,
     ) -> Result<()>
     where
@@ -296,21 +300,16 @@ impl TransportDelegate {
         let mut reader = BufReader::new(server_stdout);
 
         let result = loop {
-            let result =
-                Self::receive_server_message(&mut reader, &mut recv_buffer, log_handlers.as_ref())
-                    .await;
-            match result {
+            match Self::receive_server_message(&mut reader, &mut recv_buffer, log_handlers.as_ref())
+                .await
+            {
                 ConnectionResult::Timeout => anyhow::bail!("Timed out when connecting to debugger"),
                 ConnectionResult::ConnectionReset => {
                     log::info!("Debugger closed the connection");
-                    break Ok(());
+                    return Ok(());
                 }
                 ConnectionResult::Result(Ok(Message::Response(res))) => {
-                    let tx = pending_requests
-                        .lock()
-                        .as_mut()
-                        .context("client is closed")?
-                        .remove(&res.request_seq);
+                    let tx = pending_requests.lock().remove(&res.request_seq);
                     if let Some(tx) = tx {
                         if let Err(e) = tx.send(Self::process_response(res)) {
                             log::trace!("Did not send response `{:?}` for a cancelled", e);

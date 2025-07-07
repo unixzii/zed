@@ -210,8 +210,7 @@
       "ctrl-w space": "editor::OpenExcerptsSplit",
       "ctrl-w g space": "editor::OpenExcerptsSplit",
       "ctrl-6": "pane::AlternateFile",
-      "ctrl-^": "pane::AlternateFile",
-      ".": "vim::Repeat"
+      "ctrl-^": "pane::AlternateFile"
     }
   },
   {
@@ -220,6 +219,7 @@
       "ctrl-[": "editor::Cancel",
       "escape": "editor::Cancel",
       ":": "command_palette::Toggle",
+      ".": "vim::Repeat",
       "c": "vim::PushChange",
       "shift-c": "vim::ChangeToEndOfLine",
       "d": "vim::PushDelete",
@@ -327,7 +327,6 @@
       "g shift-r": ["vim::Paste", { "preserve_clipboard": true }],
       "g c": "vim::ToggleComments",
       "g q": "vim::Rewrap",
-      "g w": "vim::Rewrap",
       "g ?": "vim::ConvertToRot13",
       // "g ?": "vim::ConvertToRot47",
       "\"": "vim::PushRegister",
@@ -476,13 +475,6 @@
     "bindings": {
       "ctrl-p": "editor::ShowWordCompletions",
       "ctrl-n": "editor::ShowWordCompletions"
-    }
-  },
-  {
-    "context": "vim_mode == insert && showing_signature_help && !showing_completions",
-    "bindings": {
-      "ctrl-p": "editor::SignatureHelpPrevious",
-      "ctrl-n": "editor::SignatureHelpNext"
     }
   },
   {
@@ -858,25 +850,6 @@
     }
   },
   {
-    "context": "Editor && mode == auto_height && VimControl",
-    "bindings": {
-      // TODO: Implement search
-      "/": null,
-      "?": null,
-      "#": null,
-      "*": null,
-      "n": null,
-      "shift-n": null
-    }
-  },
-  {
-    "context": "GitCommit > Editor && VimControl && vim_mode == normal",
-    "bindings": {
-      "ctrl-c": "menu::Cancel",
-      "escape": "menu::Cancel"
-    }
-  },
-  {
     "context": "Editor && edit_prediction",
     "bindings": {
       // This is identical to the binding in the base keymap, but the vim bindings above to
@@ -887,7 +860,14 @@
   {
     "context": "MessageEditor > Editor && VimControl",
     "bindings": {
-      "enter": "agent::Chat"
+      "enter": "agent::Chat",
+      // TODO: Implement search
+      "/": null,
+      "?": null,
+      "#": null,
+      "*": null,
+      "n": null,
+      "shift-n": null
     }
   },
   {

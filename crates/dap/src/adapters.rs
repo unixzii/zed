@@ -10,7 +10,6 @@ use gpui::{AsyncApp, SharedString};
 pub use http_client::{HttpClient, github::latest_github_release};
 use language::{LanguageName, LanguageToolchainStore};
 use node_runtime::NodeRuntime;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use settings::WorktreeId;
 use smol::fs::File;
@@ -48,10 +47,7 @@ pub trait DapDelegate: Send + Sync + 'static {
     async fn shell_env(&self) -> collections::HashMap<String, String>;
 }
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, JsonSchema,
-)]
-#[serde(transparent)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub struct DebugAdapterName(pub SharedString);
 
 impl Deref for DebugAdapterName {

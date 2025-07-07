@@ -47,17 +47,7 @@ const MAX_PROJECT_NAME_LENGTH: usize = 40;
 const MAX_BRANCH_NAME_LENGTH: usize = 40;
 const MAX_SHORT_SHA_LENGTH: usize = 8;
 
-actions!(
-    collab,
-    [
-        /// Toggles the user menu dropdown.
-        ToggleUserMenu,
-        /// Toggles the project menu dropdown.
-        ToggleProjectMenu,
-        /// Switches to a different git branch.
-        SwitchBranch
-    ]
-);
+actions!(collab, [ToggleUserMenu, ToggleProjectMenu, SwitchBranch]);
 
 pub fn init(cx: &mut App) {
     TitleBarSettings::register(cx);

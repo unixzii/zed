@@ -17,15 +17,11 @@ use crate::migrations::run_database_migrations;
 use super::*;
 use gpui::BackgroundExecutor;
 use parking_lot::Mutex;
-use rand::prelude::*;
 use sea_orm::ConnectionTrait;
 use sqlx::migrate::MigrateDatabase;
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicI32, AtomicU32, Ordering::SeqCst},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicI32, AtomicU32, Ordering::SeqCst},
 };
 
 pub struct TestDb {
@@ -45,7 +41,9 @@ impl TestDb {
         let mut db = runtime.block_on(async {
             let mut options = ConnectOptions::new(url);
             options.max_connections(5);
-            let mut db = Database::new(options).await.unwrap();
+            let mut db = Database::new(options, Executor::Deterministic(executor.clone()))
+                .await
+                .unwrap();
             let sql = include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/migrations.sqlite/20221109000000_test_schema.sql"
@@ -62,7 +60,6 @@ impl TestDb {
         });
 
         db.test_options = Some(DatabaseTestOptions {
-            executor,
             runtime,
             query_failure_probability: parking_lot::Mutex::new(0.0),
         });
@@ -96,7 +93,9 @@ impl TestDb {
             options
                 .max_connections(5)
                 .idle_timeout(Duration::from_secs(0));
-            let mut db = Database::new(options).await.unwrap();
+            let mut db = Database::new(options, Executor::Deterministic(executor.clone()))
+                .await
+                .unwrap();
             let migrations_path = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
             run_database_migrations(db.options(), migrations_path)
                 .await
@@ -106,7 +105,6 @@ impl TestDb {
         });
 
         db.test_options = Some(DatabaseTestOptions {
-            executor,
             runtime,
             query_failure_probability: parking_lot::Mutex::new(0.0),
         });

@@ -12,7 +12,7 @@ license = "Apache-2.0"
 workspace = true
 
 [features]
-default = ["http_client", "font-kit", "wayland", "x11", "windows-manifest"]
+default = ["http_client", "font-kit", "wayland", "x11"]
 test-support = [
     "leak-detection",
     "collections/test-support",
@@ -50,6 +50,7 @@ wayland = [
     "filedescriptor",
     "xkbcommon",
     "open",
+    "scap",
 ]
 x11 = [
     "blade-graphics",
@@ -66,11 +67,9 @@ x11 = [
     "x11-clipboard",
     "filedescriptor",
     "open",
-]
-screen-capture = [
     "scap",
 ]
-windows-manifest = []
+
 
 [lib]
 path = "src/gpui.rs"

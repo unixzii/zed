@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result};
 use buffer_diff::BufferDiff;
-use clock;
 use collections::BTreeMap;
 use futures::{FutureExt, StreamExt, channel::mpsc};
 use gpui::{App, AppContext, AsyncApp, Context, Entity, Subscription, Task, WeakEntity};
@@ -18,8 +17,6 @@ pub struct ActionLog {
     edited_since_project_diagnostics_check: bool,
     /// The project this action log is associated with
     project: Entity<Project>,
-    /// Tracks which buffer versions have already been notified as changed externally
-    notified_versions: BTreeMap<Entity<Buffer>, clock::Global>,
 }
 
 impl ActionLog {
@@ -29,7 +26,6 @@ impl ActionLog {
             tracked_buffers: BTreeMap::default(),
             edited_since_project_diagnostics_check: false,
             project,
-            notified_versions: BTreeMap::default(),
         }
     }
 
@@ -55,7 +51,6 @@ impl ActionLog {
     ) -> &mut TrackedBuffer {
         let status = if is_created {
             if let Some(tracked) = self.tracked_buffers.remove(&buffer) {
-                self.notified_versions.remove(&buffer);
                 match tracked.status {
                     TrackedBufferStatus::Created {
                         existing_file_content,
@@ -111,7 +106,7 @@ impl ActionLog {
                 TrackedBuffer {
                     buffer: buffer.clone(),
                     diff_base,
-                    unreviewed_edits,
+                    unreviewed_edits: unreviewed_edits,
                     snapshot: text_snapshot.clone(),
                     status,
                     version: buffer.read(cx).version(),
@@ -170,7 +165,6 @@ impl ActionLog {
                     // If the buffer had been edited by a tool, but it got
                     // deleted externally, we want to stop tracking it.
                     self.tracked_buffers.remove(&buffer);
-                    self.notified_versions.remove(&buffer);
                 }
                 cx.notify();
             }
@@ -184,7 +178,6 @@ impl ActionLog {
                     // resurrected externally, we want to clear the edits we
                     // were tracking and reset the buffer's state.
                     self.tracked_buffers.remove(&buffer);
-                    self.notified_versions.remove(&buffer);
                     self.track_buffer_internal(buffer, false, cx);
                 }
                 cx.notify();
@@ -490,7 +483,6 @@ impl ActionLog {
         match tracked_buffer.status {
             TrackedBufferStatus::Created { .. } => {
                 self.tracked_buffers.remove(&buffer);
-                self.notified_versions.remove(&buffer);
                 cx.notify();
             }
             TrackedBufferStatus::Modified => {
@@ -516,7 +508,6 @@ impl ActionLog {
         match tracked_buffer.status {
             TrackedBufferStatus::Deleted => {
                 self.tracked_buffers.remove(&buffer);
-                self.notified_versions.remove(&buffer);
                 cx.notify();
             }
             _ => {
@@ -625,7 +616,6 @@ impl ActionLog {
                 };
 
                 self.tracked_buffers.remove(&buffer);
-                self.notified_versions.remove(&buffer);
                 cx.notify();
                 task
             }
@@ -639,7 +629,6 @@ impl ActionLog {
 
                 // Clear all tracked edits for this buffer and start over as if we just read it.
                 self.tracked_buffers.remove(&buffer);
-                self.notified_versions.remove(&buffer);
                 self.buffer_read(buffer.clone(), cx);
                 cx.notify();
                 save
@@ -722,33 +711,6 @@ impl ActionLog {
             .filter(|(_, tracked)| tracked.has_edits(cx))
             .map(|(buffer, tracked)| (buffer.clone(), tracked.diff.clone()))
             .collect()
-    }
-
-    /// Returns stale buffers that haven't been notified yet
-    pub fn unnotified_stale_buffers<'a>(
-        &'a self,
-        cx: &'a App,
-    ) -> impl Iterator<Item = &'a Entity<Buffer>> {
-        self.stale_buffers(cx).filter(|buffer| {
-            let buffer_entity = buffer.read(cx);
-            self.notified_versions
-                .get(buffer)
-                .map_or(true, |notified_version| {
-                    *notified_version != buffer_entity.version
-                })
-        })
-    }
-
-    /// Marks the given buffers as notified at their current versions
-    pub fn mark_buffers_as_notified(
-        &mut self,
-        buffers: impl IntoIterator<Item = Entity<Buffer>>,
-        cx: &App,
-    ) {
-        for buffer in buffers {
-            let version = buffer.read(cx).version.clone();
-            self.notified_versions.insert(buffer, version);
-        }
     }
 
     /// Iterate over buffers changed since last read or edited by the model

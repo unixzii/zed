@@ -299,17 +299,15 @@ impl From<extension::DebugScenario> for DebugScenario {
     }
 }
 
-impl TryFrom<SpawnInTerminal> for ResolvedTask {
-    type Error = anyhow::Error;
-
-    fn try_from(value: SpawnInTerminal) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<SpawnInTerminal> for ResolvedTask {
+    fn from(value: SpawnInTerminal) -> Self {
+        Self {
             label: value.label,
-            command: value.command.context("missing command")?,
+            command: value.command,
             args: value.args,
             env: value.env.into_iter().collect(),
             cwd: value.cwd.map(|s| s.to_string_lossy().into_owned()),
-        })
+        }
     }
 }
 
