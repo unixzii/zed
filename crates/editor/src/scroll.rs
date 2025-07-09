@@ -623,8 +623,20 @@ impl Editor {
     }
 
     pub fn scroll_position(&self, cx: &mut Context<Self>) -> gpui::Point<f32> {
-        let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
-        self.scroll_manager.anchor.scroll_position(&display_map)
+        self.last_position_map
+            .as_ref()
+            .map(|position_map| {
+                self.scroll_manager
+                    .anchor
+                    .scroll_position(&position_map.snapshot)
+            })
+            .unwrap_or_else(|| {
+                self.scroll_manager.anchor.scroll_position(
+                    &self
+                        .display_map
+                        .update(cx, |display_map, cx| display_map.snapshot(cx)),
+                )
+            })
     }
 
     pub fn set_scroll_anchor(
