@@ -560,8 +560,17 @@ impl Editor {
             let current_position = self.scroll_position(cx);
             position.y = current_position.y;
         }
-        let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
-        self.set_scroll_position_internal(position, true, false, &display_map, window, cx);
+        if let Some(display_snapshot) = self
+            .last_position_map
+            .clone()
+            .as_ref()
+            .map(|position_map| &position_map.snapshot)
+        {
+            self.set_scroll_position_internal(position, true, false, &display_snapshot, window, cx);
+        } else {
+            let display_snapshot = self.display_map.update(cx, |map, cx| map.snapshot(cx));
+            self.set_scroll_position_internal(position, true, false, &display_snapshot, window, cx);
+        }
     }
 
     /// Scrolls so that `row` is at the top of the editor view.
