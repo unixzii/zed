@@ -209,10 +209,10 @@ impl ScrollManager {
     fn set_scroll_position(
         &mut self,
         scroll_position: gpui::Point<f32>,
-        map: &DisplaySnapshot,
         local: bool,
         autoscroll: bool,
         workspace_id: Option<WorkspaceId>,
+        display_snapshot: &DisplaySnapshot,
         window: &mut Window,
         cx: &mut Context<Editor>,
     ) {
@@ -225,13 +225,15 @@ impl ScrollManager {
                 0,
             )
         } else if scroll_position.y <= 0. {
-            let buffer_point = map
+            let buffer_point = display_snapshot
                 .clip_point(
                     DisplayPoint::new(DisplayRow(0), scroll_position.x as u32),
                     Bias::Left,
                 )
-                .to_point(map);
-            let anchor = map.buffer_snapshot.anchor_at(buffer_point, Bias::Right);
+                .to_point(display_snapshot);
+            let anchor = display_snapshot
+                .buffer_snapshot
+                .anchor_at(buffer_point, Bias::Right);
 
             (
                 ScrollAnchor {
@@ -246,7 +248,7 @@ impl ScrollManager {
                 ScrollBeyondLastLine::OnePage => scroll_top,
                 ScrollBeyondLastLine::Off => {
                     if let Some(height_in_lines) = self.visible_line_count {
-                        let max_row = map.max_point().row().0 as f32;
+                        let max_row = display_snapshot.max_point().row().0 as f32;
                         scroll_top.min(max_row - height_in_lines + 1.).max(0.)
                     } else {
                         scroll_top
@@ -254,7 +256,7 @@ impl ScrollManager {
                 }
                 ScrollBeyondLastLine::VerticalScrollMargin => {
                     if let Some(height_in_lines) = self.visible_line_count {
-                        let max_row = map.max_point().row().0 as f32;
+                        let max_row = display_snapshot.max_point().row().0 as f32;
                         scroll_top
                             .min(max_row - height_in_lines + 1. + self.vertical_scroll_margin)
                             .max(0.)
@@ -265,13 +267,13 @@ impl ScrollManager {
             };
 
             let scroll_top_row = DisplayRow(scroll_top as u32);
-            let scroll_top_buffer_point = map
+            let scroll_top_buffer_point = display_snapshot
                 .clip_point(
                     DisplayPoint::new(scroll_top_row, scroll_position.x as u32),
                     Bias::Left,
                 )
-                .to_point(map);
-            let top_anchor = map
+                .to_point(display_snapshot);
+            let top_anchor = display_snapshot
                 .buffer_snapshot
                 .anchor_at(scroll_top_buffer_point, Bias::Right);
 
@@ -280,7 +282,7 @@ impl ScrollManager {
                     anchor: top_anchor,
                     offset: point(
                         scroll_position.x.max(0.),
-                        scroll_top - top_anchor.to_display_point(map).row().as_f32(),
+                        scroll_top - top_anchor.to_display_point(display_snapshot).row().as_f32(),
                     ),
                 },
                 scroll_top_buffer_point.row,
@@ -608,10 +610,10 @@ impl Editor {
 
         self.scroll_manager.set_scroll_position(
             adjusted_position,
-            display_map,
             local,
             autoscroll,
             workspace_id,
+            display_map,
             window,
             cx,
         );
