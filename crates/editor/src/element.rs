@@ -1017,7 +1017,7 @@ impl EditorElement {
                     drop_cursor.start = drop_anchor;
                     drop_cursor.end = drop_anchor;
                     *hide_drop_cursor = !text_hitbox.is_hovered(window);
-                    editor.apply_scroll_delta(scroll_delta, window, cx);
+                    editor.apply_scroll_delta(scroll_delta, &position_map.snapshot, window, cx);
                     cx.notify();
                 }
                 SelectionDragState::ReadyToDrag {
@@ -1041,7 +1041,7 @@ impl EditorElement {
                             drop_cursor,
                             hide_drop_cursor: false,
                         };
-                        editor.apply_scroll_delta(scroll_delta, window, cx);
+                        editor.apply_scroll_delta(scroll_delta, &position_map.snapshot, window, cx);
                         cx.notify();
                     } else {
                         let click_point = position_map.point_for_position(*click_position);
@@ -8048,6 +8048,7 @@ impl Element for EditorElement {
                             bounds,
                             line_height,
                             max_scroll_top,
+                            &snapshot,
                             window,
                             cx,
                         );
@@ -8469,6 +8470,7 @@ impl Element for EditorElement {
                                 scroll_width,
                                 em_advance,
                                 &line_layouts,
+                                &snapshot,
                                 window,
                                 cx,
                             )
@@ -8624,6 +8626,7 @@ impl Element for EditorElement {
                                 scroll_width,
                                 em_advance,
                                 &line_layouts,
+                                &snapshot,
                                 window,
                                 cx,
                             )

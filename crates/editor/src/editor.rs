@@ -3671,7 +3671,7 @@ impl Editor {
             return;
         }
 
-        self.apply_scroll_delta(scroll_delta, window, cx);
+        self.apply_scroll_delta(scroll_delta, &display_map, window, cx);
         cx.notify();
     }
 

@@ -1,6 +1,6 @@
 use crate::{
     DisplayRow, Editor, EditorMode, LineWithInvisibles, RowExt, SelectionEffects,
-    display_map::ToDisplayPoint,
+    display_map::{DisplaySnapshot, ToDisplayPoint},
 };
 use gpui::{Bounds, Context, Pixels, Window, px};
 use language::Point;
@@ -109,13 +109,13 @@ impl Editor {
         bounds: Bounds<Pixels>,
         line_height: Pixels,
         max_scroll_top: f32,
+        display_snapshot: &DisplaySnapshot,
         window: &mut Window,
         cx: &mut Context<Editor>,
     ) -> bool {
         let viewport_height = bounds.size.height;
         let visible_lines = viewport_height / line_height;
-        let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
-        let mut scroll_position = self.scroll_manager.scroll_position(&display_map);
+        let mut scroll_position = self.scroll_manager.scroll_position(display_snapshot);
         let original_y = scroll_position.y;
         if let Some(last_bounds) = self.expect_bounds_change.take() {
             if scroll_position.y != 0. {
@@ -140,7 +140,7 @@ impl Editor {
         let mut target_top;
         let mut target_bottom;
         if let Some(first_highlighted_row) =
-            self.highlighted_display_row_for_autoscroll(&display_map)
+            self.highlighted_display_row_for_autoscroll(display_snapshot)
         {
             target_top = first_highlighted_row.as_f32();
             target_bottom = target_top + 1.;
@@ -151,14 +151,14 @@ impl Editor {
                 .first()
                 .unwrap()
                 .head()
-                .to_display_point(&display_map)
+                .to_display_point(display_snapshot)
                 .row()
                 .as_f32();
             target_bottom = selections
                 .last()
                 .unwrap()
                 .head()
-                .to_display_point(&display_map)
+                .to_display_point(display_snapshot)
                 .row()
                 .next_row()
                 .as_f32();
@@ -175,7 +175,7 @@ impl Editor {
                     .max_by_key(|s| s.id)
                     .unwrap()
                     .head()
-                    .to_display_point(&display_map)
+                    .to_display_point(display_snapshot)
                     .row()
                     .as_f32();
                 target_top = newest_selection_top;
@@ -208,7 +208,7 @@ impl Editor {
             }
         };
         if let Autoscroll::Strategy(_, Some(anchor)) = autoscroll {
-            target_top = anchor.to_display_point(&display_map).row().as_f32();
+            target_top = anchor.to_display_point(display_snapshot).row().as_f32();
             target_bottom = target_top + 1.;
         }
 
@@ -225,37 +225,93 @@ impl Editor {
 
                 if needs_scroll_up && !needs_scroll_down {
                     scroll_position.y = target_top;
-                    self.set_scroll_position_internal(scroll_position, local, true, window, cx);
+                    self.set_scroll_position_internal(
+                        scroll_position,
+                        local,
+                        true,
+                        display_snapshot,
+                        window,
+                        cx,
+                    );
                 }
                 if !needs_scroll_up && needs_scroll_down {
                     scroll_position.y = target_bottom - visible_lines;
-                    self.set_scroll_position_internal(scroll_position, local, true, window, cx);
+                    self.set_scroll_position_internal(
+                        scroll_position,
+                        local,
+                        true,
+                        display_snapshot,
+                        window,
+                        cx,
+                    );
                 }
             }
             AutoscrollStrategy::Center => {
                 scroll_position.y = (target_top - margin).max(0.0);
-                self.set_scroll_position_internal(scroll_position, local, true, window, cx);
+                self.set_scroll_position_internal(
+                    scroll_position,
+                    local,
+                    true,
+                    display_snapshot,
+                    window,
+                    cx,
+                );
             }
             AutoscrollStrategy::Focused => {
                 let margin = margin.min(self.scroll_manager.vertical_scroll_margin);
                 scroll_position.y = (target_top - margin).max(0.0);
-                self.set_scroll_position_internal(scroll_position, local, true, window, cx);
+                self.set_scroll_position_internal(
+                    scroll_position,
+                    local,
+                    true,
+                    display_snapshot,
+                    window,
+                    cx,
+                );
             }
             AutoscrollStrategy::Top => {
                 scroll_position.y = (target_top).max(0.0);
-                self.set_scroll_position_internal(scroll_position, local, true, window, cx);
+                self.set_scroll_position_internal(
+                    scroll_position,
+                    local,
+                    true,
+                    display_snapshot,
+                    window,
+                    cx,
+                );
             }
             AutoscrollStrategy::Bottom => {
                 scroll_position.y = (target_bottom - visible_lines).max(0.0);
-                self.set_scroll_position_internal(scroll_position, local, true, window, cx);
+                self.set_scroll_position_internal(
+                    scroll_position,
+                    local,
+                    true,
+                    display_snapshot,
+                    window,
+                    cx,
+                );
             }
             AutoscrollStrategy::TopRelative(lines) => {
                 scroll_position.y = target_top - lines as f32;
-                self.set_scroll_position_internal(scroll_position, local, true, window, cx);
+                self.set_scroll_position_internal(
+                    scroll_position,
+                    local,
+                    true,
+                    display_snapshot,
+                    window,
+                    cx,
+                );
             }
             AutoscrollStrategy::BottomRelative(lines) => {
                 scroll_position.y = target_bottom + lines as f32;
-                self.set_scroll_position_internal(scroll_position, local, true, window, cx);
+                self.set_scroll_position_internal(
+                    scroll_position,
+                    local,
+                    true,
+                    display_snapshot,
+                    window,
+                    cx,
+                );
             }
         }
 
@@ -276,29 +332,29 @@ impl Editor {
         scroll_width: Pixels,
         em_advance: Pixels,
         layouts: &[LineWithInvisibles],
+        display_snapshot: &DisplaySnapshot,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
         let selections = self.selections.all::<Point>(cx);
-        let mut scroll_position = self.scroll_manager.scroll_position(&display_map);
+        let mut scroll_position = self.scroll_manager.scroll_position(display_snapshot);
 
         let mut target_left;
         let mut target_right;
 
         if self
-            .highlighted_display_row_for_autoscroll(&display_map)
+            .highlighted_display_row_for_autoscroll(display_snapshot)
             .is_none()
         {
             target_left = px(f32::INFINITY);
             target_right = px(0.);
             for selection in selections {
-                let head = selection.head().to_display_point(&display_map);
+                let head = selection.head().to_display_point(display_snapshot);
                 if head.row() >= start_row
                     && head.row() < DisplayRow(start_row.0 + layouts.len() as u32)
                 {
                     let start_column = head.column();
-                    let end_column = cmp::min(display_map.line_len(head.row()), head.column());
+                    let end_column = cmp::min(display_snapshot.line_len(head.row()), head.column());
                     target_left = target_left.min(
                         layouts[head.row().minus(start_row) as usize]
                             .x_for_index(start_column as usize)
@@ -327,11 +383,25 @@ impl Editor {
 
         if target_left < scroll_left {
             scroll_position.x = target_left / em_advance;
-            self.set_scroll_position_internal(scroll_position, true, true, window, cx);
+            self.set_scroll_position_internal(
+                scroll_position,
+                true,
+                true,
+                display_snapshot,
+                window,
+                cx,
+            );
             true
         } else if target_right > scroll_right {
             scroll_position.x = (target_right - viewport_width) / em_advance;
-            self.set_scroll_position_internal(scroll_position, true, true, window, cx);
+            self.set_scroll_position_internal(
+                scroll_position,
+                true,
+                true,
+                display_snapshot,
+                window,
+                cx,
+            );
             true
         } else {
             false

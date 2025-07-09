@@ -535,6 +535,7 @@ impl Editor {
     pub fn apply_scroll_delta(
         &mut self,
         scroll_delta: gpui::Point<f32>,
+        display_snapshot: &DisplaySnapshot,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -542,9 +543,8 @@ impl Editor {
         if self.scroll_manager.forbid_vertical_scroll {
             delta.y = 0.0;
         }
-        let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
-        let position = self.scroll_manager.anchor.scroll_position(&display_map) + delta;
-        self.set_scroll_position_taking_display_map(position, true, false, display_map, window, cx);
+        let position = self.scroll_manager.anchor.scroll_position(display_snapshot) + delta;
+        self.set_scroll_position_internal(position, true, false, display_snapshot, window, cx);
     }
 
     pub fn set_scroll_position(
@@ -558,7 +558,8 @@ impl Editor {
             let current_position = self.scroll_position(cx);
             position.y = current_position.y;
         }
-        self.set_scroll_position_internal(position, true, false, window, cx);
+        let display_map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
+        self.set_scroll_position_internal(position, true, false, &display_map, window, cx);
     }
 
     /// Scrolls so that `row` is at the top of the editor view.
@@ -588,26 +589,7 @@ impl Editor {
         scroll_position: gpui::Point<f32>,
         local: bool,
         autoscroll: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let map = self.display_map.update(cx, |map, cx| map.snapshot(cx));
-        self.set_scroll_position_taking_display_map(
-            scroll_position,
-            local,
-            autoscroll,
-            map,
-            window,
-            cx,
-        );
-    }
-
-    fn set_scroll_position_taking_display_map(
-        &mut self,
-        scroll_position: gpui::Point<f32>,
-        local: bool,
-        autoscroll: bool,
-        display_map: DisplaySnapshot,
+        display_map: &DisplaySnapshot,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -618,7 +600,7 @@ impl Editor {
             .set_previous_scroll_position(None);
 
         let adjusted_position = if self.scroll_manager.forbid_vertical_scroll {
-            let current_position = self.scroll_manager.anchor.scroll_position(&display_map);
+            let current_position = self.scroll_manager.anchor.scroll_position(display_map);
             gpui::Point::new(scroll_position.x, current_position.y)
         } else {
             scroll_position
@@ -626,7 +608,7 @@ impl Editor {
 
         self.scroll_manager.set_scroll_position(
             adjusted_position,
-            &display_map,
+            display_map,
             local,
             autoscroll,
             workspace_id,
