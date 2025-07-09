@@ -141,15 +141,7 @@ pub type CodeBlockRenderFn = Arc<
 pub type CodeBlockTransformFn =
     Arc<dyn Fn(AnyDiv, Range<usize>, CodeBlockMetadata, &mut Window, &App) -> AnyDiv>;
 
-actions!(
-    markdown,
-    [
-        /// Copies the selected text to the clipboard.
-        Copy,
-        /// Copies the selected text as markdown to the clipboard.
-        CopyAsMarkdown
-    ]
-);
+actions!(markdown, [Copy, CopyAsMarkdown]);
 
 impl Markdown {
     pub fn new(
@@ -429,7 +421,7 @@ impl Selection {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct ParsedMarkdown {
     pub source: SharedString,
     pub events: Arc<[(Range<usize>, MarkdownEvent)]>,
@@ -1680,7 +1672,7 @@ struct RenderedText {
     links: Rc<[RenderedLink]>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 struct RenderedLink {
     source_range: Range<usize>,
     destination_url: SharedString,

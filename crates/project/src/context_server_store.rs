@@ -21,13 +21,7 @@ pub fn init(cx: &mut App) {
     extension::init(cx);
 }
 
-actions!(
-    context_server,
-    [
-        /// Restarts the context server.
-        Restart
-    ]
-);
+actions!(context_server, [Restart]);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ContextServerStatus {

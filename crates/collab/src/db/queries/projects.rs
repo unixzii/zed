@@ -112,7 +112,7 @@ impl Database {
     }
 
     pub async fn delete_project(&self, project_id: ProjectId) -> Result<()> {
-        self.transaction(|tx| async move {
+        self.weak_transaction(|tx| async move {
             project::Entity::delete_by_id(project_id).exec(&*tx).await?;
             Ok(())
         })

@@ -44,21 +44,18 @@ use crate::{
     visual::VisualDeleteLine,
 };
 
-/// Goes to the specified line number in the editor.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct GoToLine {
     range: CommandRange,
 }
 
-/// Yanks (copies) text based on the specified range.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct YankCommand {
     range: CommandRange,
 }
 
-/// Executes a command with the specified range.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct WithRange {
@@ -67,7 +64,6 @@ pub struct WithRange {
     action: WrappedAction,
 }
 
-/// Executes a command with the specified count.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct WithCount {
@@ -159,14 +155,12 @@ impl VimOption {
     }
 }
 
-/// Sets vim options and configuration values.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct VimSet {
     options: Vec<VimOption>,
 }
 
-/// Saves the current file with optional save intent.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 struct VimSave {
@@ -174,7 +168,6 @@ struct VimSave {
     pub filename: String,
 }
 
-/// Deletes the specified marks from the editor.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 enum DeleteMarks {
@@ -184,18 +177,8 @@ enum DeleteMarks {
 
 actions!(
     vim,
-    [
-        /// Executes a command in visual mode.
-        VisualCommand,
-        /// Executes a command with a count prefix.
-        CountCommand,
-        /// Executes a shell command.
-        ShellCommand,
-        /// Indicates that an argument is required for the command.
-        ArgumentRequired
-    ]
+    [VisualCommand, CountCommand, ShellCommand, ArgumentRequired]
 );
-/// Opens the specified file for editing.
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 struct VimEdit {
@@ -1299,7 +1282,6 @@ fn generate_positions(string: &str, query: &str) -> Vec<usize> {
     positions
 }
 
-/// Applies a command to all lines matching a pattern.
 #[derive(Debug, PartialEq, Clone, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub(crate) struct OnMatchingLines {
@@ -1498,7 +1480,6 @@ impl OnMatchingLines {
     }
 }
 
-/// Executes a shell command and returns the output.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = vim, no_json, no_register)]
 pub struct ShellExec {

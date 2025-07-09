@@ -70,23 +70,15 @@ const GIT_DIFF_PATH_PREFIXES: &[&str] = &["a", "b"];
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScrollTerminal(pub i32);
 
-/// Sends the specified text directly to the terminal.
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Action)]
 #[action(namespace = terminal)]
 pub struct SendText(String);
 
-/// Sends a keystroke sequence to the terminal.
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Action)]
 #[action(namespace = terminal)]
 pub struct SendKeystroke(String);
 
-actions!(
-    terminal,
-    [
-        /// Reruns the last executed task in the terminal.
-        RerunTask
-    ]
-);
+actions!(terminal, [RerunTask]);
 
 pub fn init(cx: &mut App) {
     assistant_slash_command::init(cx);
@@ -823,11 +815,6 @@ impl TerminalView {
             };
             dispatch_context.set("mouse_format", format);
         };
-
-        if self.terminal.read(cx).last_content.selection.is_some() {
-            dispatch_context.add("selection");
-        }
-
         dispatch_context
     }
 

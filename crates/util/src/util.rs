@@ -5,7 +5,6 @@ pub mod fs;
 pub mod markdown;
 pub mod paths;
 pub mod redact;
-pub mod schemars;
 pub mod serde;
 pub mod shell_env;
 pub mod size;

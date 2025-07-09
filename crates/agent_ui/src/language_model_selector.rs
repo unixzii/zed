@@ -18,7 +18,6 @@ use ui::{ListItem, ListItemSpacing, prelude::*};
 actions!(
     agent,
     [
-        /// Toggles the language model selector dropdown.
         #[action(deprecated_aliases = ["assistant::ToggleModelSelector", "assistant2::ToggleModelSelector"])]
         ToggleModelSelector
     ]

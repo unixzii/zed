@@ -19,13 +19,7 @@ use workspace::{StatusItemView, Workspace};
 
 use crate::lsp_log::GlobalLogStore;
 
-actions!(
-    lsp_tool,
-    [
-        /// Toggles the language server tool menu.
-        ToggleMenu
-    ]
-);
+actions!(lsp_tool, [ToggleMenu]);
 
 pub struct LspTool {
     state: Entity<PickerState>,

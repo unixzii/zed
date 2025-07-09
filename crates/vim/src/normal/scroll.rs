@@ -11,21 +11,13 @@ use settings::Settings;
 actions!(
     vim,
     [
-        /// Scrolls up by one line.
         LineUp,
-        /// Scrolls down by one line.
         LineDown,
-        /// Scrolls right by one column.
         ColumnRight,
-        /// Scrolls left by one column.
         ColumnLeft,
-        /// Scrolls up by half a page.
         ScrollUp,
-        /// Scrolls down by half a page.
         ScrollDown,
-        /// Scrolls up by one page.
         PageUp,
-        /// Scrolls down by one page.
         PageDown
     ]
 );

@@ -6,7 +6,7 @@ use futures::{FutureExt, StreamExt, channel::mpsc, future::LocalBoxFuture};
 use gpui::{App, AsyncApp, BorrowAppContext, Global, Task, UpdateGlobal};
 
 use paths::{EDITORCONFIG_NAME, local_settings_file_relative_path, task_file_name};
-use schemars::JsonSchema;
+use schemars::{JsonSchema, json_schema};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use smallvec::SmallVec;
@@ -18,16 +18,14 @@ use std::{
     str::{self, FromStr},
     sync::Arc,
 };
-use util::{
-    ResultExt as _, merge_non_null_json_value_into,
-    schemars::{DefaultDenyUnknownFields, add_new_subschema},
-};
+
+use util::{ResultExt as _, merge_non_null_json_value_into};
 
 pub type EditorconfigProperties = ec4rs::Properties;
 
 use crate::{
-    ParameterizedJsonSchema, SettingsJsonSchemaParams, VsCodeSettings, WorktreeId,
-    parse_json_with_comments, update_value_in_json_text,
+    DefaultDenyUnknownFields, ParameterizedJsonSchema, SettingsJsonSchemaParams, VsCodeSettings,
+    WorktreeId, add_new_subschema, parse_json_with_comments, update_value_in_json_text,
 };
 
 /// A value that can be defined as a user setting.
@@ -1021,19 +1019,19 @@ impl SettingsStore {
             .unwrap()
             .remove("additionalProperties");
 
-        let meta_schema = generator
-            .settings()
-            .meta_schema
-            .as_ref()
-            .expect("meta_schema should be present in schemars settings")
-            .to_string();
+        let mut root_schema = if let Some(meta_schema) = generator.settings().meta_schema.as_ref() {
+            json_schema!({ "$schema": meta_schema.to_string() })
+        } else {
+            json_schema!({})
+        };
 
-        json!({
-            "$schema": meta_schema,
-            "title": "Zed Settings",
-            "unevaluatedProperties": false,
-            // ZedSettings + settings overrides for each release stage
-            "allOf": [
+        // "unevaluatedProperties: false" to report unknown fields.
+        root_schema.insert("unevaluatedProperties".to_string(), false.into());
+
+        // Settings file contents matches ZedSettings + overrides for each release stage.
+        root_schema.insert(
+            "allOf".to_string(),
+            json!([
                 zed_settings_ref,
                 {
                     "properties": {
@@ -1043,9 +1041,12 @@ impl SettingsStore {
                         "preview": zed_release_stage_settings_ref,
                     }
                 }
-            ],
-            "$defs": definitions,
-        })
+            ]),
+        );
+
+        root_schema.insert("$defs".to_string(), definitions.into());
+
+        root_schema.to_value()
     }
 
     fn recompute_values(

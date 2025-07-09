@@ -838,7 +838,7 @@ impl RandomizedTest for ProjectCollaborationTest {
                         .map(|_| Ok(()))
                         .boxed(),
                     LspRequestKind::Definition => project
-                        .definitions(&buffer, offset, cx)
+                        .definition(&buffer, offset, cx)
                         .map_ok(|_| ())
                         .boxed(),
                     LspRequestKind::Highlights => project

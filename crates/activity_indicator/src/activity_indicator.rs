@@ -31,13 +31,7 @@ use workspace::{StatusItemView, Workspace, item::ItemHandle};
 
 const GIT_OPERATION_DELAY: Duration = Duration::from_millis(0);
 
-actions!(
-    activity_indicator,
-    [
-        /// Displays error messages from language servers in the status bar.
-        ShowErrorMessage
-    ]
-);
+actions!(activity_indicator, [ShowErrorMessage]);
 
 pub enum Event {
     ShowStatus {

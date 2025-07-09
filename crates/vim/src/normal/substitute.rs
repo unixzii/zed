@@ -7,15 +7,7 @@ use crate::{
     motion::{Motion, MotionKind},
 };
 
-actions!(
-    vim,
-    [
-        /// Substitutes characters in the current selection.
-        Substitute,
-        /// Substitutes the entire line.
-        SubstituteLine
-    ]
-);
+actions!(vim, [Substitute, SubstituteLine]);
 
 pub(crate) fn register(editor: &mut Editor, cx: &mut Context<Vim>) {
     Vim::action(editor, cx, |vim, _: &Substitute, window, cx| {
