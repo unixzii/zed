@@ -8035,7 +8035,6 @@ impl Element for EditorElement {
                         }
                     };
 
-                    // TODO: Autoscrolling for both axes
                     let mut autoscroll_request = None;
                     let mut autoscroll_containing_element = false;
                     let mut autoscroll_horizontally = false;
@@ -8044,7 +8043,7 @@ impl Element for EditorElement {
                         autoscroll_request = editor.autoscroll_request();
                         autoscroll_containing_element =
                             autoscroll_request.is_some() || editor.has_pending_selection();
-                        // TODO: Is this horizontal or vertical?!
+
                         (scrolled_vertically, autoscroll_horizontally) = editor.autoscroll_vertically(
                             bounds,
                             line_height,
