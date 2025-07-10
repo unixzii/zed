@@ -8039,12 +8039,13 @@ impl Element for EditorElement {
                     let mut autoscroll_request = None;
                     let mut autoscroll_containing_element = false;
                     let mut autoscroll_horizontally = false;
+                    let mut scrolled_vertically = false;
                     self.editor.update(cx, |editor, cx| {
                         autoscroll_request = editor.autoscroll_request();
                         autoscroll_containing_element =
                             autoscroll_request.is_some() || editor.has_pending_selection();
                         // TODO: Is this horizontal or vertical?!
-                        autoscroll_horizontally = editor.autoscroll_vertically(
+                        (scrolled_vertically, autoscroll_horizontally) = editor.autoscroll_vertically(
                             bounds,
                             line_height,
                             max_scroll_top,
@@ -8052,7 +8053,9 @@ impl Element for EditorElement {
                             window,
                             cx,
                         );
-                        snapshot = editor.snapshot(window, cx);
+                        if scrolled_vertically || autoscroll_horizontally {
+                            snapshot = editor.snapshot(window, cx);
+                        }
                     });
 
                     let mut scroll_position = snapshot.scroll_position();

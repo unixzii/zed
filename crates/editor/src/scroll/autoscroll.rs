@@ -112,7 +112,7 @@ impl Editor {
         display_snapshot: &DisplaySnapshot,
         window: &mut Window,
         cx: &mut Context<Editor>,
-    ) -> bool {
+    ) -> (bool, bool) {
         let viewport_height = bounds.size.height;
         let visible_lines = viewport_height / line_height;
         let mut scroll_position = self.scroll_manager.scroll_position(display_snapshot);
@@ -129,12 +129,13 @@ impl Editor {
             scroll_position.y = max_scroll_top;
         }
 
-        if original_y != scroll_position.y {
+        let vertical_scroll_position_changed = original_y != scroll_position.y;
+        if vertical_scroll_position_changed {
             self.set_scroll_position(scroll_position, window, cx);
         }
 
         let Some((autoscroll, local)) = self.scroll_manager.autoscroll_request.take() else {
-            return false;
+            return (vertical_scroll_position_changed, false);
         };
 
         let mut target_top;
@@ -322,7 +323,7 @@ impl Editor {
             strategy,
         ));
 
-        true
+        (vertical_scroll_position_changed, true)
     }
 
     pub(crate) fn autoscroll_horizontally(
