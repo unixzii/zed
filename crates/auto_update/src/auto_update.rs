@@ -28,17 +28,7 @@ use workspace::Workspace;
 const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "auto-updater-should-show-updated-notification";
 const POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-actions!(
-    auto_update,
-    [
-        /// Checks for available updates.
-        Check,
-        /// Dismisses the update error message.
-        DismissErrorMessage,
-        /// Opens the release notes for the current version in a browser.
-        ViewReleaseNotes,
-    ]
-);
+actions!(auto_update, [Check, DismissErrorMessage, ViewReleaseNotes,]);
 
 #[derive(Serialize)]
 struct UpdateRequestBody {
@@ -638,7 +628,7 @@ impl AutoUpdater {
         let filename = match OS {
             "macos" => anyhow::Ok("Zed.dmg"),
             "linux" => Ok("zed.tar.gz"),
-            "windows" => Ok("zed_editor_installer.exe"),
+            "windows" => Ok("ZedUpdateInstaller.exe"),
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
         }?;
 

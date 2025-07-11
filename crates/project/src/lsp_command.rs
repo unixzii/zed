@@ -171,27 +171,27 @@ pub(crate) struct PerformRename {
     pub push_to_history: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct GetDefinitions {
+#[derive(Debug)]
+pub struct GetDefinition {
     pub position: PointUtf16,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct GetDeclarations {
+#[derive(Debug)]
+pub(crate) struct GetDeclaration {
     pub position: PointUtf16,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct GetTypeDefinitions {
+#[derive(Debug)]
+pub(crate) struct GetTypeDefinition {
     pub position: PointUtf16,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct GetImplementations {
+#[derive(Debug)]
+pub(crate) struct GetImplementation {
     pub position: PointUtf16,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub(crate) struct GetReferences {
     pub position: PointUtf16,
 }
@@ -588,7 +588,7 @@ impl LspCommand for PerformRename {
 }
 
 #[async_trait(?Send)]
-impl LspCommand for GetDefinitions {
+impl LspCommand for GetDefinition {
     type Response = Vec<LocationLink>;
     type LspRequest = lsp::request::GotoDefinition;
     type ProtoRequest = proto::GetDefinition;
@@ -690,7 +690,7 @@ impl LspCommand for GetDefinitions {
 }
 
 #[async_trait(?Send)]
-impl LspCommand for GetDeclarations {
+impl LspCommand for GetDeclaration {
     type Response = Vec<LocationLink>;
     type LspRequest = lsp::request::GotoDeclaration;
     type ProtoRequest = proto::GetDeclaration;
@@ -793,7 +793,7 @@ impl LspCommand for GetDeclarations {
 }
 
 #[async_trait(?Send)]
-impl LspCommand for GetImplementations {
+impl LspCommand for GetImplementation {
     type Response = Vec<LocationLink>;
     type LspRequest = lsp::request::GotoImplementation;
     type ProtoRequest = proto::GetImplementation;
@@ -895,7 +895,7 @@ impl LspCommand for GetImplementations {
 }
 
 #[async_trait(?Send)]
-impl LspCommand for GetTypeDefinitions {
+impl LspCommand for GetTypeDefinition {
     type Response = Vec<LocationLink>;
     type LspRequest = lsp::request::GotoTypeDefinition;
     type ProtoRequest = proto::GetTypeDefinition;
@@ -1846,15 +1846,12 @@ impl LspCommand for GetSignatureHelp {
     async fn response_from_lsp(
         self,
         message: Option<lsp::SignatureHelp>,
-        lsp_store: Entity<LspStore>,
+        _: Entity<LspStore>,
         _: Entity<Buffer>,
         _: LanguageServerId,
-        cx: AsyncApp,
+        _: AsyncApp,
     ) -> Result<Self::Response> {
-        let Some(message) = message else {
-            return Ok(None);
-        };
-        cx.update(|cx| SignatureHelp::new(message, Some(lsp_store.read(cx).languages.clone()), cx))
+        Ok(message.and_then(SignatureHelp::new))
     }
 
     fn to_proto(&self, project_id: u64, buffer: &Buffer) -> Self::ProtoRequest {
@@ -1905,18 +1902,14 @@ impl LspCommand for GetSignatureHelp {
     async fn response_from_proto(
         self,
         response: proto::GetSignatureHelpResponse,
-        lsp_store: Entity<LspStore>,
+        _: Entity<LspStore>,
         _: Entity<Buffer>,
-        cx: AsyncApp,
+        _: AsyncApp,
     ) -> Result<Self::Response> {
-        cx.update(|cx| {
-            response
-                .signature_help
-                .map(proto_to_lsp_signature)
-                .and_then(|signature| {
-                    SignatureHelp::new(signature, Some(lsp_store.read(cx).languages.clone()), cx)
-                })
-        })
+        Ok(response
+            .signature_help
+            .map(proto_to_lsp_signature)
+            .and_then(SignatureHelp::new))
     }
 
     fn buffer_id_from_proto(message: &Self::ProtoRequest) -> Result<BufferId> {

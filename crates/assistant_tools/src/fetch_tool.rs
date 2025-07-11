@@ -130,7 +130,7 @@ impl Tool for FetchTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolWeb
+        IconName::Globe
     }
 
     fn input_schema(&self, format: LanguageModelToolSchemaFormat) -> Result<serde_json::Value> {

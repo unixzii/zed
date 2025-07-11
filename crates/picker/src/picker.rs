@@ -34,13 +34,7 @@ pub enum Direction {
     Down,
 }
 
-actions!(
-    picker,
-    [
-        /// Confirms the selected completion in the picker.
-        ConfirmCompletion
-    ]
-);
+actions!(picker, [ConfirmCompletion]);
 
 /// ConfirmInput is an alternative editor action which - instead of selecting active picker entry - treats pickers editor input literally,
 /// performing some kind of action on it.

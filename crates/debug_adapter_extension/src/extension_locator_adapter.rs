@@ -44,9 +44,7 @@ impl DapLocator for ExtensionLocatorAdapter {
             .flatten()
     }
 
-    async fn run(&self, build_config: SpawnInTerminal) -> Result<DebugRequest> {
-        self.extension
-            .run_dap_locator(self.locator_name.as_ref().to_owned(), build_config)
-            .await
+    async fn run(&self, _build_config: SpawnInTerminal) -> Result<DebugRequest> {
+        Err(anyhow::anyhow!("Not implemented"))
     }
 }

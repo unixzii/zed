@@ -2,7 +2,6 @@ use anthropic::AnthropicModelMode;
 use anyhow::{Context as _, Result, anyhow};
 use chrono::{DateTime, Utc};
 use client::{Client, ModelRequestUsage, UserStore, zed_urls};
-use feature_flags::{FeatureFlagAppExt as _, ZedCloudFeatureFlag};
 use futures::{
     AsyncBufReadExt, FutureExt, Stream, StreamExt, future::BoxFuture, stream::BoxStream,
 };
@@ -137,7 +136,6 @@ impl State {
         cx: &mut Context<Self>,
     ) -> Self {
         let refresh_llm_token_listener = RefreshLlmTokenListener::global(cx);
-        let use_cloud = cx.has_flag::<ZedCloudFeatureFlag>();
 
         Self {
             client: client.clone(),
@@ -165,7 +163,7 @@ impl State {
                             .await;
                     }
 
-                    let response = Self::fetch_models(client, llm_api_token, use_cloud).await?;
+                    let response = Self::fetch_models(client, llm_api_token).await?;
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
                             let mut models = Vec::new();
@@ -267,18 +265,13 @@ impl State {
     async fn fetch_models(
         client: Arc<Client>,
         llm_api_token: LlmApiToken,
-        use_cloud: bool,
     ) -> Result<ListModelsResponse> {
         let http_client = &client.http_client();
         let token = llm_api_token.acquire(&client).await?;
 
         let request = http_client::Request::builder()
             .method(Method::GET)
-            .uri(
-                http_client
-                    .build_zed_llm_url("/models", &[], use_cloud)?
-                    .as_ref(),
-            )
+            .uri(http_client.build_zed_llm_url("/models", &[])?.as_ref())
             .header("Authorization", format!("Bearer {token}"))
             .body(AsyncBody::empty())?;
         let mut response = http_client
@@ -542,7 +535,6 @@ impl CloudLanguageModel {
         llm_api_token: LlmApiToken,
         app_version: Option<SemanticVersion>,
         body: CompletionBody,
-        use_cloud: bool,
     ) -> Result<PerformLlmCompletionResponse> {
         let http_client = &client.http_client();
 
@@ -550,11 +542,9 @@ impl CloudLanguageModel {
         let mut refreshed_token = false;
 
         loop {
-            let request_builder = http_client::Request::builder().method(Method::POST).uri(
-                http_client
-                    .build_zed_llm_url("/completions", &[], use_cloud)?
-                    .as_ref(),
-            );
+            let request_builder = http_client::Request::builder()
+                .method(Method::POST)
+                .uri(http_client.build_zed_llm_url("/completions", &[])?.as_ref());
             let request_builder = if let Some(app_version) = app_version {
                 request_builder.header(ZED_VERSION_HEADER_NAME, app_version.to_string())
             } else {
@@ -740,13 +730,6 @@ impl LanguageModel for CloudLanguageModel {
         self.model.max_token_count as u64
     }
 
-    fn max_token_count_in_burn_mode(&self) -> Option<u64> {
-        self.model
-            .max_token_count_in_max_mode
-            .filter(|_| self.model.supports_max_mode)
-            .map(|max_token_count| max_token_count as u64)
-    }
-
     fn cache_configuration(&self) -> Option<LanguageModelCacheConfiguration> {
         match &self.model.provider {
             zed_llm_client::LanguageModelProvider::Anthropic => {
@@ -781,7 +764,6 @@ impl LanguageModel for CloudLanguageModel {
                 let model_id = self.model.id.to_string();
                 let generate_content_request =
                     into_google(request, model_id.clone(), GoogleModelMode::Default);
-                let use_cloud = cx.has_flag::<ZedCloudFeatureFlag>();
                 async move {
                     let http_client = &client.http_client();
                     let token = llm_api_token.acquire(&client).await?;
@@ -797,7 +779,7 @@ impl LanguageModel for CloudLanguageModel {
                         .method(Method::POST)
                         .uri(
                             http_client
-                                .build_zed_llm_url("/count_tokens", &[], use_cloud)?
+                                .build_zed_llm_url("/count_tokens", &[])?
                                 .as_ref(),
                         )
                         .header("Content-Type", "application/json")
@@ -846,10 +828,6 @@ impl LanguageModel for CloudLanguageModel {
         let intent = request.intent;
         let mode = request.mode;
         let app_version = cx.update(|cx| AppVersion::global(cx)).ok();
-        let use_cloud = cx
-            .update(|cx| cx.has_flag::<ZedCloudFeatureFlag>())
-            .unwrap_or(false);
-        let thinking_allowed = request.thinking_allowed;
         match self.model.provider {
             zed_llm_client::LanguageModelProvider::Anthropic => {
                 let request = into_anthropic(
@@ -857,7 +835,7 @@ impl LanguageModel for CloudLanguageModel {
                     self.model.id.to_string(),
                     1.0,
                     self.model.max_output_tokens as u64,
-                    if thinking_allowed && self.model.id.0.ends_with("-thinking") {
+                    if self.model.id.0.ends_with("-thinking") {
                         AnthropicModelMode::Thinking {
                             budget_tokens: Some(4_096),
                         }
@@ -887,7 +865,6 @@ impl LanguageModel for CloudLanguageModel {
                             provider_request: serde_json::to_value(&request)
                                 .map_err(|e| anyhow!(e))?,
                         },
-                        use_cloud,
                     )
                     .await
                     .map_err(|err| match err.downcast::<ApiError>() {
@@ -940,7 +917,6 @@ impl LanguageModel for CloudLanguageModel {
                             provider_request: serde_json::to_value(&request)
                                 .map_err(|e| anyhow!(e))?,
                         },
-                        use_cloud,
                     )
                     .await?;
 
@@ -981,7 +957,6 @@ impl LanguageModel for CloudLanguageModel {
                             provider_request: serde_json::to_value(&request)
                                 .map_err(|e| anyhow!(e))?,
                         },
-                        use_cloud,
                     )
                     .await?;
 

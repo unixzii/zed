@@ -49,10 +49,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tempfile::TempDir;
-use util::{
-    ResultExt,
-    paths::{PathStyle, RemotePathBuf},
-};
+use util::ResultExt;
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, serde::Serialize, serde::Deserialize,
@@ -62,10 +59,7 @@ pub struct SshProjectId(pub u64);
 #[derive(Clone)]
 pub struct SshSocket {
     connection_options: SshConnectionOptions,
-    #[cfg(not(target_os = "windows"))]
     socket_path: PathBuf,
-    #[cfg(target_os = "windows")]
-    envs: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, JsonSchema)]
@@ -89,11 +83,6 @@ pub struct SshConnectionOptions {
 
     pub nickname: Option<String>,
     pub upload_binary_over_ssh: bool,
-}
-
-pub struct SshArgs {
-    pub arguments: Vec<String>,
-    pub envs: Option<HashMap<String, String>>,
 }
 
 #[macro_export]
@@ -314,6 +303,20 @@ pub struct SshPlatform {
     pub arch: &'static str,
 }
 
+impl SshPlatform {
+    pub fn triple(&self) -> Option<String> {
+        Some(format!(
+            "{}-{}",
+            self.arch,
+            match self.os {
+                "linux" => "unknown-linux-gnu",
+                "macos" => "apple-darwin",
+                _ => return None,
+            }
+        ))
+    }
+}
+
 pub trait SshClientDelegate: Send + Sync {
     fn ask_password(&self, prompt: String, tx: oneshot::Sender<String>, cx: &mut AsyncApp);
     fn get_download_params(
@@ -335,28 +338,6 @@ pub trait SshClientDelegate: Send + Sync {
 }
 
 impl SshSocket {
-    #[cfg(not(target_os = "windows"))]
-    fn new(options: SshConnectionOptions, socket_path: PathBuf) -> Result<Self> {
-        Ok(Self {
-            connection_options: options,
-            socket_path,
-        })
-    }
-
-    #[cfg(target_os = "windows")]
-    fn new(options: SshConnectionOptions, temp_dir: &TempDir, secret: String) -> Result<Self> {
-        let askpass_script = temp_dir.path().join("askpass.bat");
-        std::fs::write(&askpass_script, "@ECHO OFF\necho %ZED_SSH_ASKPASS%")?;
-        let mut envs = HashMap::default();
-        envs.insert("SSH_ASKPASS_REQUIRE".into(), "force".into());
-        envs.insert("SSH_ASKPASS".into(), askpass_script.display().to_string());
-        envs.insert("ZED_SSH_ASKPASS".into(), secret);
-        Ok(Self {
-            connection_options: options,
-            envs,
-        })
-    }
-
     // :WARNING: ssh unquotes arguments when executing on the remote :WARNING:
     // e.g. $ ssh host sh -c 'ls -l' is equivalent to $ ssh host sh -c ls -l
     // and passes -l as an argument to sh, not to ls.
@@ -394,7 +375,6 @@ impl SshSocket {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    #[cfg(not(target_os = "windows"))]
     fn ssh_options<'a>(&self, command: &'a mut process::Command) -> &'a mut process::Command {
         command
             .stdin(Stdio::piped())
@@ -404,68 +384,14 @@ impl SshSocket {
             .arg(format!("ControlPath={}", self.socket_path.display()))
     }
 
-    #[cfg(target_os = "windows")]
-    fn ssh_options<'a>(&self, command: &'a mut process::Command) -> &'a mut process::Command {
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .envs(self.envs.clone())
-    }
-
-    // On Windows, we need to use `SSH_ASKPASS` to provide the password to ssh.
-    // On Linux, we use the `ControlPath` option to create a socket file that ssh can use to
-    #[cfg(not(target_os = "windows"))]
-    fn ssh_args(&self) -> SshArgs {
-        SshArgs {
-            arguments: vec![
-                "-o".to_string(),
-                "ControlMaster=no".to_string(),
-                "-o".to_string(),
-                format!("ControlPath={}", self.socket_path.display()),
-                self.connection_options.ssh_url(),
-            ],
-            envs: None,
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    fn ssh_args(&self) -> SshArgs {
-        SshArgs {
-            arguments: vec![self.connection_options.ssh_url()],
-            envs: Some(self.envs.clone()),
-        }
-    }
-
-    async fn platform(&self) -> Result<SshPlatform> {
-        let uname = self.run_command("sh", &["-c", "uname -sm"]).await?;
-        let Some((os, arch)) = uname.split_once(" ") else {
-            anyhow::bail!("unknown uname: {uname:?}")
-        };
-
-        let os = match os.trim() {
-            "Darwin" => "macos",
-            "Linux" => "linux",
-            _ => anyhow::bail!(
-                "Prebuilt remote servers are not yet available for {os:?}. See https://zed.dev/docs/remote-development"
-            ),
-        };
-        // exclude armv5,6,7 as they are 32-bit.
-        let arch = if arch.starts_with("armv8")
-            || arch.starts_with("armv9")
-            || arch.starts_with("arm64")
-            || arch.starts_with("aarch64")
-        {
-            "aarch64"
-        } else if arch.starts_with("x86") {
-            "x86_64"
-        } else {
-            anyhow::bail!(
-                "Prebuilt remote servers are not yet available for {arch:?}. See https://zed.dev/docs/remote-development"
-            )
-        };
-
-        Ok(SshPlatform { os, arch })
+    fn ssh_args(&self) -> Vec<String> {
+        vec![
+            "-o".to_string(),
+            "ControlMaster=no".to_string(),
+            "-o".to_string(),
+            format!("ControlPath={}", self.socket_path.display()),
+            self.connection_options.ssh_url(),
+        ]
     }
 }
 
@@ -634,7 +560,6 @@ pub struct SshRemoteClient {
     client: Arc<ChannelClient>,
     unique_identifier: String,
     connection_options: SshConnectionOptions,
-    path_style: PathStyle,
     state: Arc<Mutex<Option<State>>>,
 }
 
@@ -695,24 +620,21 @@ impl SshRemoteClient {
 
                 let client =
                     cx.update(|cx| ChannelClient::new(incoming_rx, outgoing_tx, cx, "client"))?;
+                let this = cx.new(|_| Self {
+                    client: client.clone(),
+                    unique_identifier: unique_identifier.clone(),
+                    connection_options: connection_options.clone(),
+                    state: Arc::new(Mutex::new(Some(State::Connecting))),
+                })?;
 
                 let ssh_connection = cx
                     .update(|cx| {
                         cx.update_default_global(|pool: &mut ConnectionPool, cx| {
-                            pool.connect(connection_options.clone(), &delegate, cx)
+                            pool.connect(connection_options, &delegate, cx)
                         })
                     })?
                     .await
                     .map_err(|e| e.cloned())?;
-
-                let path_style = ssh_connection.path_style();
-                let this = cx.new(|_| Self {
-                    client: client.clone(),
-                    unique_identifier: unique_identifier.clone(),
-                    connection_options,
-                    path_style,
-                    state: Arc::new(Mutex::new(Some(State::Connecting))),
-                })?;
 
                 let io_task = ssh_connection.start_proxy(
                     unique_identifier,
@@ -1143,18 +1065,18 @@ impl SshRemoteClient {
         self.client.subscribe_to_entity(remote_id, entity);
     }
 
-    pub fn ssh_info(&self) -> Option<(SshArgs, PathStyle)> {
+    pub fn ssh_args(&self) -> Option<Vec<String>> {
         self.state
             .lock()
             .as_ref()
             .and_then(|state| state.ssh_connection())
-            .map(|ssh_connection| (ssh_connection.ssh_args(), ssh_connection.path_style()))
+            .map(|ssh_connection| ssh_connection.ssh_args())
     }
 
     pub fn upload_directory(
         &self,
         src_path: PathBuf,
-        dest_path: RemotePathBuf,
+        dest_path: PathBuf,
         cx: &App,
     ) -> Task<Result<()>> {
         let state = self.state.lock();
@@ -1186,10 +1108,6 @@ impl SshRemoteClient {
 
     pub fn is_disconnected(&self) -> bool {
         self.connection_state() == ConnectionState::Disconnected
-    }
-
-    pub fn path_style(&self) -> PathStyle {
-        self.path_style
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -1370,19 +1288,12 @@ trait RemoteConnection: Send + Sync {
         delegate: Arc<dyn SshClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Task<Result<i32>>;
-    fn upload_directory(
-        &self,
-        src_path: PathBuf,
-        dest_path: RemotePathBuf,
-        cx: &App,
-    ) -> Task<Result<()>>;
+    fn upload_directory(&self, src_path: PathBuf, dest_path: PathBuf, cx: &App)
+    -> Task<Result<()>>;
     async fn kill(&self) -> Result<()>;
     fn has_been_killed(&self) -> bool;
-    /// On Windows, we need to use `SSH_ASKPASS` to provide the password to ssh.
-    /// On Linux, we use the `ControlPath` option to create a socket file that ssh can use to
-    fn ssh_args(&self) -> SshArgs;
+    fn ssh_args(&self) -> Vec<String>;
     fn connection_options(&self) -> SshConnectionOptions;
-    fn path_style(&self) -> PathStyle;
 
     #[cfg(any(test, feature = "test-support"))]
     fn simulate_disconnect(&self, _: &AsyncApp) {}
@@ -1391,9 +1302,7 @@ trait RemoteConnection: Send + Sync {
 struct SshRemoteConnection {
     socket: SshSocket,
     master_process: Mutex<Option<Child>>,
-    remote_binary_path: Option<RemotePathBuf>,
-    ssh_platform: SshPlatform,
-    ssh_path_style: PathStyle,
+    remote_binary_path: Option<PathBuf>,
     _temp_dir: TempDir,
 }
 
@@ -1412,7 +1321,7 @@ impl RemoteConnection for SshRemoteConnection {
         self.master_process.lock().is_none()
     }
 
-    fn ssh_args(&self) -> SshArgs {
+    fn ssh_args(&self) -> Vec<String> {
         self.socket.ssh_args()
     }
 
@@ -1423,7 +1332,7 @@ impl RemoteConnection for SshRemoteConnection {
     fn upload_directory(
         &self,
         src_path: PathBuf,
-        dest_path: RemotePathBuf,
+        dest_path: PathBuf,
         cx: &App,
     ) -> Task<Result<()>> {
         let mut command = util::command::new_smol_command("scp");
@@ -1443,7 +1352,7 @@ impl RemoteConnection for SshRemoteConnection {
             .arg(format!(
                 "{}:{}",
                 self.socket.connection_options.scp_url(),
-                dest_path.to_string()
+                dest_path.display()
             ))
             .output();
 
@@ -1454,7 +1363,7 @@ impl RemoteConnection for SshRemoteConnection {
                 output.status.success(),
                 "failed to upload directory {} -> {}: {}",
                 src_path.display(),
-                dest_path.to_string(),
+                dest_path.display(),
                 String::from_utf8_lossy(&output.stderr)
             );
 
@@ -1480,7 +1389,7 @@ impl RemoteConnection for SshRemoteConnection {
 
         let mut start_proxy_command = shell_script!(
             "exec {binary_path} proxy --identifier {identifier}",
-            binary_path = &remote_binary_path.to_string(),
+            binary_path = &remote_binary_path.to_string_lossy(),
             identifier = &unique_identifier,
         );
 
@@ -1523,13 +1432,19 @@ impl RemoteConnection for SshRemoteConnection {
             &cx,
         )
     }
-
-    fn path_style(&self) -> PathStyle {
-        self.ssh_path_style
-    }
 }
 
 impl SshRemoteConnection {
+    #[cfg(not(unix))]
+    async fn new(
+        _connection_options: SshConnectionOptions,
+        _delegate: Arc<dyn SshClientDelegate>,
+        _cx: &mut AsyncApp,
+    ) -> Result<Self> {
+        anyhow::bail!("ssh is not supported on this platform");
+    }
+
+    #[cfg(unix)]
     async fn new(
         connection_options: SshConnectionOptions,
         delegate: Arc<dyn SshClientDelegate>,
@@ -1555,38 +1470,27 @@ impl SshRemoteConnection {
         // Start the master SSH process, which does not do anything except for establish
         // the connection and keep it open, allowing other ssh commands to reuse it
         // via a control socket.
-        #[cfg(not(target_os = "windows"))]
         let socket_path = temp_dir.path().join("ssh.sock");
 
-        let mut master_process = {
-            #[cfg(not(target_os = "windows"))]
-            let args = [
+        let mut master_process = process::Command::new("ssh")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .env("SSH_ASKPASS_REQUIRE", "force")
+            .env("SSH_ASKPASS", &askpass.script_path())
+            .args(connection_options.additional_args())
+            .args([
                 "-N",
                 "-o",
                 "ControlPersist=no",
                 "-o",
                 "ControlMaster=yes",
                 "-o",
-            ];
-            // On Windows, `ControlMaster` and `ControlPath` are not supported:
-            // https://github.com/PowerShell/Win32-OpenSSH/issues/405
-            // https://github.com/PowerShell/Win32-OpenSSH/wiki/Project-Scope
-            #[cfg(target_os = "windows")]
-            let args = ["-N"];
-            let mut master_process = util::command::new_smol_command("ssh");
-            master_process
-                .kill_on_drop(true)
-                .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .env("SSH_ASKPASS_REQUIRE", "force")
-                .env("SSH_ASKPASS", askpass.script_path())
-                .args(connection_options.additional_args())
-                .args(args);
-            #[cfg(not(target_os = "windows"))]
-            master_process.arg(format!("ControlPath={}", socket_path.display()));
-            master_process.arg(&url).spawn()?
-        };
+            ])
+            .arg(format!("ControlPath={}", socket_path.display()))
+            .arg(&url)
+            .kill_on_drop(true)
+            .spawn()?;
         // Wait for this ssh process to close its stdout, indicating that authentication
         // has completed.
         let mut stdout = master_process.stdout.take().unwrap();
@@ -1625,16 +1529,11 @@ impl SshRemoteConnection {
             anyhow::bail!(error_message);
         }
 
-        #[cfg(not(target_os = "windows"))]
-        let socket = SshSocket::new(connection_options, socket_path)?;
-        #[cfg(target_os = "windows")]
-        let socket = SshSocket::new(connection_options, &temp_dir, askpass.get_password())?;
         drop(askpass);
 
-        let ssh_platform = socket.platform().await?;
-        let ssh_path_style = match ssh_platform.os {
-            "windows" => PathStyle::Windows,
-            _ => PathStyle::Posix,
+        let socket = SshSocket {
+            connection_options,
+            socket_path,
         };
 
         let mut this = Self {
@@ -1642,8 +1541,6 @@ impl SshRemoteConnection {
             master_process: Mutex::new(Some(master_process)),
             _temp_dir: temp_dir,
             remote_binary_path: None,
-            ssh_path_style,
-            ssh_platform,
         };
 
         let (release_channel, version, commit) = cx.update(|cx| {
@@ -1659,6 +1556,37 @@ impl SshRemoteConnection {
         );
 
         Ok(this)
+    }
+
+    async fn platform(&self) -> Result<SshPlatform> {
+        let uname = self.socket.run_command("sh", &["-c", "uname -sm"]).await?;
+        let Some((os, arch)) = uname.split_once(" ") else {
+            anyhow::bail!("unknown uname: {uname:?}")
+        };
+
+        let os = match os.trim() {
+            "Darwin" => "macos",
+            "Linux" => "linux",
+            _ => anyhow::bail!(
+                "Prebuilt remote servers are not yet available for {os:?}. See https://zed.dev/docs/remote-development"
+            ),
+        };
+        // exclude armv5,6,7 as they are 32-bit.
+        let arch = if arch.starts_with("armv8")
+            || arch.starts_with("armv9")
+            || arch.starts_with("arm64")
+            || arch.starts_with("aarch64")
+        {
+            "aarch64"
+        } else if arch.starts_with("x86") {
+            "x86_64"
+        } else {
+            anyhow::bail!(
+                "Prebuilt remote servers are not yet available for {arch:?}. See https://zed.dev/docs/remote-development"
+            )
+        };
+
+        Ok(SshPlatform { os, arch })
     }
 
     fn multiplex(
@@ -1771,10 +1699,11 @@ impl SshRemoteConnection {
         version: SemanticVersion,
         commit: Option<AppCommitSha>,
         cx: &mut AsyncApp,
-    ) -> Result<RemotePathBuf> {
+    ) -> Result<PathBuf> {
         let version_str = match release_channel {
             ReleaseChannel::Nightly => {
                 let commit = commit.map(|s| s.full()).unwrap_or_default();
+
                 format!("{}-{}", version, commit)
             }
             ReleaseChannel::Dev => "build".to_string(),
@@ -1785,23 +1714,19 @@ impl SshRemoteConnection {
             release_channel.dev_name(),
             version_str
         );
-        let dst_path = RemotePathBuf::new(
-            paths::remote_server_dir_relative().join(binary_name),
-            self.ssh_path_style,
-        );
+        let dst_path = paths::remote_server_dir_relative().join(binary_name);
 
         let build_remote_server = std::env::var("ZED_BUILD_REMOTE_SERVER").ok();
         #[cfg(debug_assertions)]
         if let Some(build_remote_server) = build_remote_server {
-            let src_path = self.build_local(build_remote_server, delegate, cx).await?;
-            let tmp_path = RemotePathBuf::new(
-                paths::remote_server_dir_relative().join(format!(
-                    "download-{}-{}",
-                    std::process::id(),
-                    src_path.file_name().unwrap().to_string_lossy()
-                )),
-                self.ssh_path_style,
-            );
+            let src_path = self
+                .build_local(build_remote_server, self.platform().await?, delegate, cx)
+                .await?;
+            let tmp_path = paths::remote_server_dir_relative().join(format!(
+                "download-{}-{}",
+                std::process::id(),
+                src_path.file_name().unwrap().to_string_lossy()
+            ));
             self.upload_local_server_binary(&src_path, &tmp_path, delegate, cx)
                 .await?;
             self.extract_server_binary(&dst_path, &tmp_path, delegate, cx)
@@ -1811,7 +1736,7 @@ impl SshRemoteConnection {
 
         if self
             .socket
-            .run_command(&dst_path.to_string(), &["version"])
+            .run_command(&dst_path.to_string_lossy(), &["version"])
             .await
             .is_ok()
         {
@@ -1829,17 +1754,16 @@ impl SshRemoteConnection {
             _ => Ok(Some(AppVersion::global(cx))),
         })??;
 
-        let tmp_path_gz = RemotePathBuf::new(
-            PathBuf::from(format!(
-                "{}-download-{}.gz",
-                dst_path.to_string(),
-                std::process::id()
-            )),
-            self.ssh_path_style,
-        );
+        let platform = self.platform().await?;
+
+        let tmp_path_gz = PathBuf::from(format!(
+            "{}-download-{}.gz",
+            dst_path.to_string_lossy(),
+            std::process::id()
+        ));
         if !self.socket.connection_options.upload_binary_over_ssh {
             if let Some((url, body)) = delegate
-                .get_download_params(self.ssh_platform, release_channel, wanted_version, cx)
+                .get_download_params(platform, release_channel, wanted_version, cx)
                 .await?
             {
                 match self
@@ -1862,7 +1786,7 @@ impl SshRemoteConnection {
         }
 
         let src_path = delegate
-            .download_server_binary_locally(self.ssh_platform, release_channel, wanted_version, cx)
+            .download_server_binary_locally(platform, release_channel, wanted_version, cx)
             .await?;
         self.upload_local_server_binary(&src_path, &tmp_path_gz, delegate, cx)
             .await?;
@@ -1875,7 +1799,7 @@ impl SshRemoteConnection {
         &self,
         url: &str,
         body: &str,
-        tmp_path_gz: &RemotePathBuf,
+        tmp_path_gz: &Path,
         delegate: &Arc<dyn SshClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
@@ -1885,7 +1809,10 @@ impl SshRemoteConnection {
                     "sh",
                     &[
                         "-c",
-                        &shell_script!("mkdir -p {parent}", parent = parent.to_string().as_ref()),
+                        &shell_script!(
+                            "mkdir -p {parent}",
+                            parent = parent.to_string_lossy().as_ref()
+                        ),
                     ],
                 )
                 .await?;
@@ -1908,7 +1835,7 @@ impl SshRemoteConnection {
                     &body,
                     &url,
                     "-o",
-                    &tmp_path_gz.to_string(),
+                    &tmp_path_gz.to_string_lossy(),
                 ],
             )
             .await
@@ -1930,7 +1857,7 @@ impl SshRemoteConnection {
                             &body,
                             &url,
                             "-O",
-                            &tmp_path_gz.to_string(),
+                            &tmp_path_gz.to_string_lossy(),
                         ],
                     )
                     .await
@@ -1953,7 +1880,7 @@ impl SshRemoteConnection {
     async fn upload_local_server_binary(
         &self,
         src_path: &Path,
-        tmp_path_gz: &RemotePathBuf,
+        tmp_path_gz: &Path,
         delegate: &Arc<dyn SshClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
@@ -1963,7 +1890,10 @@ impl SshRemoteConnection {
                     "sh",
                     &[
                         "-c",
-                        &shell_script!("mkdir -p {parent}", parent = parent.to_string().as_ref()),
+                        &shell_script!(
+                            "mkdir -p {parent}",
+                            parent = parent.to_string_lossy().as_ref()
+                        ),
                     ],
                 )
                 .await?;
@@ -1988,33 +1918,33 @@ impl SshRemoteConnection {
 
     async fn extract_server_binary(
         &self,
-        dst_path: &RemotePathBuf,
-        tmp_path: &RemotePathBuf,
+        dst_path: &Path,
+        tmp_path: &Path,
         delegate: &Arc<dyn SshClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
         delegate.set_status(Some("Extracting remote development server"), cx);
         let server_mode = 0o755;
 
-        let orig_tmp_path = tmp_path.to_string();
+        let orig_tmp_path = tmp_path.to_string_lossy();
         let script = if let Some(tmp_path) = orig_tmp_path.strip_suffix(".gz") {
             shell_script!(
                 "gunzip -f {orig_tmp_path} && chmod {server_mode} {tmp_path} && mv {tmp_path} {dst_path}",
                 server_mode = &format!("{:o}", server_mode),
-                dst_path = &dst_path.to_string(),
+                dst_path = &dst_path.to_string_lossy()
             )
         } else {
             shell_script!(
                 "chmod {server_mode} {orig_tmp_path} && mv {orig_tmp_path} {dst_path}",
                 server_mode = &format!("{:o}", server_mode),
-                dst_path = &dst_path.to_string()
+                dst_path = &dst_path.to_string_lossy()
             )
         };
         self.socket.run_command("sh", &["-c", &script]).await?;
         Ok(())
     }
 
-    async fn upload_file(&self, src_path: &Path, dest_path: &RemotePathBuf) -> Result<()> {
+    async fn upload_file(&self, src_path: &Path, dest_path: &Path) -> Result<()> {
         log::debug!("uploading file {:?} to {:?}", src_path, dest_path);
         let mut command = util::command::new_smol_command("scp");
         let output = self
@@ -2031,7 +1961,7 @@ impl SshRemoteConnection {
             .arg(format!(
                 "{}:{}",
                 self.socket.connection_options.scp_url(),
-                dest_path.to_string()
+                dest_path.display()
             ))
             .output()
             .await?;
@@ -2040,7 +1970,7 @@ impl SshRemoteConnection {
             output.status.success(),
             "failed to upload file {} -> {}: {}",
             src_path.display(),
-            dest_path.to_string(),
+            dest_path.display(),
             String::from_utf8_lossy(&output.stderr)
         );
         Ok(())
@@ -2050,11 +1980,11 @@ impl SshRemoteConnection {
     async fn build_local(
         &self,
         build_remote_server: String,
+        platform: SshPlatform,
         delegate: &Arc<dyn SshClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<PathBuf> {
         use smol::process::{Command, Stdio};
-        use std::env::VarError;
 
         async fn run_cmd(command: &mut Command) -> Result<()> {
             let output = command
@@ -2069,37 +1999,58 @@ impl SshRemoteConnection {
             Ok(())
         }
 
-        let triple = format!(
-            "{}-{}",
-            self.ssh_platform.arch,
-            match self.ssh_platform.os {
-                "linux" => "unknown-linux-musl",
-                "macos" => "apple-darwin",
-                _ => anyhow::bail!("can't cross compile for: {:?}", self.ssh_platform),
-            }
-        );
-        let mut rust_flags = match std::env::var("RUSTFLAGS") {
-            Ok(val) => val,
-            Err(VarError::NotPresent) => String::new(),
-            Err(e) => {
-                log::error!("Failed to get env var `RUSTFLAGS` value: {e}");
-                String::new()
-            }
-        };
-        if self.ssh_platform.os == "linux" {
-            rust_flags.push_str(" -C target-feature=+crt-static");
-        }
-        if build_remote_server.contains("mold") {
-            rust_flags.push_str(" -C link-arg=-fuse-ld=mold");
-        }
-
-        if self.ssh_platform.arch == std::env::consts::ARCH
-            && self.ssh_platform.os == std::env::consts::OS
-        {
+        if platform.arch == std::env::consts::ARCH && platform.os == std::env::consts::OS {
             delegate.set_status(Some("Building remote server binary from source"), cx);
             log::info!("building remote server binary from source");
+            run_cmd(Command::new("cargo").args([
+                "build",
+                "--package",
+                "remote_server",
+                "--features",
+                "debug-embed",
+                "--target-dir",
+                "target/remote_server",
+            ]))
+            .await?;
+
+            delegate.set_status(Some("Compressing binary"), cx);
+
+            run_cmd(Command::new("gzip").args([
+                "-9",
+                "-f",
+                "target/remote_server/debug/remote_server",
+            ]))
+            .await?;
+
+            let path = std::env::current_dir()?.join("target/remote_server/debug/remote_server.gz");
+            return Ok(path);
+        }
+        let Some(triple) = platform.triple() else {
+            anyhow::bail!("can't cross compile for: {:?}", platform);
+        };
+        smol::fs::create_dir_all("target/remote_server").await?;
+
+        if build_remote_server.contains("cross") {
+            delegate.set_status(Some("Installing cross.rs for cross-compilation"), cx);
+            log::info!("installing cross");
+            run_cmd(Command::new("cargo").args([
+                "install",
+                "cross",
+                "--git",
+                "https://github.com/cross-rs/cross",
+            ]))
+            .await?;
+
+            delegate.set_status(
+                Some(&format!(
+                    "Building remote server binary from source for {} with Docker",
+                    &triple
+                )),
+                cx,
+            );
+            log::info!("building remote server binary from source for {}", &triple);
             run_cmd(
-                Command::new("cargo")
+                Command::new("cross")
                     .args([
                         "build",
                         "--package",
@@ -2111,152 +2062,69 @@ impl SshRemoteConnection {
                         "--target",
                         &triple,
                     ])
-                    .env("RUSTFLAGS", &rust_flags),
+                    .env(
+                        "CROSS_CONTAINER_OPTS",
+                        "--mount type=bind,src=./target,dst=/app/target",
+                    ),
             )
             .await?;
         } else {
-            if build_remote_server.contains("cross") {
-                #[cfg(target_os = "windows")]
-                use util::paths::SanitizedPath;
+            let which = cx
+                .background_spawn(async move { which::which("zig") })
+                .await;
 
-                delegate.set_status(Some("Installing cross.rs for cross-compilation"), cx);
-                log::info!("installing cross");
-                run_cmd(Command::new("cargo").args([
-                    "install",
-                    "cross",
-                    "--git",
-                    "https://github.com/cross-rs/cross",
-                ]))
-                .await?;
-
-                delegate.set_status(
-                    Some(&format!(
-                        "Building remote server binary from source for {} with Docker",
-                        &triple
-                    )),
-                    cx,
-                );
-                log::info!("building remote server binary from source for {}", &triple);
-
-                // On Windows, the binding needs to be set to the canonical path
-                #[cfg(target_os = "windows")]
-                let src =
-                    SanitizedPath::from(smol::fs::canonicalize("./target").await?).to_glob_string();
-                #[cfg(not(target_os = "windows"))]
-                let src = "./target";
-                run_cmd(
-                    Command::new("cross")
-                        .args([
-                            "build",
-                            "--package",
-                            "remote_server",
-                            "--features",
-                            "debug-embed",
-                            "--target-dir",
-                            "target/remote_server",
-                            "--target",
-                            &triple,
-                        ])
-                        .env(
-                            "CROSS_CONTAINER_OPTS",
-                            format!("--mount type=bind,src={src},dst=/app/target"),
-                        )
-                        .env("RUSTFLAGS", &rust_flags),
+            if which.is_err() {
+                anyhow::bail!(
+                    "zig not found on $PATH, install zig (see https://ziglang.org/learn/getting-started or use zigup) or pass ZED_BUILD_REMOTE_SERVER=cross to use cross"
                 )
-                .await?;
-            } else {
-                let which = cx
-                    .background_spawn(async move { which::which("zig") })
-                    .await;
-
-                if which.is_err() {
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        anyhow::bail!(
-                            "zig not found on $PATH, install zig (see https://ziglang.org/learn/getting-started or use zigup) or pass ZED_BUILD_REMOTE_SERVER=cross to use cross"
-                        )
-                    }
-                    #[cfg(target_os = "windows")]
-                    {
-                        anyhow::bail!(
-                            "zig not found on $PATH, install zig (use `winget install -e --id zig.zig` or see https://ziglang.org/learn/getting-started or use zigup) or pass ZED_BUILD_REMOTE_SERVER=cross to use cross"
-                        )
-                    }
-                }
-
-                delegate.set_status(Some("Adding rustup target for cross-compilation"), cx);
-                log::info!("adding rustup target");
-                run_cmd(Command::new("rustup").args(["target", "add"]).arg(&triple)).await?;
-
-                delegate.set_status(Some("Installing cargo-zigbuild for cross-compilation"), cx);
-                log::info!("installing cargo-zigbuild");
-                run_cmd(Command::new("cargo").args(["install", "--locked", "cargo-zigbuild"]))
-                    .await?;
-
-                delegate.set_status(
-                    Some(&format!(
-                        "Building remote binary from source for {triple} with Zig"
-                    )),
-                    cx,
-                );
-                log::info!("building remote binary from source for {triple} with Zig");
-                run_cmd(
-                    Command::new("cargo")
-                        .args([
-                            "zigbuild",
-                            "--package",
-                            "remote_server",
-                            "--features",
-                            "debug-embed",
-                            "--target-dir",
-                            "target/remote_server",
-                            "--target",
-                            &triple,
-                        ])
-                        .env("RUSTFLAGS", &rust_flags),
-                )
-                .await?;
             }
-        };
-        let bin_path = Path::new("target")
-            .join("remote_server")
-            .join(&triple)
-            .join("debug")
-            .join("remote_server");
 
-        let path = if !build_remote_server.contains("nocompress") {
+            delegate.set_status(Some("Adding rustup target for cross-compilation"), cx);
+            log::info!("adding rustup target");
+            run_cmd(Command::new("rustup").args(["target", "add"]).arg(&triple)).await?;
+
+            delegate.set_status(Some("Installing cargo-zigbuild for cross-compilation"), cx);
+            log::info!("installing cargo-zigbuild");
+            run_cmd(Command::new("cargo").args(["install", "--locked", "cargo-zigbuild"])).await?;
+
+            delegate.set_status(
+                Some(&format!(
+                    "Building remote binary from source for {triple} with Zig"
+                )),
+                cx,
+            );
+            log::info!("building remote binary from source for {triple} with Zig");
+            run_cmd(Command::new("cargo").args([
+                "zigbuild",
+                "--package",
+                "remote_server",
+                "--features",
+                "debug-embed",
+                "--target-dir",
+                "target/remote_server",
+                "--target",
+                &triple,
+            ]))
+            .await?;
+        };
+
+        let mut path = format!("target/remote_server/{triple}/debug/remote_server").into();
+        if !build_remote_server.contains("nocompress") {
             delegate.set_status(Some("Compressing binary"), cx);
 
-            #[cfg(not(target_os = "windows"))]
-            {
-                run_cmd(Command::new("gzip").args(["-9", "-f", &bin_path.to_string_lossy()]))
-                    .await?;
-            }
-            #[cfg(target_os = "windows")]
-            {
-                // On Windows, we use 7z to compress the binary
-                let seven_zip = which::which("7z.exe").context("7z.exe not found on $PATH, install it (e.g. with `winget install -e --id 7zip.7zip`) or, if you don't want this behaviour, set $env:ZED_BUILD_REMOTE_SERVER=\"nocompress\"")?;
-                let gz_path = format!("target/remote_server/{}/debug/remote_server.gz", triple);
-                if smol::fs::metadata(&gz_path).await.is_ok() {
-                    smol::fs::remove_file(&gz_path).await?;
-                }
-                run_cmd(Command::new(seven_zip).args([
-                    "a",
-                    "-tgzip",
-                    &gz_path,
-                    &bin_path.to_string_lossy(),
-                ]))
-                .await?;
-            }
+            run_cmd(Command::new("gzip").args([
+                "-9",
+                "-f",
+                &format!("target/remote_server/{}/debug/remote_server", triple),
+            ]))
+            .await?;
 
-            let mut archive_path = bin_path;
-            archive_path.set_extension("gz");
-            std::env::current_dir()?.join(archive_path)
-        } else {
-            bin_path
-        };
+            path = std::env::current_dir()?.join(format!(
+                "target/remote_server/{triple}/debug/remote_server.gz"
+            ));
+        }
 
-        Ok(path)
+        return Ok(path);
     }
 }
 
@@ -2582,11 +2450,9 @@ mod fake {
     use gpui::{App, AppContext as _, AsyncApp, SemanticVersion, Task, TestAppContext};
     use release_channel::ReleaseChannel;
     use rpc::proto::Envelope;
-    use util::paths::{PathStyle, RemotePathBuf};
 
     use super::{
-        ChannelClient, RemoteConnection, SshArgs, SshClientDelegate, SshConnectionOptions,
-        SshPlatform,
+        ChannelClient, RemoteConnection, SshClientDelegate, SshConnectionOptions, SshPlatform,
     };
 
     pub(super) struct FakeRemoteConnection {
@@ -2622,17 +2488,13 @@ mod fake {
             false
         }
 
-        fn ssh_args(&self) -> SshArgs {
-            SshArgs {
-                arguments: Vec::new(),
-                envs: None,
-            }
+        fn ssh_args(&self) -> Vec<String> {
+            Vec::new()
         }
-
         fn upload_directory(
             &self,
             _src_path: PathBuf,
-            _dest_path: RemotePathBuf,
+            _dest_path: PathBuf,
             _cx: &App,
         ) -> Task<Result<()>> {
             unreachable!()
@@ -2651,6 +2513,7 @@ mod fake {
 
         fn start_proxy(
             &self,
+
             _unique_identifier: String,
             _reconnect: bool,
             mut client_incoming_tx: mpsc::UnboundedSender<Envelope>,
@@ -2687,10 +2550,6 @@ mod fake {
                     }
                 }
             })
-        }
-
-        fn path_style(&self) -> PathStyle {
-            PathStyle::current()
         }
     }
 

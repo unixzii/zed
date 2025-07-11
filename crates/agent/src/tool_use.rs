@@ -2,7 +2,6 @@ use crate::{
     thread::{MessageId, PromptId, ThreadId},
     thread_store::SerializedMessage,
 };
-use agent_settings::CompletionMode;
 use anyhow::Result;
 use assistant_tool::{
     AnyToolCard, Tool, ToolResultContent, ToolResultOutput, ToolUseStatus, ToolWorkingSet,
@@ -12,9 +11,8 @@ use futures::{FutureExt as _, future::Shared};
 use gpui::{App, Entity, SharedString, Task, Window};
 use icons::IconName;
 use language_model::{
-    ConfiguredModel, LanguageModel, LanguageModelExt, LanguageModelRequest,
-    LanguageModelToolResult, LanguageModelToolResultContent, LanguageModelToolUse,
-    LanguageModelToolUseId, Role,
+    ConfiguredModel, LanguageModel, LanguageModelRequest, LanguageModelToolResult,
+    LanguageModelToolResultContent, LanguageModelToolUse, LanguageModelToolUseId, Role,
 };
 use project::Project;
 use std::sync::Arc;
@@ -402,7 +400,6 @@ impl ToolUseState {
         tool_name: Arc<str>,
         output: Result<ToolResultOutput>,
         configured_model: Option<&ConfiguredModel>,
-        completion_mode: CompletionMode,
     ) -> Option<PendingToolUse> {
         let metadata = self.tool_use_metadata_by_id.remove(&tool_use_id);
 
@@ -429,10 +426,7 @@ impl ToolUseState {
 
                 // Protect from overly large output
                 let tool_output_limit = configured_model
-                    .map(|model| {
-                        model.model.max_token_count_for_mode(completion_mode.into()) as usize
-                            * BYTES_PER_TOKEN_ESTIMATE
-                    })
+                    .map(|model| model.model.max_token_count() as usize * BYTES_PER_TOKEN_ESTIMATE)
                     .unwrap_or(usize::MAX);
 
                 let content = match tool_result {

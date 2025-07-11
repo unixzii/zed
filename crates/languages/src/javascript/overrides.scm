@@ -1,8 +1,9 @@
 (comment) @comment.inclusive
 
-(string) @string
-
-(template_string (string_fragment) @string)
+[
+  (string)
+  (template_string)
+] @string
 
 (jsx_element) @element
 

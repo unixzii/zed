@@ -33,6 +33,7 @@ workspace-members = [
     "zed_emmet",
     "zed_glsl",
     "zed_html",
+    "perplexity",
     "zed_proto",
     "zed_ruff",
     "slash_commands_example",

@@ -54,15 +54,7 @@ impl From<ScopeFileName> for ScopeName {
     }
 }
 
-actions!(
-    snippets,
-    [
-        /// Opens the snippets configuration file.
-        ConfigureSnippets,
-        /// Opens the snippets folder in the file manager.
-        OpenFolder
-    ]
-);
+actions!(snippets, [ConfigureSnippets, OpenFolder]);
 
 pub fn init(cx: &mut App) {
     cx.observe_new(register).detach();

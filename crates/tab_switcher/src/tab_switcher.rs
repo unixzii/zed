@@ -25,7 +25,6 @@ use workspace::{
 
 const PANEL_WIDTH_REMS: f32 = 28.;
 
-/// Toggles the tab switcher interface.
 #[derive(PartialEq, Clone, Deserialize, JsonSchema, Default, Action)]
 #[action(namespace = tab_switcher)]
 #[serde(deny_unknown_fields)]
@@ -33,15 +32,7 @@ pub struct Toggle {
     #[serde(default)]
     pub select_last: bool,
 }
-actions!(
-    tab_switcher,
-    [
-        /// Closes the selected item in the tab switcher.
-        CloseSelectedItem,
-        /// Toggles between showing all tabs or just the current pane's tabs.
-        ToggleAll
-    ]
-);
+actions!(tab_switcher, [CloseSelectedItem, ToggleAll]);
 
 pub struct TabSwitcher {
     picker: Entity<Picker<TabSwitcherDelegate>>,

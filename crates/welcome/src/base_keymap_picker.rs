@@ -1,3 +1,4 @@
+use super::base_keymap_setting::BaseKeymap;
 use fuzzy::{StringMatch, StringMatchCandidate, match_strings};
 use gpui::{
     App, Context, DismissEvent, Entity, EventEmitter, Focusable, Render, Task, WeakEntity, Window,
@@ -5,19 +6,13 @@ use gpui::{
 };
 use picker::{Picker, PickerDelegate};
 use project::Fs;
-use settings::{BaseKeymap, Settings, update_settings_file};
+use settings::{Settings, update_settings_file};
 use std::sync::Arc;
 use ui::{ListItem, ListItemSpacing, prelude::*};
 use util::ResultExt;
 use workspace::{ModalView, Workspace, ui::HighlightedLabel};
 
-actions!(
-    welcome,
-    [
-        /// Toggles the base keymap selector modal.
-        ToggleBaseKeymapSelector
-    ]
-);
+actions!(welcome, [ToggleBaseKeymapSelector]);
 
 pub fn init(cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {

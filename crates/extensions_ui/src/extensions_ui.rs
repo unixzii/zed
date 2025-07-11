@@ -38,13 +38,7 @@ use crate::extension_version_selector::{
     ExtensionVersionSelector, ExtensionVersionSelectorDelegate,
 };
 
-actions!(
-    zed,
-    [
-        /// Installs an extension from a local directory for development.
-        InstallDevExtension
-    ]
-);
+actions!(zed, [InstallDevExtension]);
 
 pub fn init(cx: &mut App) {
     cx.observe_new(move |workspace: &mut Workspace, window, cx| {
@@ -718,34 +712,24 @@ impl ExtensionsPage {
                                 }
 
                                 parent.child(
-                                    h_flex().gap_1().children(
+                                    h_flex().gap_2().children(
                                         extension
                                             .manifest
                                             .provides
                                             .iter()
-                                            .filter_map(|provides| {
-                                                match provides {
-                                                    ExtensionProvides::SlashCommands
-                                                    | ExtensionProvides::IndexedDocsProviders => {
-                                                        return None;
-                                                    }
-                                                    _ => {}
-                                                }
-
-                                                Some(
-                                                    div()
-                                                        .px_1()
-                                                        .border_1()
-                                                        .rounded_sm()
-                                                        .border_color(cx.theme().colors().border)
-                                                        .bg(cx.theme().colors().element_background)
-                                                        .child(
-                                                            Label::new(extension_provides_label(
-                                                                *provides,
-                                                            ))
-                                                            .size(LabelSize::XSmall),
-                                                        ),
-                                                )
+                                            .map(|provides| {
+                                                div()
+                                                    .bg(cx.theme().colors().element_background)
+                                                    .px_0p5()
+                                                    .border_1()
+                                                    .border_color(cx.theme().colors().border)
+                                                    .rounded_sm()
+                                                    .child(
+                                                        Label::new(extension_provides_label(
+                                                            *provides,
+                                                        ))
+                                                        .size(LabelSize::XSmall),
+                                                    )
                                             })
                                             .collect::<Vec<_>>(),
                                     ),
@@ -754,7 +738,8 @@ impl ExtensionsPage {
                     )
                     .child(
                         h_flex()
-                            .gap_1()
+                            .gap_2()
+                            .justify_between()
                             .children(buttons.upgrade)
                             .children(buttons.configure)
                             .child(buttons.install_or_uninstall),
@@ -1461,30 +1446,23 @@ impl Render for ExtensionsPage {
                                 this.change_provides_filter(None, cx);
                             })),
                     )
-                    .children(ExtensionProvides::iter().filter_map(|provides| {
-                        match provides {
-                            ExtensionProvides::SlashCommands
-                            | ExtensionProvides::IndexedDocsProviders => return None,
-                            _ => {}
-                        }
-
+                    .children(ExtensionProvides::iter().map(|provides| {
                         let label = extension_provides_label(provides);
-                        let button_id = SharedString::from(format!("filter-category-{}", label));
-
-                        Some(
-                            Button::new(button_id, label)
-                                .style(if self.provides_filter == Some(provides) {
-                                    ButtonStyle::Filled
-                                } else {
-                                    ButtonStyle::Subtle
-                                })
-                                .toggle_state(self.provides_filter == Some(provides))
-                                .on_click({
-                                    cx.listener(move |this, _event, _, cx| {
-                                        this.change_provides_filter(Some(provides), cx);
-                                    })
-                                }),
+                        Button::new(
+                            SharedString::from(format!("filter-category-{}", label)),
+                            label,
                         )
+                        .style(if self.provides_filter == Some(provides) {
+                            ButtonStyle::Filled
+                        } else {
+                            ButtonStyle::Subtle
+                        })
+                        .toggle_state(self.provides_filter == Some(provides))
+                        .on_click({
+                            cx.listener(move |this, _event, _, cx| {
+                                this.change_provides_filter(Some(provides), cx);
+                            })
+                        })
                     })),
             )
             .child(self.render_feature_upsells(cx))

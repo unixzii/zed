@@ -50,6 +50,7 @@ wayland = [
     "filedescriptor",
     "xkbcommon",
     "open",
+    "scap",
 ]
 x11 = [
     "blade-graphics",
@@ -66,8 +67,6 @@ x11 = [
     "x11-clipboard",
     "filedescriptor",
     "open",
-]
-screen-capture = [
     "scap",
 ]
 windows-manifest = []
@@ -220,7 +219,7 @@ blade-macros.workspace = true
 flume = "0.11"
 rand.workspace = true
 windows.workspace = true
-windows-core.workspace = true
+windows-core = "0.61"
 windows-numerics = "0.2"
 windows-registry = "0.5"
 

@@ -663,9 +663,7 @@ pub fn into_anthropic(
         } else {
             Some(anthropic::StringOrContents::String(system_message))
         },
-        thinking: if request.thinking_allowed
-            && let AnthropicModelMode::Thinking { budget_tokens } = mode
-        {
+        thinking: if let AnthropicModelMode::Thinking { budget_tokens } = mode {
             Some(anthropic::Thinking::Enabled { budget_tokens })
         } else {
             None
@@ -1110,7 +1108,6 @@ mod tests {
             temperature: None,
             tools: vec![],
             tool_choice: None,
-            thinking_allowed: true,
         };
 
         let anthropic_request = into_anthropic(

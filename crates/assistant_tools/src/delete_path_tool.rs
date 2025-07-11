@@ -46,7 +46,7 @@ impl Tool for DeletePathTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolDeleteFile
+        IconName::FileDelete
     }
 
     fn input_schema(&self, format: LanguageModelToolSchemaFormat) -> Result<serde_json::Value> {

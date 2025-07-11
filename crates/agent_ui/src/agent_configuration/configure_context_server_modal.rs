@@ -740,9 +740,7 @@ fn wait_for_context_server(
     });
 
     cx.spawn(async move |_cx| {
-        let result = rx
-            .await
-            .map_err(|_| Arc::from("Context server store was dropped"))?;
+        let result = rx.await.unwrap();
         drop(subscription);
         result
     })

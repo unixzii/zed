@@ -1263,7 +1263,6 @@ impl EvalAssertion {
                     content: vec![prompt.into()],
                     cache: false,
                 }],
-                thinking_allowed: true,
                 ..Default::default()
             };
             let mut response = retry_on_rate_limit(async || {
@@ -1600,7 +1599,6 @@ impl EditAgentTest {
         let conversation = LanguageModelRequest {
             messages,
             tools,
-            thinking_allowed: true,
             ..Default::default()
         };
 

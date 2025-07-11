@@ -475,7 +475,6 @@ impl CodegenAlternative {
                 stop: Vec::new(),
                 temperature,
                 messages: vec![request_message],
-                thinking_allowed: false,
             }
         }))
     }

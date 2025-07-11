@@ -25,13 +25,7 @@ use std::{path::PathBuf, process::Stdio, sync::Arc};
 use ui::prelude::*;
 use util::ResultExt;
 
-actions!(
-    supermaven,
-    [
-        /// Signs out of Supermaven.
-        SignOut
-    ]
-);
+actions!(supermaven, [SignOut]);
 
 pub fn init(client: Arc<Client>, cx: &mut App) {
     let supermaven = cx.new(|_| Supermaven::Starting);

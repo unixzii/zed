@@ -1,14 +1,21 @@
-use std::{ffi::OsStr, time::Duration};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use anyhow::{Context as _, Result};
+#[cfg(unix)]
+use anyhow::Context as _;
 use futures::channel::{mpsc, oneshot};
-use futures::{
-    AsyncBufReadExt as _, AsyncWriteExt as _, FutureExt as _, SinkExt, StreamExt, io::BufReader,
-    select_biased,
-};
+#[cfg(unix)]
+use futures::{AsyncBufReadExt as _, io::BufReader};
+#[cfg(unix)]
+use futures::{AsyncWriteExt as _, FutureExt as _, select_biased};
+use futures::{SinkExt, StreamExt};
 use gpui::{AsyncApp, BackgroundExecutor, Task};
+#[cfg(unix)]
 use smol::fs;
-use util::ResultExt as _;
+#[cfg(unix)]
+use smol::net::unix::UnixListener;
+#[cfg(unix)]
+use util::{ResultExt as _, fs::make_file_executable, get_shell_safe_zed_path};
 
 #[derive(PartialEq, Eq)]
 pub enum AskPassResult {
@@ -35,56 +42,41 @@ impl AskPassDelegate {
         Self { tx, _task: task }
     }
 
-    pub async fn ask_password(&mut self, prompt: String) -> Result<String> {
+    pub async fn ask_password(&mut self, prompt: String) -> anyhow::Result<String> {
         let (tx, rx) = oneshot::channel();
         self.tx.send((prompt, tx)).await?;
         Ok(rx.await?)
     }
 }
 
+#[cfg(unix)]
 pub struct AskPassSession {
-    #[cfg(not(target_os = "windows"))]
-    script_path: std::path::PathBuf,
-    #[cfg(target_os = "windows")]
-    askpass_helper: String,
-    #[cfg(target_os = "windows")]
-    secret: std::sync::Arc<parking_lot::Mutex<String>>,
+    script_path: PathBuf,
     _askpass_task: Task<()>,
     askpass_opened_rx: Option<oneshot::Receiver<()>>,
     askpass_kill_master_rx: Option<oneshot::Receiver<()>>,
 }
 
-#[cfg(not(target_os = "windows"))]
-const ASKPASS_SCRIPT_NAME: &str = "askpass.sh";
-#[cfg(target_os = "windows")]
-const ASKPASS_SCRIPT_NAME: &str = "askpass.ps1";
-
+#[cfg(unix)]
 impl AskPassSession {
     /// This will create a new AskPassSession.
     /// You must retain this session until the master process exits.
     #[must_use]
-    pub async fn new(executor: &BackgroundExecutor, mut delegate: AskPassDelegate) -> Result<Self> {
-        use net::async_net::UnixListener;
-        use util::fs::make_file_executable;
-
-        #[cfg(target_os = "windows")]
-        let secret = std::sync::Arc::new(parking_lot::Mutex::new(String::new()));
+    pub async fn new(
+        executor: &BackgroundExecutor,
+        mut delegate: AskPassDelegate,
+    ) -> anyhow::Result<Self> {
         let temp_dir = tempfile::Builder::new().prefix("zed-askpass").tempdir()?;
         let askpass_socket = temp_dir.path().join("askpass.sock");
-        let askpass_script_path = temp_dir.path().join(ASKPASS_SCRIPT_NAME);
+        let askpass_script_path = temp_dir.path().join("askpass.sh");
         let (askpass_opened_tx, askpass_opened_rx) = oneshot::channel::<()>();
-        let listener = UnixListener::bind(&askpass_socket).context("creating askpass socket")?;
-        #[cfg(not(target_os = "windows"))]
-        let zed_path = util::get_shell_safe_zed_path()?;
-        #[cfg(target_os = "windows")]
-        let zed_path = std::env::current_exe()
-            .context("finding current executable path for use in askpass")?;
+        let listener =
+            UnixListener::bind(&askpass_socket).context("failed to create askpass socket")?;
+        let zed_path = get_shell_safe_zed_path()?;
 
         let (askpass_kill_master_tx, askpass_kill_master_rx) = oneshot::channel::<()>();
         let mut kill_tx = Some(askpass_kill_master_tx);
 
-        #[cfg(target_os = "windows")]
-        let askpass_secret = secret.clone();
         let askpass_task = executor.spawn(async move {
             let mut askpass_opened_tx = Some(askpass_opened_tx);
 
@@ -101,14 +93,10 @@ impl AskPassSession {
                 if let Some(password) = delegate
                     .ask_password(prompt.to_string())
                     .await
-                    .context("getting askpass password")
+                    .context("failed to get askpass password")
                     .log_err()
                 {
                     stream.write_all(password.as_bytes()).await.log_err();
-                    #[cfg(target_os = "windows")]
-                    {
-                        *askpass_secret.lock() = password;
-                    }
                 } else {
                     if let Some(kill_tx) = kill_tx.take() {
                         kill_tx.send(()).log_err();
@@ -124,40 +112,26 @@ impl AskPassSession {
         });
 
         // Create an askpass script that communicates back to this process.
-        let askpass_script = generate_askpass_script(&zed_path, &askpass_socket);
-        fs::write(&askpass_script_path, askpass_script)
-            .await
-            .with_context(|| format!("creating askpass script at {askpass_script_path:?}"))?;
-        make_file_executable(&askpass_script_path).await?;
-        #[cfg(target_os = "windows")]
-        let askpass_helper = format!(
-            "powershell.exe -ExecutionPolicy Bypass -File {}",
-            askpass_script_path.display()
+        let askpass_script = format!(
+            "{shebang}\n{print_args} | {zed_exe} --askpass={askpass_socket} 2> /dev/null \n",
+            zed_exe = zed_path,
+            askpass_socket = askpass_socket.display(),
+            print_args = "printf '%s\\0' \"$@\"",
+            shebang = "#!/bin/sh",
         );
+        fs::write(&askpass_script_path, askpass_script).await?;
+        make_file_executable(&askpass_script_path).await?;
 
         Ok(Self {
-            #[cfg(not(target_os = "windows"))]
             script_path: askpass_script_path,
-
-            #[cfg(target_os = "windows")]
-            secret,
-            #[cfg(target_os = "windows")]
-            askpass_helper,
-
             _askpass_task: askpass_task,
             askpass_kill_master_rx: Some(askpass_kill_master_rx),
             askpass_opened_rx: Some(askpass_opened_rx),
         })
     }
 
-    #[cfg(not(target_os = "windows"))]
-    pub fn script_path(&self) -> impl AsRef<OsStr> {
+    pub fn script_path(&self) -> &Path {
         &self.script_path
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn script_path(&self) -> impl AsRef<OsStr> {
-        &self.askpass_helper
     }
 
     // This will run the askpass task forever, resolving as many authentication requests as needed.
@@ -165,8 +139,7 @@ impl AskPassSession {
     // future when this is no longer needed. Note that this can only be called once, but due to the
     // drop order this takes an &mut, so you can `drop()` it after you're done with the master process.
     pub async fn run(&mut self) -> AskPassResult {
-        // This is the default timeout setting used by VSCode.
-        let connection_timeout = Duration::from_secs(17);
+        let connection_timeout = Duration::from_secs(10);
         let askpass_opened_rx = self.askpass_opened_rx.take().expect("Only call run once");
         let askpass_kill_master_rx = self
             .askpass_kill_master_rx
@@ -185,19 +158,14 @@ impl AskPassSession {
             }
         }
     }
-
-    /// This will return the password that was last set by the askpass script.
-    #[cfg(target_os = "windows")]
-    pub fn get_password(&self) -> String {
-        self.secret.lock().clone()
-    }
 }
 
 /// The main function for when Zed is running in netcat mode for use in askpass.
 /// Called from both the remote server binary and the zed binary in their respective main functions.
+#[cfg(unix)]
 pub fn main(socket: &str) {
-    use net::UnixStream;
     use std::io::{self, Read, Write};
+    use std::os::unix::net::UnixStream;
     use std::process::exit;
 
     let mut stream = match UnixStream::connect(socket) {
@@ -214,10 +182,6 @@ pub fn main(socket: &str) {
         exit(1);
     }
 
-    #[cfg(target_os = "windows")]
-    while buffer.last().map_or(false, |&b| b == b'\n' || b == b'\r') {
-        buffer.pop();
-    }
     if buffer.last() != Some(&b'\0') {
         buffer.push(b'\0');
     }
@@ -238,28 +202,28 @@ pub fn main(socket: &str) {
         exit(1);
     }
 }
+#[cfg(not(unix))]
+pub fn main(_socket: &str) {}
 
-#[inline]
-#[cfg(not(target_os = "windows"))]
-fn generate_askpass_script(zed_path: &str, askpass_socket: &std::path::Path) -> String {
-    format!(
-        "{shebang}\n{print_args} | {zed_exe} --askpass={askpass_socket} 2> /dev/null \n",
-        zed_exe = zed_path,
-        askpass_socket = askpass_socket.display(),
-        print_args = "printf '%s\\0' \"$@\"",
-        shebang = "#!/bin/sh",
-    )
+#[cfg(not(unix))]
+pub struct AskPassSession {
+    path: PathBuf,
 }
 
-#[inline]
-#[cfg(target_os = "windows")]
-fn generate_askpass_script(zed_path: &std::path::Path, askpass_socket: &std::path::Path) -> String {
-    format!(
-        r#"
-        $ErrorActionPreference = 'Stop';
-        ($args -join [char]0) | & "{zed_exe}" --askpass={askpass_socket} 2> $null
-        "#,
-        zed_exe = zed_path.display(),
-        askpass_socket = askpass_socket.display(),
-    )
+#[cfg(not(unix))]
+impl AskPassSession {
+    pub async fn new(_: &BackgroundExecutor, _: AskPassDelegate) -> anyhow::Result<Self> {
+        Ok(Self {
+            path: PathBuf::new(),
+        })
+    }
+
+    pub fn script_path(&self) -> &Path {
+        &self.path
+    }
+
+    pub async fn run(&mut self) -> AskPassResult {
+        futures::FutureExt::fuse(smol::Timer::after(Duration::from_secs(20))).await;
+        AskPassResult::Timedout
+    }
 }

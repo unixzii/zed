@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 // https://github.com/mmastrac/rust-ctor/issues/280
 pub fn init() {}
 
-/// Opens a URL in the system's default web browser.
 #[derive(Clone, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -19,7 +18,6 @@ pub struct OpenBrowser {
     pub url: String,
 }
 
-/// Opens a zed:// URL within the application.
 #[derive(Clone, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -30,25 +28,15 @@ pub struct OpenZedUrl {
 actions!(
     zed,
     [
-        /// Opens the settings editor.
         OpenSettings,
-        /// Opens the default keymap file.
         OpenDefaultKeymap,
-        /// Opens account settings.
         OpenAccountSettings,
-        /// Opens server settings.
         OpenServerSettings,
-        /// Quits the application.
         Quit,
-        /// Opens the user keymap file.
         OpenKeymap,
-        /// Shows information about Zed.
         About,
-        /// Opens the documentation website.
         OpenDocs,
-        /// Views open source licenses.
         OpenLicenses,
-        /// Opens the telemetry log.
         OpenTelemetryLog,
     ]
 );
@@ -68,7 +56,6 @@ pub enum ExtensionCategoryFilter {
     DebugAdapters,
 }
 
-/// Opens the extensions management interface.
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -78,7 +65,6 @@ pub struct Extensions {
     pub category_filter: Option<ExtensionCategoryFilter>,
 }
 
-/// Decreases the font size in the editor buffer.
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -87,7 +73,6 @@ pub struct DecreaseBufferFontSize {
     pub persist: bool,
 }
 
-/// Increases the font size in the editor buffer.
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -96,7 +81,6 @@ pub struct IncreaseBufferFontSize {
     pub persist: bool,
 }
 
-/// Resets the buffer font size to the default value.
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -105,7 +89,6 @@ pub struct ResetBufferFontSize {
     pub persist: bool,
 }
 
-/// Decreases the font size of the user interface.
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -114,7 +97,6 @@ pub struct DecreaseUiFontSize {
     pub persist: bool,
 }
 
-/// Increases the font size of the user interface.
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -123,7 +105,6 @@ pub struct IncreaseUiFontSize {
     pub persist: bool,
 }
 
-/// Resets the UI font size to the default value.
 #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
 #[action(namespace = zed)]
 #[serde(deny_unknown_fields)]
@@ -135,13 +116,7 @@ pub struct ResetUiFontSize {
 pub mod dev {
     use gpui::actions;
 
-    actions!(
-        dev,
-        [
-            /// Toggles the developer inspector for debugging UI elements.
-            ToggleInspector
-        ]
-    );
+    actions!(dev, [ToggleInspector]);
 }
 
 pub mod workspace {
@@ -164,13 +139,9 @@ pub mod git {
     actions!(
         git,
         [
-            /// Checks out a different git branch.
             CheckoutBranch,
-            /// Switches to a different git branch.
             Switch,
-            /// Selects a different repository.
             SelectRepo,
-            /// Opens the git branch selector.
             #[action(deprecated_aliases = ["branches::OpenRecent"])]
             Branch
         ]
@@ -180,51 +151,25 @@ pub mod git {
 pub mod jj {
     use gpui::actions;
 
-    actions!(
-        jj,
-        [
-            /// Opens the Jujutsu bookmark list.
-            BookmarkList
-        ]
-    );
+    actions!(jj, [BookmarkList]);
 }
 
 pub mod toast {
     use gpui::actions;
 
-    actions!(
-        toast,
-        [
-            /// Runs the action associated with a toast notification.
-            RunAction
-        ]
-    );
+    actions!(toast, [RunAction]);
 }
 
 pub mod command_palette {
     use gpui::actions;
 
-    actions!(
-        command_palette,
-        [
-            /// Toggles the command palette.
-            Toggle
-        ]
-    );
+    actions!(command_palette, [Toggle]);
 }
 
 pub mod feedback {
     use gpui::actions;
 
-    actions!(
-        feedback,
-        [
-            /// Opens the bug report form.
-            FileBugReport,
-            /// Opens the feedback form.
-            GiveFeedback
-        ]
-    );
+    actions!(feedback, [FileBugReport, GiveFeedback]);
 }
 
 pub mod theme_selector {
@@ -232,7 +177,6 @@ pub mod theme_selector {
     use schemars::JsonSchema;
     use serde::Deserialize;
 
-    /// Toggles the theme selector interface.
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = theme_selector)]
     #[serde(deny_unknown_fields)]
@@ -247,7 +191,6 @@ pub mod icon_theme_selector {
     use schemars::JsonSchema;
     use serde::Deserialize;
 
-    /// Toggles the icon theme selector interface.
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = icon_theme_selector)]
     #[serde(deny_unknown_fields)]
@@ -262,20 +205,7 @@ pub mod agent {
 
     actions!(
         agent,
-        [
-            /// Opens the agent configuration panel.
-            OpenConfiguration,
-            /// Opens the agent onboarding modal.
-            OpenOnboardingModal,
-            /// Resets the agent onboarding state.
-            ResetOnboarding,
-            /// Starts a chat conversation with the agent.
-            Chat,
-            /// Displays the previous message in the history.
-            PreviousHistoryMessage,
-            /// Displays the next message in the history.
-            NextHistoryMessage
-        ]
+        [OpenConfiguration, OpenOnboardingModal, ResetOnboarding]
     );
 }
 
@@ -293,15 +223,8 @@ pub mod assistant {
         ]
     );
 
-    actions!(
-        assistant,
-        [
-            /// Shows the assistant configuration panel.
-            ShowConfiguration
-        ]
-    );
+    actions!(assistant, [ShowConfiguration]);
 
-    /// Opens the rules library for managing agent rules and prompts.
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = agent, deprecated_aliases = ["assistant::OpenRulesLibrary", "assistant::DeployPromptLibrary"])]
     #[serde(deny_unknown_fields)]
@@ -310,7 +233,6 @@ pub mod assistant {
         pub prompt_to_select: Option<Uuid>,
     }
 
-    /// Deploys the assistant interface with the specified configuration.
     #[derive(Clone, Default, Deserialize, PartialEq, JsonSchema, Action)]
     #[action(namespace = assistant)]
     #[serde(deny_unknown_fields)]
@@ -322,18 +244,9 @@ pub mod assistant {
 pub mod debugger {
     use gpui::actions;
 
-    actions!(
-        debugger,
-        [
-            /// Opens the debugger onboarding modal.
-            OpenOnboardingModal,
-            /// Resets the debugger onboarding state.
-            ResetOnboarding
-        ]
-    );
+    actions!(debugger, [OpenOnboardingModal, ResetOnboarding]);
 }
 
-/// Opens the recent projects interface.
 #[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
 #[action(namespace = projects)]
 #[serde(deny_unknown_fields)]
@@ -342,7 +255,6 @@ pub struct OpenRecent {
     pub create_new_window: bool,
 }
 
-/// Creates a project from a selected template.
 #[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
 #[action(namespace = projects)]
 #[serde(deny_unknown_fields)]
@@ -364,7 +276,7 @@ pub enum RevealTarget {
     Dock,
 }
 
-/// Spawns a task with name or opens tasks modal.
+/// Spawn a task with name or open tasks modal.
 #[derive(Debug, PartialEq, Clone, Deserialize, JsonSchema, Action)]
 #[action(namespace = task)]
 #[serde(untagged)]
@@ -397,7 +309,7 @@ impl Spawn {
     }
 }
 
-/// Reruns the last task.
+/// Rerun the last task.
 #[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
 #[action(namespace = task)]
 #[serde(deny_unknown_fields)]
@@ -438,36 +350,15 @@ pub mod outline {
     pub static TOGGLE_OUTLINE: OnceLock<fn(AnyView, &mut Window, &mut App)> = OnceLock::new();
 }
 
-actions!(
-    zed_predict_onboarding,
-    [
-        /// Opens the Zed Predict onboarding modal.
-        OpenZedPredictOnboarding
-    ]
-);
-actions!(
-    git_onboarding,
-    [
-        /// Opens the git integration onboarding modal.
-        OpenGitIntegrationOnboarding
-    ]
-);
+actions!(zed_predict_onboarding, [OpenZedPredictOnboarding]);
+actions!(git_onboarding, [OpenGitIntegrationOnboarding]);
 
-actions!(
-    debug_panel,
-    [
-        /// Toggles focus on the debug panel.
-        ToggleFocus
-    ]
-);
+actions!(debug_panel, [ToggleFocus]);
 actions!(
     debugger,
     [
-        /// Toggles the enabled state of a breakpoint.
         ToggleEnableBreakpoint,
-        /// Removes a breakpoint.
         UnsetBreakpoint,
-        /// Opens the project debug tasks configuration.
         OpenProjectDebugTasks,
     ]
 );

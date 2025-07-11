@@ -12,10 +12,9 @@ use gpui::{
 use refineable::Refineable;
 use schemars::{JsonSchema, json_schema};
 use serde::{Deserialize, Serialize};
-use settings::{ParameterizedJsonSchema, Settings, SettingsSources};
+use settings::{ParameterizedJsonSchema, Settings, SettingsSources, replace_subschema};
 use std::sync::Arc;
 use util::ResultExt as _;
-use util::schemars::replace_subschema;
 
 const MIN_FONT_SIZE: Pixels = px(6.0);
 const MIN_LINE_HEIGHT: f32 = 1.0;

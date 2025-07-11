@@ -117,7 +117,7 @@ use text::{Anchor, BufferId, Point};
 use toolchain_store::EmptyToolchainStore;
 use util::{
     ResultExt as _,
-    paths::{PathStyle, RemotePathBuf, SanitizedPath, compare_paths},
+    paths::{SanitizedPath, compare_paths},
 };
 use worktree::{CreatedEntry, Snapshot, Traversal};
 pub use worktree::{
@@ -456,10 +456,6 @@ pub enum CompletionSource {
         /// Whether this completion has been resolved, to ensure it happens once per completion.
         resolved: bool,
     },
-    Dap {
-        /// The sort text for this completion.
-        sort_text: String,
-    },
     Custom,
     BufferWord {
         word_range: Range<Anchor>,
@@ -700,7 +696,7 @@ pub struct MarkupContent {
     pub value: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct LocationLink {
     pub origin: Option<Location>,
     pub target: Location,
@@ -1159,11 +1155,9 @@ impl Project {
             let snippets =
                 SnippetProvider::new(fs.clone(), BTreeSet::from_iter([global_snippets_dir]), cx);
 
-            let (ssh_proto, path_style) =
-                ssh.read_with(cx, |ssh, _| (ssh.proto_client(), ssh.path_style()));
-            let worktree_store = cx.new(|_| {
-                WorktreeStore::remote(false, ssh_proto.clone(), SSH_PROJECT_ID, path_style)
-            });
+            let ssh_proto = ssh.read(cx).proto_client();
+            let worktree_store =
+                cx.new(|_| WorktreeStore::remote(false, ssh_proto.clone(), SSH_PROJECT_ID));
             cx.subscribe(&worktree_store, Self::on_worktree_store_event)
                 .detach();
 
@@ -1412,15 +1406,8 @@ impl Project {
         let remote_id = response.payload.project_id;
         let role = response.payload.role();
 
-        // todo(zjk)
-        // Set the proper path style based on the remote
         let worktree_store = cx.new(|_| {
-            WorktreeStore::remote(
-                true,
-                client.clone().into(),
-                response.payload.project_id,
-                PathStyle::Posix,
-            )
+            WorktreeStore::remote(true, client.clone().into(), response.payload.project_id)
         })?;
         let buffer_store = cx.new(|cx| {
             BufferStore::remote(worktree_store.clone(), client.clone().into(), remote_id, cx)
@@ -3355,52 +3342,91 @@ impl Project {
         })
     }
 
-    pub fn definitions<T: ToPointUtf16>(
+    #[inline(never)]
+    fn definition_impl(
+        &mut self,
+        buffer: &Entity<Buffer>,
+        position: PointUtf16,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Vec<LocationLink>>> {
+        self.request_lsp(
+            buffer.clone(),
+            LanguageServerToQuery::FirstCapable,
+            GetDefinition { position },
+            cx,
+        )
+    }
+    pub fn definition<T: ToPointUtf16>(
         &mut self,
         buffer: &Entity<Buffer>,
         position: T,
         cx: &mut Context<Self>,
     ) -> Task<Result<Vec<LocationLink>>> {
         let position = position.to_point_utf16(buffer.read(cx));
-        self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.definitions(buffer, position, cx)
-        })
+        self.definition_impl(buffer, position, cx)
     }
 
-    pub fn declarations<T: ToPointUtf16>(
+    fn declaration_impl(
         &mut self,
         buffer: &Entity<Buffer>,
-        position: T,
+        position: PointUtf16,
         cx: &mut Context<Self>,
     ) -> Task<Result<Vec<LocationLink>>> {
-        let position = position.to_point_utf16(buffer.read(cx));
-        self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.declarations(buffer, position, cx)
-        })
+        self.request_lsp(
+            buffer.clone(),
+            LanguageServerToQuery::FirstCapable,
+            GetDeclaration { position },
+            cx,
+        )
     }
 
-    pub fn type_definitions<T: ToPointUtf16>(
+    pub fn declaration<T: ToPointUtf16>(
         &mut self,
         buffer: &Entity<Buffer>,
         position: T,
         cx: &mut Context<Self>,
     ) -> Task<Result<Vec<LocationLink>>> {
         let position = position.to_point_utf16(buffer.read(cx));
-        self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.type_definitions(buffer, position, cx)
-        })
+        self.declaration_impl(buffer, position, cx)
     }
 
-    pub fn implementations<T: ToPointUtf16>(
+    fn type_definition_impl(
+        &mut self,
+        buffer: &Entity<Buffer>,
+        position: PointUtf16,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Vec<LocationLink>>> {
+        self.request_lsp(
+            buffer.clone(),
+            LanguageServerToQuery::FirstCapable,
+            GetTypeDefinition { position },
+            cx,
+        )
+    }
+
+    pub fn type_definition<T: ToPointUtf16>(
         &mut self,
         buffer: &Entity<Buffer>,
         position: T,
         cx: &mut Context<Self>,
     ) -> Task<Result<Vec<LocationLink>>> {
         let position = position.to_point_utf16(buffer.read(cx));
-        self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.implementations(buffer, position, cx)
-        })
+        self.type_definition_impl(buffer, position, cx)
+    }
+
+    pub fn implementation<T: ToPointUtf16>(
+        &mut self,
+        buffer: &Entity<Buffer>,
+        position: T,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Vec<LocationLink>>> {
+        let position = position.to_point_utf16(buffer.read(cx));
+        self.request_lsp(
+            buffer.clone(),
+            LanguageServerToQuery::FirstCapable,
+            GetImplementation { position },
+            cx,
+        )
     }
 
     pub fn references<T: ToPointUtf16>(
@@ -3410,9 +3436,12 @@ impl Project {
         cx: &mut Context<Self>,
     ) -> Task<Result<Vec<Location>>> {
         let position = position.to_point_utf16(buffer.read(cx));
-        self.lsp_store.update(cx, |lsp_store, cx| {
-            lsp_store.references(buffer, position, cx)
-        })
+        self.request_lsp(
+            buffer.clone(),
+            LanguageServerToQuery::FirstCapable,
+            GetReferences { position },
+            cx,
+        )
     }
 
     fn document_highlights_impl(
@@ -4048,8 +4077,7 @@ impl Project {
                 })
             })
         } else if let Some(ssh_client) = self.ssh_client.as_ref() {
-            let path_style = ssh_client.read(cx).path_style();
-            let request_path = RemotePathBuf::from_str(path, path_style);
+            let request_path = Path::new(path);
             let request = ssh_client
                 .read(cx)
                 .proto_client()

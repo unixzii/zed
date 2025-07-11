@@ -1066,7 +1066,7 @@ impl DisplaySnapshot {
         }
 
         let font_size = editor_style.text.font_size.to_pixels(*rem_size);
-        text_system.layout_line(&line, font_size, &runs, None)
+        text_system.layout_line(&line, font_size, &runs)
     }
 
     pub fn x_for_display_point(

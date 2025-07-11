@@ -17,13 +17,7 @@ use zed_actions::{ExtensionCategoryFilter, Extensions};
 
 use crate::icon_theme_selector::{IconThemeSelector, IconThemeSelectorDelegate};
 
-actions!(
-    theme_selector,
-    [
-        /// Reloads all themes from disk.
-        Reload
-    ]
-);
+actions!(theme_selector, [Reload]);
 
 pub fn init(cx: &mut App) {
     cx.on_action(|action: &zed_actions::theme_selector::Toggle, cx| {

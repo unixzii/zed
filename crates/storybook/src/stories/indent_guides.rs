@@ -55,27 +55,23 @@ impl Render for IndentGuidesStory {
                         }),
                     )
                     .with_sizing_behavior(gpui::ListSizingBehavior::Infer)
-                    .with_decoration(
-                        ui::indent_guides(
-                            px(16.),
-                            ui::IndentGuideColors {
-                                default: Color::Info.color(cx),
-                                hover: Color::Accent.color(cx),
-                                active: Color::Accent.color(cx),
-                            },
-                        )
-                        .with_compute_indents_fn(
-                            cx.entity().clone(),
-                            |this, range, _cx, _context| {
-                                this.depths
-                                    .iter()
-                                    .skip(range.start)
-                                    .take(range.end - range.start)
-                                    .cloned()
-                                    .collect()
-                            },
-                        ),
-                    ),
+                    .with_decoration(ui::indent_guides(
+                        cx.entity().clone(),
+                        px(16.),
+                        ui::IndentGuideColors {
+                            default: Color::Info.color(cx),
+                            hover: Color::Accent.color(cx),
+                            active: Color::Accent.color(cx),
+                        },
+                        |this, range, _cx, _context| {
+                            this.depths
+                                .iter()
+                                .skip(range.start)
+                                .take(range.end - range.start)
+                                .cloned()
+                                .collect()
+                        },
+                    )),
                 ),
             )
     }
