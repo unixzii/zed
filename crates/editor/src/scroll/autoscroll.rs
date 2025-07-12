@@ -217,7 +217,7 @@ impl Editor {
             target_bottom = target_top + 1.;
         }
 
-        let was_autoscrolled = match strategy {
+        let needs_autoscroll = match strategy {
             AutoscrollStrategy::Fit | AutoscrollStrategy::Newest => {
                 let margin = margin.min(self.scroll_manager.vertical_scroll_margin);
                 let target_top = (target_top - margin).max(0.0);
@@ -234,77 +234,37 @@ impl Editor {
                     scroll_position.y = target_bottom - visible_lines;
                 }
 
-                if needs_scroll_up ^ needs_scroll_down {
-                    self.set_scroll_position_internal(
-                        scroll_position,
-                        local,
-                        true,
-                        display_snapshot,
-                        window,
-                        cx,
-                    )
-                } else {
-                    WasScrolled(false)
-                }
+                needs_scroll_up ^ needs_scroll_down
             }
             AutoscrollStrategy::Center => {
                 scroll_position.y = (target_top - margin).max(0.0);
-                self.set_scroll_position_internal(
-                    scroll_position,
-                    local,
-                    true,
-                    display_snapshot,
-                    window,
-                    cx,
-                )
+                true
             }
             AutoscrollStrategy::Focused => {
                 let margin = margin.min(self.scroll_manager.vertical_scroll_margin);
                 scroll_position.y = (target_top - margin).max(0.0);
-                self.set_scroll_position_internal(
-                    scroll_position,
-                    local,
-                    true,
-                    display_snapshot,
-                    window,
-                    cx,
-                )
+                true
             }
             AutoscrollStrategy::Top => {
                 scroll_position.y = (target_top).max(0.0);
-                self.set_scroll_position_internal(
-                    scroll_position,
-                    local,
-                    true,
-                    display_snapshot,
-                    window,
-                    cx,
-                )
+                true
             }
             AutoscrollStrategy::Bottom => {
                 scroll_position.y = (target_bottom - visible_lines).max(0.0);
-                self.set_scroll_position_internal(
-                    scroll_position,
-                    local,
-                    true,
-                    display_snapshot,
-                    window,
-                    cx,
-                )
+                true
             }
             AutoscrollStrategy::TopRelative(lines) => {
                 scroll_position.y = target_top - lines as f32;
-                self.set_scroll_position_internal(
-                    scroll_position,
-                    local,
-                    true,
-                    display_snapshot,
-                    window,
-                    cx,
-                )
+                true
             }
             AutoscrollStrategy::BottomRelative(lines) => {
                 scroll_position.y = target_bottom + lines as f32;
+                true
+            }
+        };
+
+        let was_autoscrolled = needs_autoscroll
+            .then(|| {
                 self.set_scroll_position_internal(
                     scroll_position,
                     local,
@@ -313,8 +273,8 @@ impl Editor {
                     window,
                     cx,
                 )
-            }
-        };
+            })
+            .unwrap_or(WasScrolled(false));
 
         self.scroll_manager.last_autoscroll = Some((
             self.scroll_manager.anchor.offset,
@@ -383,35 +343,30 @@ impl Editor {
         let scroll_left = self.scroll_manager.anchor.offset.x * em_advance;
         let scroll_right = scroll_left + viewport_width;
 
-        let was_scrolled = if target_left < scroll_left {
+        let needs_scroll = if target_left < scroll_left {
             scroll_position.x = target_left / em_advance;
-            self.set_scroll_position_internal(
-                scroll_position,
-                true,
-                true,
-                display_snapshot,
-                window,
-                cx,
-            )
+            true
         } else if target_right > scroll_right {
             scroll_position.x = (target_right - viewport_width) / em_advance;
-            self.set_scroll_position_internal(
-                scroll_position,
-                true,
-                true,
-                display_snapshot,
-                window,
-                cx,
-            )
+            true
         } else {
-            WasScrolled(false)
+            false
         };
 
-        if was_scrolled.0 {
-            Some(scroll_position)
-        } else {
-            None
-        }
+        let was_scrolled = needs_scroll
+            .then(|| {
+                self.set_scroll_position_internal(
+                    scroll_position,
+                    true,
+                    true,
+                    display_snapshot,
+                    window,
+                    cx,
+                )
+            })
+            .unwrap_or(WasScrolled(false));
+
+        was_scrolled.0.then_some(scroll_position)
     }
 
     pub fn request_autoscroll(&mut self, autoscroll: Autoscroll, cx: &mut Context<Self>) {
