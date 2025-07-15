@@ -20,7 +20,6 @@ use extension::{
     ExtensionSnippetProxy, ExtensionThemeProxy,
 };
 use fs::{Fs, RemoveOptions};
-use futures::future::join_all;
 use futures::{
     AsyncReadExt as _, Future, FutureExt as _, StreamExt as _,
     channel::{
@@ -861,8 +860,8 @@ impl ExtensionStore {
             btree_map::Entry::Vacant(e) => e.insert(ExtensionOperation::Remove),
         };
 
-        cx.spawn(async move |extension_store, cx| {
-            let _finish = cx.on_drop(&extension_store, {
+        cx.spawn(async move |this, cx| {
+            let _finish = cx.on_drop(&this, {
                 let extension_id = extension_id.clone();
                 move |this, cx| {
                     this.outstanding_operations.remove(extension_id.as_ref());
@@ -877,39 +876,22 @@ impl ExtensionStore {
                     ignore_if_not_exists: true,
                 },
             )
-            .await
-            .with_context(|| format!("Removing extension dir {extension_dir:?}"))?;
+            .await?;
 
-            extension_store
-                .update(cx, |extension_store, cx| extension_store.reload(None, cx))?
-                .await;
+            // todo(windows)
+            // Stop the server here.
+            this.update(cx, |this, cx| this.reload(None, cx))?.await;
 
-            // There's a race between wasm extension fully stopping and the directory removal.
-            // On Windows, it's impossible to remove a directory that has a process running in it.
-            for i in 0..3 {
-                cx.background_executor()
-                    .timer(Duration::from_millis(i * 100))
-                    .await;
-                let removal_result = fs
-                    .remove_dir(
-                        &work_dir,
-                        RemoveOptions {
-                            recursive: true,
-                            ignore_if_not_exists: true,
-                        },
-                    )
-                    .await;
-                match removal_result {
-                    Ok(()) => break,
-                    Err(e) => {
-                        if i == 2 {
-                            log::error!("Failed to remove extension work dir {work_dir:?} : {e}");
-                        }
-                    }
-                }
-            }
+            fs.remove_dir(
+                &work_dir,
+                RemoveOptions {
+                    recursive: true,
+                    ignore_if_not_exists: true,
+                },
+            )
+            .await?;
 
-            extension_store.update(cx, |_, cx| {
+            this.update(cx, |_, cx| {
                 cx.emit(Event::ExtensionUninstalled(extension_id.clone()));
                 if let Some(events) = ExtensionEvents::try_global(cx) {
                     if let Some(manifest) = extension_manifest {
@@ -1161,37 +1143,26 @@ impl ExtensionStore {
             })
             .collect::<Vec<_>>();
         let mut grammars_to_remove = Vec::new();
-        let mut server_removal_tasks = Vec::with_capacity(extensions_to_unload.len());
         for extension_id in &extensions_to_unload {
             let Some(extension) = old_index.extensions.get(extension_id) else {
                 continue;
             };
             grammars_to_remove.extend(extension.manifest.grammars.keys().cloned());
-            for (language_server_name, config) in &extension.manifest.language_servers {
+            for (language_server_name, config) in extension.manifest.language_servers.iter() {
                 for language in config.languages() {
-                    server_removal_tasks.push(self.proxy.remove_language_server(
-                        &language,
-                        language_server_name,
-                        cx,
-                    ));
+                    self.proxy
+                        .remove_language_server(&language, language_server_name);
                 }
             }
 
-            for (server_id, _) in &extension.manifest.context_servers {
+            for (server_id, _) in extension.manifest.context_servers.iter() {
                 self.proxy.unregister_context_server(server_id.clone(), cx);
             }
-            for (adapter, _) in &extension.manifest.debug_adapters {
+            for (adapter, _) in extension.manifest.debug_adapters.iter() {
                 self.proxy.unregister_debug_adapter(adapter.clone());
             }
-            for (locator, _) in &extension.manifest.debug_locators {
+            for (locator, _) in extension.manifest.debug_locators.iter() {
                 self.proxy.unregister_debug_locator(locator.clone());
-            }
-            for (command_name, _) in &extension.manifest.slash_commands {
-                self.proxy.unregister_slash_command(command_name.clone());
-            }
-            for (provider_id, _) in &extension.manifest.indexed_docs_providers {
-                self.proxy
-                    .unregister_indexed_docs_provider(provider_id.clone());
             }
         }
 
@@ -1297,15 +1268,14 @@ impl ExtensionStore {
             cx.background_spawn({
                 let fs = fs.clone();
                 async move {
-                    let _ = join_all(server_removal_tasks).await;
-                    for theme_path in themes_to_add {
+                    for theme_path in themes_to_add.into_iter() {
                         proxy
                             .load_user_theme(theme_path, fs.clone())
                             .await
                             .log_err();
                     }
 
-                    for (icon_theme_path, icons_root_path) in icon_themes_to_add {
+                    for (icon_theme_path, icons_root_path) in icon_themes_to_add.into_iter() {
                         proxy
                             .load_icon_theme(icon_theme_path, icons_root_path, fs.clone())
                             .await

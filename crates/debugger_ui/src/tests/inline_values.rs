@@ -2241,34 +2241,3 @@ func main() {
     )
     .await;
 }
-
-#[gpui::test]
-async fn test_trim_multi_line_inline_value(executor: BackgroundExecutor, cx: &mut TestAppContext) {
-    let variables = [("y", "hello\n world")];
-
-    let before = r#"
-fn main() {
-    let y = "hello\n world";
-}
-"#
-    .unindent();
-
-    let after = r#"
-fn main() {
-    let y: hello… = "hello\n world";
-}
-"#
-    .unindent();
-
-    test_inline_values_util(
-        &variables,
-        &[],
-        &before,
-        &after,
-        None,
-        rust_lang(),
-        executor,
-        cx,
-    )
-    .await;
-}

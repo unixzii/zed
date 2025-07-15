@@ -6,10 +6,9 @@ use gpui::{
     WeakEntity, Window,
 };
 use language::Diagnostic;
-use project::project_settings::{GoToDiagnosticSeverityFilter, ProjectSettings};
+use project::project_settings::ProjectSettings;
 use settings::Settings;
 use ui::{Button, ButtonLike, Color, Icon, IconName, Label, Tooltip, h_flex, prelude::*};
-use util::ResultExt;
 use workspace::{StatusItemView, ToolbarItemEvent, Workspace, item::ItemHandle};
 
 use crate::{Deploy, IncludeWarnings, ProjectDiagnosticsEditor};
@@ -21,7 +20,6 @@ pub struct DiagnosticIndicator {
     current_diagnostic: Option<Diagnostic>,
     _observe_active_editor: Option<Subscription>,
     diagnostics_update: Task<()>,
-    diagnostic_summary_update: Task<()>,
 }
 
 impl Render for DiagnosticIndicator {
@@ -79,7 +77,7 @@ impl Render for DiagnosticIndicator {
                     .tooltip(|window, cx| {
                         Tooltip::for_action(
                             "Next Diagnostic",
-                            &editor::actions::GoToDiagnostic::default(),
+                            &editor::actions::GoToDiagnostic,
                             window,
                             cx,
                         )
@@ -137,16 +135,8 @@ impl DiagnosticIndicator {
             }
 
             project::Event::DiagnosticsUpdated { .. } => {
-                this.diagnostic_summary_update = cx.spawn(async move |this, cx| {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(30))
-                        .await;
-                    this.update(cx, |this, cx| {
-                        this.summary = project.read(cx).diagnostic_summary(false, cx);
-                        cx.notify();
-                    })
-                    .log_err();
-                });
+                this.summary = project.read(cx).diagnostic_summary(false, cx);
+                cx.notify();
             }
 
             _ => {}
@@ -160,19 +150,13 @@ impl DiagnosticIndicator {
             current_diagnostic: None,
             _observe_active_editor: None,
             diagnostics_update: Task::ready(()),
-            diagnostic_summary_update: Task::ready(()),
         }
     }
 
     fn go_to_next_diagnostic(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(editor) = self.active_editor.as_ref().and_then(|e| e.upgrade()) {
             editor.update(cx, |editor, cx| {
-                editor.go_to_diagnostic_impl(
-                    editor::Direction::Next,
-                    GoToDiagnosticSeverityFilter::default(),
-                    window,
-                    cx,
-                );
+                editor.go_to_diagnostic_impl(editor::Direction::Next, window, cx);
             })
         }
     }

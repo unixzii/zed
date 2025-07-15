@@ -27,8 +27,6 @@ pub struct SingleLineInput {
     ///
     /// Its position is determined by the [`FieldLabelLayout`].
     label: Option<SharedString>,
-    /// The size of the label text.
-    label_size: LabelSize,
     /// The placeholder text for the text field.
     placeholder: SharedString,
     /// Exposes the underlying [`Entity<Editor>`] to allow for customizing the editor beyond the provided API.
@@ -61,7 +59,6 @@ impl SingleLineInput {
 
         Self {
             label: None,
-            label_size: LabelSize::Small,
             placeholder: placeholder_text,
             editor,
             start_icon: None,
@@ -76,11 +73,6 @@ impl SingleLineInput {
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
-        self
-    }
-
-    pub fn label_size(mut self, size: LabelSize) -> Self {
-        self.label_size = size;
         self
     }
 
@@ -146,7 +138,7 @@ impl Render for SingleLineInput {
             .when_some(self.label.clone(), |this, label| {
                 this.child(
                     Label::new(label)
-                        .size(self.label_size)
+                        .size(LabelSize::Small)
                         .color(if self.disabled {
                             Color::Disabled
                         } else {
@@ -156,17 +148,16 @@ impl Render for SingleLineInput {
             })
             .child(
                 h_flex()
-                    .min_w_48()
-                    .min_h_8()
-                    .w_full()
                     .px_2()
                     .py_1p5()
-                    .flex_grow()
-                    .text_color(style.text_color)
-                    .rounded_lg()
                     .bg(style.background_color)
+                    .text_color(style.text_color)
+                    .rounded_md()
                     .border_1()
                     .border_color(style.border_color)
+                    .min_w_48()
+                    .w_full()
+                    .flex_grow()
                     .when_some(self.start_icon, |this, icon| {
                         this.gap_1()
                             .child(Icon::new(icon).size(IconSize::Small).color(Color::Muted))
@@ -182,28 +173,16 @@ impl Component for SingleLineInput {
     }
 
     fn preview(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
-        let input_small =
-            cx.new(|cx| SingleLineInput::new(window, cx, "placeholder").label("Small Label"));
-
-        let input_regular = cx.new(|cx| {
-            SingleLineInput::new(window, cx, "placeholder")
-                .label("Regular Label")
-                .label_size(LabelSize::Default)
-        });
+        let input_1 =
+            cx.new(|cx| SingleLineInput::new(window, cx, "placeholder").label("Some Label"));
 
         Some(
             v_flex()
                 .gap_6()
-                .children(vec![example_group(vec![
-                    single_example(
-                        "Small Label (Default)",
-                        div().child(input_small.clone()).into_any_element(),
-                    ),
-                    single_example(
-                        "Regular Label",
-                        div().child(input_regular.clone()).into_any_element(),
-                    ),
-                ])])
+                .children(vec![example_group(vec![single_example(
+                    "Default",
+                    div().child(input_1.clone()).into_any_element(),
+                )])])
                 .into_any_element(),
         )
     }

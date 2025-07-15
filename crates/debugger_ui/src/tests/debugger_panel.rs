@@ -427,7 +427,7 @@ async fn test_handle_start_debugging_request(
     let sessions = workspace
         .update(cx, |workspace, _window, cx| {
             let debug_panel = workspace.panel::<DebugPanel>(cx).unwrap();
-            debug_panel.read(cx).sessions().collect::<Vec<_>>()
+            debug_panel.read(cx).sessions()
         })
         .unwrap();
     assert_eq!(sessions.len(), 1);
@@ -451,7 +451,7 @@ async fn test_handle_start_debugging_request(
                 .unwrap()
                 .read(cx)
                 .session(cx);
-            let current_sessions = debug_panel.read(cx).sessions().collect::<Vec<_>>();
+            let current_sessions = debug_panel.read(cx).sessions();
             assert_eq!(active_session, current_sessions[1].read(cx).session(cx));
             assert_eq!(
                 active_session.read(cx).parent_session(),
@@ -1796,7 +1796,7 @@ async fn test_debug_adapters_shutdown_on_app_quit(
             let panel = workspace.panel::<DebugPanel>(cx).unwrap();
             panel.read_with(cx, |panel, _| {
                 assert!(
-                    panel.sessions().next().is_some(),
+                    !panel.sessions().is_empty(),
                     "Debug session should be active"
                 );
             });

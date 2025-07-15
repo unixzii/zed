@@ -271,6 +271,7 @@ impl DisplayMap {
                         height: Some(height),
                         style,
                         priority,
+                        render_in_minimap: true,
                     }
                 }),
         );
@@ -1662,6 +1663,7 @@ pub mod tests {
                                         height: Some(height),
                                         render: Arc::new(|_| div().into_any()),
                                         priority,
+                                        render_in_minimap: true,
                                     }
                                 })
                                 .collect::<Vec<_>>();
@@ -2027,6 +2029,7 @@ pub mod tests {
                     style: BlockStyle::Sticky,
                     render: Arc::new(|_| div().into_any()),
                     priority: 0,
+                    render_in_minimap: true,
                 }],
                 cx,
             );
@@ -2224,6 +2227,7 @@ pub mod tests {
                         style: BlockStyle::Sticky,
                         render: Arc::new(|_| div().into_any()),
                         priority: 0,
+                        render_in_minimap: true,
                     },
                     BlockProperties {
                         placement: BlockPlacement::Below(
@@ -2233,6 +2237,7 @@ pub mod tests {
                         style: BlockStyle::Sticky,
                         render: Arc::new(|_| div().into_any()),
                         priority: 0,
+                        render_in_minimap: true,
                     },
                 ],
                 cx,
@@ -2339,6 +2344,7 @@ pub mod tests {
                     style: BlockStyle::Sticky,
                     render: Arc::new(|_| div().into_any()),
                     priority: 0,
+                    render_in_minimap: true,
                 }],
                 cx,
             )
@@ -2414,6 +2420,7 @@ pub mod tests {
                     style: BlockStyle::Fixed,
                     render: Arc::new(|_| div().into_any()),
                     priority: 0,
+                    render_in_minimap: true,
                 }],
                 cx,
             );

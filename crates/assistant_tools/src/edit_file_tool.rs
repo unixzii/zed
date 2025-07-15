@@ -139,7 +139,7 @@ impl Tool for EditFileTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolPencil
+        IconName::Pencil
     }
 
     fn input_schema(&self, format: LanguageModelToolSchemaFormat) -> Result<serde_json::Value> {
@@ -783,8 +783,8 @@ impl ToolCard for EditFileToolCard {
             .child(
                 h_flex()
                     .child(
-                        Icon::new(IconName::ToolPencil)
-                            .size(IconSize::Small)
+                        Icon::new(IconName::Pencil)
+                            .size(IconSize::XSmall)
                             .color(Color::Muted),
                     )
                     .child(

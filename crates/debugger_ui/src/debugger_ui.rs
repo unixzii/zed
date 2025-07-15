@@ -83,8 +83,6 @@ actions!(
         Rerun,
         /// Toggles expansion of the selected item in the debugger UI.
         ToggleExpandItem,
-        /// Set a data breakpoint on the selected variable or memory region.
-        ToggleDataBreakpoint,
     ]
 );
 

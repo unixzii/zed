@@ -31,7 +31,7 @@ impl Tool for ProjectNotificationsTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolNotification
+        IconName::Envelope
     }
 
     fn input_schema(&self, format: LanguageModelToolSchemaFormat) -> Result<serde_json::Value> {
