@@ -608,7 +608,6 @@ dependencies = [
  "parking_lot",
  "smol",
  "tempfile",
- "unindent",
  "util",
  "workspace-hack",
 ]
@@ -3110,6 +3109,7 @@ dependencies = [
  "context_server",
  "ctor",
  "dap",
+ "dap-types",
  "dap_adapters",
  "dashmap 6.1.0",
  "debugger_ui",
@@ -4393,12 +4393,15 @@ dependencies = [
  "futures 0.3.31",
  "fuzzy",
  "gpui",
+ "hex",
  "indoc",
  "itertools 0.14.0",
  "language",
  "log",
  "menu",
+ "notifications",
  "parking_lot",
+ "parse_int",
  "paths",
  "picker",
  "pretty_assertions",
@@ -9033,7 +9036,6 @@ dependencies = [
  "credentials_provider",
  "deepseek",
  "editor",
- "feature_flags",
  "fs",
  "futures 0.3.31",
  "google_ai",
@@ -9660,12 +9662,11 @@ dependencies = [
 [[package]]
 name = "lsp-types"
 version = "0.95.1"
-source = "git+https://github.com/zed-industries/lsp-types?rev=c9c189f1c5dd53c624a419ce35bc77ad6a908d18#c9c189f1c5dd53c624a419ce35bc77ad6a908d18"
+source = "git+https://github.com/zed-industries/lsp-types?rev=6add7052b598ea1f40f7e8913622c3958b009b60#6add7052b598ea1f40f7e8913622c3958b009b60"
 dependencies = [
  "bitflags 1.3.2",
  "serde",
  "serde_json",
- "serde_repr",
  "url",
 ]
 
@@ -11278,6 +11279,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse_int"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c464266693329dd5a8715098c7f86e6c5fd5d985018b8318f53d9c6c2b21a31"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "partial-json-fixer"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12320,6 +12330,7 @@ dependencies = [
  "anyhow",
  "askpass",
  "async-trait",
+ "base64 0.22.1",
  "buffer_diff",
  "circular-buffer",
  "client",
@@ -12365,6 +12376,7 @@ dependencies = [
  "sha2",
  "shellexpand 2.1.2",
  "shlex",
+ "smallvec",
  "smol",
  "snippet",
  "snippet_provider",
@@ -14099,7 +14111,7 @@ dependencies = [
 [[package]]
 name = "scap"
 version = "0.0.8"
-source = "git+https://github.com/zed-industries/scap?rev=28dd306ff2e3374404936dec778fc1e975b8dd12#28dd306ff2e3374404936dec778fc1e975b8dd12"
+source = "git+https://github.com/zed-industries/scap?rev=270538dc780f5240723233ff901e1054641ed318#270538dc780f5240723233ff901e1054641ed318"
 dependencies = [
  "anyhow",
  "cocoa 0.25.0",
@@ -14677,6 +14689,7 @@ dependencies = [
  "schemars",
  "search",
  "serde",
+ "serde_json",
  "settings",
  "theme",
  "tree-sitter-json",
@@ -18376,7 +18389,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "client",
- "feature_flags",
  "futures 0.3.31",
  "gpui",
  "http_client",
@@ -19648,6 +19660,7 @@ dependencies = [
  "rustix 1.0.7",
  "rustls 0.23.26",
  "rustls-webpki 0.103.1",
+ "scap",
  "schemars",
  "scopeguard",
  "sea-orm",
