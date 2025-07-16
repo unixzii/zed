@@ -3217,11 +3217,9 @@ impl Project {
         also_restart_servers: HashSet<LanguageServerSelector>,
         cx: &mut Context<Self>,
     ) {
-        self.lsp_store
-            .update(cx, |lsp_store, cx| {
-                lsp_store.stop_language_servers_for_buffers(buffers, also_restart_servers, cx)
-            })
-            .detach_and_log_err(cx);
+        self.lsp_store.update(cx, |lsp_store, cx| {
+            lsp_store.stop_language_servers_for_buffers(buffers, also_restart_servers, cx)
+        })
     }
 
     pub fn cancel_language_server_work_for_buffers(

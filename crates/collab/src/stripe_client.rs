@@ -190,7 +190,6 @@ pub struct StripeCreateCheckoutSessionParams<'a> {
     pub success_url: Option<&'a str>,
     pub billing_address_collection: Option<StripeBillingAddressCollection>,
     pub customer_update: Option<StripeCustomerUpdate>,
-    pub tax_id_collection: Option<StripeTaxIdCollection>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -217,11 +216,6 @@ pub struct StripeCreateCheckoutSessionSubscriptionData {
     pub metadata: Option<HashMap<String, String>>,
     pub trial_period_days: Option<u32>,
     pub trial_settings: Option<StripeSubscriptionTrialSettings>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct StripeTaxIdCollection {
-    pub enabled: bool,
 }
 
 #[derive(Debug)]

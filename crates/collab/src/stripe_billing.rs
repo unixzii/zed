@@ -19,8 +19,8 @@ use crate::stripe_client::{
     StripeCustomerId, StripeCustomerUpdate, StripeCustomerUpdateAddress, StripeCustomerUpdateName,
     StripeMeter, StripePrice, StripePriceId, StripeSubscription, StripeSubscriptionId,
     StripeSubscriptionTrialSettings, StripeSubscriptionTrialSettingsEndBehavior,
-    StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, StripeTaxIdCollection,
-    UpdateSubscriptionItems, UpdateSubscriptionParams,
+    StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, UpdateSubscriptionItems,
+    UpdateSubscriptionParams,
 };
 
 pub struct StripeBilling {
@@ -252,7 +252,6 @@ impl StripeBilling {
             name: Some(StripeCustomerUpdateName::Auto),
             shipping: None,
         });
-        params.tax_id_collection = Some(StripeTaxIdCollection { enabled: true });
 
         let session = self.client.create_checkout_session(params).await?;
         Ok(session.url.context("no checkout session URL")?)
@@ -312,7 +311,6 @@ impl StripeBilling {
             name: Some(StripeCustomerUpdateName::Auto),
             shipping: None,
         });
-        params.tax_id_collection = Some(StripeTaxIdCollection { enabled: true });
 
         let session = self.client.create_checkout_session(params).await?;
         Ok(session.url.context("no checkout session URL")?)

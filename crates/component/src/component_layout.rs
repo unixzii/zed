@@ -48,20 +48,20 @@ impl RenderOnce for ComponentExample {
             )
             .child(
                 div()
-                    .min_h(px(100.))
-                    .w_full()
-                    .p_8()
                     .flex()
-                    .items_center()
-                    .justify_center()
+                    .w_full()
                     .rounded_xl()
+                    .min_h(px(100.))
+                    .justify_center()
+                    .p_8()
                     .border_1()
                     .border_color(cx.theme().colors().border.opacity(0.5))
                     .bg(pattern_slash(
-                        cx.theme().colors().surface_background.opacity(0.25),
+                        cx.theme().colors().surface_background.opacity(0.5),
                         12.0,
                         12.0,
                     ))
+                    .shadow_xs()
                     .child(self.element),
             )
             .into_any_element()

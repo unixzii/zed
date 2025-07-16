@@ -119,10 +119,8 @@ impl MarkdownWriter {
                 .push_back(current_element.clone());
         }
 
-        if self.current_element_stack.len() < 200 {
-            for child in node.children.borrow().iter() {
-                self.visit_node(child, handlers)?;
-            }
+        for child in node.children.borrow().iter() {
+            self.visit_node(child, handlers)?;
         }
 
         if let Some(current_element) = current_element {

@@ -5905,6 +5905,7 @@ impl MultiBufferSnapshot {
 
             let depth = if found_indent {
                 line_indent.len(tab_size) / tab_size
+                    + ((line_indent.len(tab_size) % tab_size) > 0) as u32
             } else {
                 0
             };

@@ -6,24 +6,21 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
-use collections::{HashMap, HashSet};
+use collections::HashMap;
 use extension::{Extension, ExtensionLanguageServerProxy, WorktreeDelegate};
 use fs::Fs;
-use futures::{Future, FutureExt, future::join_all};
-use gpui::{App, AppContext, AsyncApp, Task};
+use futures::{Future, FutureExt};
+use gpui::AsyncApp;
 use language::{
     BinaryStatus, CodeLabel, HighlightId, Language, LanguageName, LanguageToolchainStore,
     LspAdapter, LspAdapterDelegate,
 };
-use lsp::{
-    CodeActionKind, LanguageServerBinary, LanguageServerBinaryOptions, LanguageServerName,
-    LanguageServerSelector,
-};
+use lsp::{CodeActionKind, LanguageServerBinary, LanguageServerBinaryOptions, LanguageServerName};
 use serde::Serialize;
 use serde_json::Value;
 use util::{ResultExt, fs::make_file_executable, maybe};
 
-use crate::{LanguageServerRegistryProxy, LspAccess};
+use crate::LanguageServerRegistryProxy;
 
 /// An adapter that allows an [`LspAdapterDelegate`] to be used as a [`WorktreeDelegate`].
 struct WorktreeDelegateAdapter(pub Arc<dyn LspAdapterDelegate>);
@@ -74,50 +71,10 @@ impl ExtensionLanguageServerProxy for LanguageServerRegistryProxy {
     fn remove_language_server(
         &self,
         language: &LanguageName,
-        language_server_name: &LanguageServerName,
-        cx: &mut App,
-    ) -> Task<Result<()>> {
+        language_server_id: &LanguageServerName,
+    ) {
         self.language_registry
-            .remove_lsp_adapter(language, language_server_name);
-
-        let mut tasks = Vec::new();
-        match &self.lsp_access {
-            LspAccess::ViaLspStore(lsp_store) => lsp_store.update(cx, |lsp_store, cx| {
-                let stop_task = lsp_store.stop_language_servers_for_buffers(
-                    Vec::new(),
-                    HashSet::from_iter([LanguageServerSelector::Name(
-                        language_server_name.clone(),
-                    )]),
-                    cx,
-                );
-                tasks.push(stop_task);
-            }),
-            LspAccess::ViaWorkspaces(lsp_store_provider) => {
-                if let Ok(lsp_stores) = lsp_store_provider(cx) {
-                    for lsp_store in lsp_stores {
-                        lsp_store.update(cx, |lsp_store, cx| {
-                            let stop_task = lsp_store.stop_language_servers_for_buffers(
-                                Vec::new(),
-                                HashSet::from_iter([LanguageServerSelector::Name(
-                                    language_server_name.clone(),
-                                )]),
-                                cx,
-                            );
-                            tasks.push(stop_task);
-                        });
-                    }
-                }
-            }
-            LspAccess::Noop => {}
-        }
-
-        cx.background_spawn(async move {
-            let results = join_all(tasks).await;
-            for result in results {
-                result?;
-            }
-            Ok(())
-        })
+            .remove_lsp_adapter(language, language_server_id);
     }
 
     fn update_language_server_status(

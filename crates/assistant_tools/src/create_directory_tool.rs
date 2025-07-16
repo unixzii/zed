@@ -46,7 +46,7 @@ impl Tool for CreateDirectoryTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolFolder
+        IconName::Folder
     }
 
     fn input_schema(&self, format: LanguageModelToolSchemaFormat) -> Result<serde_json::Value> {

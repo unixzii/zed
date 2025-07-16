@@ -27,8 +27,8 @@ use crate::stripe_client::{
     StripeMeter, StripePrice, StripePriceId, StripePriceRecurring, StripeSubscription,
     StripeSubscriptionId, StripeSubscriptionItem, StripeSubscriptionItemId,
     StripeSubscriptionTrialSettings, StripeSubscriptionTrialSettingsEndBehavior,
-    StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, StripeTaxIdCollection,
-    UpdateCustomerParams, UpdateSubscriptionParams,
+    StripeSubscriptionTrialSettingsEndBehaviorMissingPaymentMethod, UpdateCustomerParams,
+    UpdateSubscriptionParams,
 };
 
 pub struct RealStripeClient {
@@ -448,7 +448,6 @@ impl<'a> TryFrom<StripeCreateCheckoutSessionParams<'a>> for CreateCheckoutSessio
             success_url: value.success_url,
             billing_address_collection: value.billing_address_collection.map(Into::into),
             customer_update: value.customer_update.map(Into::into),
-            tax_id_collection: value.tax_id_collection.map(Into::into),
             ..Default::default()
         })
     }
@@ -588,14 +587,6 @@ impl From<StripeCustomerUpdate> for stripe::CreateCheckoutSessionCustomerUpdate 
             address: value.address.map(Into::into),
             name: value.name.map(Into::into),
             shipping: value.shipping.map(Into::into),
-        }
-    }
-}
-
-impl From<StripeTaxIdCollection> for stripe::CreateCheckoutSessionTaxIdCollection {
-    fn from(value: StripeTaxIdCollection) -> Self {
-        stripe::CreateCheckoutSessionTaxIdCollection {
-            enabled: value.enabled,
         }
     }
 }

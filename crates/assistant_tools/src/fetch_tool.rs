@@ -69,9 +69,10 @@ impl FetchTool {
             .to_str()
             .context("invalid Content-Type header")?;
         let content_type = match content_type {
-            "text/html" | "application/xhtml+xml" => ContentType::Html,
+            "text/html" => ContentType::Html,
+            "text/plain" => ContentType::Plaintext,
             "application/json" => ContentType::Json,
-            _ => ContentType::Plaintext,
+            _ => ContentType::Html,
         };
 
         match content_type {
@@ -129,7 +130,7 @@ impl Tool for FetchTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolWeb
+        IconName::Globe
     }
 
     fn input_schema(&self, format: LanguageModelToolSchemaFormat) -> Result<serde_json::Value> {

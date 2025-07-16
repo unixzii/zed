@@ -334,10 +334,7 @@ impl OllamaLanguageModel {
                 temperature: request.temperature.or(Some(1.0)),
                 ..Default::default()
             }),
-            think: self
-                .model
-                .supports_thinking
-                .map(|supports_thinking| supports_thinking && request.thinking_allowed),
+            think: self.model.supports_thinking,
             tools: request.tools.into_iter().map(tool_into_ollama).collect(),
         }
     }

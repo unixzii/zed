@@ -523,9 +523,7 @@ pub fn into_open_router(
             None
         },
         usage: open_router::RequestUsage { include: true },
-        reasoning: if request.thinking_allowed
-            && let OpenRouterModelMode::Thinking { budget_tokens } = model.mode
-        {
+        reasoning: if let OpenRouterModelMode::Thinking { budget_tokens } = model.mode {
             Some(open_router::Reasoning {
                 effort: None,
                 max_tokens: budget_tokens,

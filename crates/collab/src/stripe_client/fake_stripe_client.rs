@@ -14,8 +14,8 @@ use crate::stripe_client::{
     StripeCreateCheckoutSessionSubscriptionData, StripeCreateMeterEventParams,
     StripeCreateSubscriptionParams, StripeCustomer, StripeCustomerId, StripeCustomerUpdate,
     StripeMeter, StripeMeterId, StripePrice, StripePriceId, StripeSubscription,
-    StripeSubscriptionId, StripeSubscriptionItem, StripeSubscriptionItemId, StripeTaxIdCollection,
-    UpdateCustomerParams, UpdateSubscriptionParams,
+    StripeSubscriptionId, StripeSubscriptionItem, StripeSubscriptionItemId, UpdateCustomerParams,
+    UpdateSubscriptionParams,
 };
 
 #[derive(Debug, Clone)]
@@ -38,7 +38,6 @@ pub struct StripeCreateCheckoutSessionCall {
     pub success_url: Option<String>,
     pub billing_address_collection: Option<StripeBillingAddressCollection>,
     pub customer_update: Option<StripeCustomerUpdate>,
-    pub tax_id_collection: Option<StripeTaxIdCollection>,
 }
 
 pub struct FakeStripeClient {
@@ -237,7 +236,6 @@ impl StripeClient for FakeStripeClient {
                 success_url: params.success_url.map(|url| url.to_string()),
                 billing_address_collection: params.billing_address_collection,
                 customer_update: params.customer_update,
-                tax_id_collection: params.tax_id_collection,
             });
 
         Ok(StripeCheckoutSession {
