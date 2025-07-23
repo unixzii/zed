@@ -129,7 +129,7 @@ impl LanguageServerState {
 
         let mut first_button_encountered = false;
         for item in &self.items {
-            if let LspMenuItem::ToggleServersButton { restart } = item {
+            if let LspMenuItemKind::ToggleServersButton { restart } = &item.kind {
                 let label = if *restart {
                     "Restart All Servers"
                 } else {
@@ -169,13 +169,13 @@ impl LanguageServerState {
                                         .items
                                         .iter()
                                         // Do not try to use IDs as we have stopped all servers already, when allowing to restart them all
-                                        .flat_map(|item| match item {
-                                            LspMenuItem::Header { .. } => None,
-                                            LspMenuItem::ToggleServersButton { .. } => None,
-                                            LspMenuItem::WithHealthCheck { health, .. } => Some(
+                                        .flat_map(|item| match &item.kind {
+                                            LspMenuItemKind::Header { .. } => None,
+                                            LspMenuItemKind::ToggleServersButton { .. } => None,
+                                            LspMenuItemKind::WithHealthCheck { health, .. } => Some(
                                                 LanguageServerSelector::Name(health.name.clone()),
                                             ),
-                                            LspMenuItem::WithBinaryStatus {
+                                            LspMenuItemKind::WithBinaryStatus {
                                                 server_name, ..
                                             } => Some(LanguageServerSelector::Name(
                                                 server_name.clone(),
@@ -198,14 +198,14 @@ impl LanguageServerState {
                 }
                 menu = menu.item(button);
                 continue;
-            } else if let LspMenuItem::Header { header, separator } = item {
+            } else if let LspMenuItemKind::Header { header, separator } = &item.kind {
                 menu = menu
                     .when(*separator, |menu| menu.separator())
                     .when_some(header.as_ref(), |menu, header| menu.header(header));
                 continue;
             }
 
-            let Some(server_info) = item.server_info() else {
+            let Some(server_info) = item.kind.server_info() else {
                 continue;
             };
 
@@ -282,13 +282,19 @@ impl LanguageServerState {
                         .into_any_element()
                 },
                 {
+                    let item_id = item.id;
+                    let server_state = cx.entity();
                     let lsp_logs = lsp_logs.clone();
                     let message = message.clone();
                     let server_selector = server_selector.clone();
                     let server_name = server_info.name.clone();
                     let workspace = self.workspace.clone();
                     move |window, cx| {
-                        if has_logs {
+                        if let Some(message) = &message {
+                            // TODO kb does not work? should also clear the status?
+                            clear_item_message(item_id, &message, server_state.clone(), cx);
+                            show_server_message(message, server_name.clone(), workspace.clone(), window, cx);
+                        } else if has_logs {
                             lsp_logs.update(cx, |lsp_logs, cx| {
                                 lsp_logs.open_server_trace(
                                     workspace.clone(),
@@ -297,56 +303,6 @@ impl LanguageServerState {
                                     cx,
                                 );
                             });
-                        } else if let Some(message) = &message {
-                            let Some(create_buffer) = workspace
-                                .update(cx, |workspace, cx| {
-                                    workspace
-                                        .project()
-                                        .update(cx, |project, cx| project.create_buffer(cx))
-                                })
-                                .ok()
-                            else {
-                                return;
-                            };
-
-                            let window = window.window_handle();
-                            let workspace = workspace.clone();
-                            let message = message.clone();
-                            let server_name = server_name.clone();
-                            cx.spawn(async move |cx| {
-                                let buffer = create_buffer.await?;
-                                buffer.update(cx, |buffer, cx| {
-                                    buffer.edit(
-                                        [(
-                                            0..0,
-                                            format!("Language server {server_name}:\n\n{message}"),
-                                        )],
-                                        None,
-                                        cx,
-                                    );
-                                    buffer.set_capability(language::Capability::ReadOnly, cx);
-                                })?;
-
-                                workspace.update(cx, |workspace, cx| {
-                                    window.update(cx, |_, window, cx| {
-                                        workspace.add_item_to_active_pane(
-                                            Box::new(cx.new(|cx| {
-                                                let mut editor =
-                                                    Editor::for_buffer(buffer, None, window, cx);
-                                                editor.set_read_only(true);
-                                                editor
-                                            })),
-                                            None,
-                                            true,
-                                            window,
-                                            cx,
-                                        );
-                                    })
-                                })??;
-
-                                anyhow::Ok(())
-                            })
-                            .detach();
                         } else {
                             cx.propagate();
                             return;
@@ -363,6 +319,87 @@ impl LanguageServerState {
         }
         menu
     }
+}
+
+fn clear_item_message(item_id: usize, message: &SharedString, server_state: Entity<LanguageServerState>, cx: &mut App) {
+    server_state.update(cx, |server_state, _| {
+        if let Some(lsp_menu_item) = server_state.items.iter_mut().find(|item| item.id == item_id) {
+            match &mut lsp_menu_item.kind {
+                LspMenuItemKind::WithHealthCheck { health, binary_status, .. } => {
+                    if let Some((heath_message, _)) = health.health.as_mut() {
+                        if heath_message.as_ref() == Some(message) {
+                            *heath_message = None;
+                            return;
+                        }
+                    }
+                    if let Some(binary_status) = binary_status.as_mut() {
+                        if binary_status.message.as_ref() == Some(message) {
+                            binary_status.message = None;
+                        }
+                    }
+                },
+                LspMenuItemKind::WithBinaryStatus {binary_status, .. } => {
+                    if binary_status.message.as_ref() == Some(message) {
+                        binary_status.message = None;
+                    }
+                },
+                LspMenuItemKind::ToggleServersButton { .. } => {},
+                LspMenuItemKind::Header { .. } => {},
+            }
+        }
+    });
+}
+
+fn show_server_message(message: &SharedString, server_name: LanguageServerName, workspace: WeakEntity<Workspace>, window: &mut Window, cx: &mut App) {
+    let Some(create_buffer) = workspace
+        .update(cx, |workspace, cx| {
+            workspace
+                .project()
+                .update(cx, |project, cx| project.create_buffer(cx))
+        })
+        .ok()
+    else {
+        return;
+    };
+
+    let window = window.window_handle();
+    let workspace = workspace.clone();
+    let message = message.clone();
+    let server_name = server_name.clone();
+    cx.spawn(async move |cx| {
+        let buffer = create_buffer.await?;
+        buffer.update(cx, |buffer, cx| {
+            buffer.edit(
+                [(
+                    0..0,
+                    format!("Language server {server_name}:\n\n{message}"),
+                )],
+                None,
+                cx,
+            );
+            buffer.set_capability(language::Capability::ReadOnly, cx);
+        })?;
+
+        workspace.update(cx, |workspace, cx| {
+            window.update(cx, |_, window, cx| {
+                workspace.add_item_to_active_pane(
+                    Box::new(cx.new(|cx| {
+                        let mut editor =
+                            Editor::for_buffer(buffer, None, window, cx);
+                        editor.set_read_only(true);
+                        editor
+                    })),
+                    None,
+                    true,
+                    window,
+                    cx,
+                );
+            })
+        })??;
+
+        anyhow::Ok(())
+    })
+    .detach();
 }
 
 impl LanguageServers {
@@ -431,7 +468,13 @@ enum ServerData<'a> {
 }
 
 #[derive(Debug)]
-enum LspMenuItem {
+struct LspMenuItem {
+    id: usize,
+    kind: LspMenuItemKind,
+}
+
+#[derive(Debug)]
+enum LspMenuItemKind {
     WithHealthCheck {
         server_id: LanguageServerId,
         health: LanguageServerHealthStatus,
@@ -451,7 +494,7 @@ enum LspMenuItem {
     },
 }
 
-impl LspMenuItem {
+impl LspMenuItemKind {
     fn server_info(&self) -> Option<ServerInfo> {
         match self {
             Self::Header { .. } => None,
@@ -485,14 +528,14 @@ impl LspMenuItem {
 }
 
 impl ServerData<'_> {
-    fn into_lsp_item(self) -> LspMenuItem {
+    fn into_lsp_item(self) -> LspMenuItemKind {
         match self {
             Self::WithHealthCheck {
                 server_id,
                 health,
                 binary_status,
                 ..
-            } => LspMenuItem::WithHealthCheck {
+            } => LspMenuItemKind::WithHealthCheck {
                 server_id,
                 health: health.clone(),
                 binary_status: binary_status.cloned(),
@@ -502,7 +545,7 @@ impl ServerData<'_> {
                 server_name,
                 binary_status,
                 ..
-            } => LspMenuItem::WithBinaryStatus {
+            } => LspMenuItemKind::WithBinaryStatus {
                 server_id,
                 server_name: server_name.clone(),
                 binary_status: binary_status.clone(),
@@ -816,29 +859,50 @@ impl LspTool {
                 if worktree_servers.is_empty() {
                     continue;
                 }
-                new_lsp_items.push(LspMenuItem::Header {
-                    header: Some(worktree_name),
-                    separator: false,
+                new_lsp_items.push(LspMenuItem {
+                    kind: LspMenuItemKind::Header {
+                        header: Some(worktree_name),
+                        separator: false,
+                    },
+                    id: new_lsp_items.len(),
                 });
-                new_lsp_items.extend(worktree_servers.into_iter().map(ServerData::into_lsp_item));
+                for worktree_server_data in worktree_servers {
+                    new_lsp_items.push(LspMenuItem {
+                        kind: ServerData::into_lsp_item(worktree_server_data),
+                        id: new_lsp_items.len(),
+                    });
+                }
             }
             if !servers_without_worktree.is_empty() {
-                new_lsp_items.push(LspMenuItem::Header {
-                    header: Some(SharedString::from("Unknown worktree")),
-                    separator: false,
+                new_lsp_items.push(LspMenuItem {
+                    kind:LspMenuItemKind::Header {
+                        header: Some(SharedString::from("Unknown worktree")),
+                        separator: false,
+                    },
+                    id: new_lsp_items.len(),
                 });
-                new_lsp_items.extend(
-                    servers_without_worktree
-                        .into_iter()
-                        .map(ServerData::into_lsp_item),
-                );
+                for worktree_less_server_kind in servers_without_worktree {
+                        new_lsp_items.push(LspMenuItem {
+                            kind: ServerData::into_lsp_item(worktree_less_server_kind),
+                            id: new_lsp_items.len(),
+                        });
+                    }
             }
             if !new_lsp_items.is_empty() {
                 if can_stop_all {
-                    new_lsp_items.push(LspMenuItem::ToggleServersButton { restart: true });
-                    new_lsp_items.push(LspMenuItem::ToggleServersButton { restart: false });
+                    new_lsp_items.push(LspMenuItem {
+                        kind: LspMenuItemKind::ToggleServersButton { restart: true },
+                        id: new_lsp_items.len(),
+                    });
+                    new_lsp_items.push(LspMenuItem {
+                        kind: LspMenuItemKind::ToggleServersButton { restart: false },
+                        id: new_lsp_items.len(),
+                    });
                 } else if can_restart_all {
-                    new_lsp_items.push(LspMenuItem::ToggleServersButton { restart: true });
+                    new_lsp_items.push(LspMenuItem {
+                        kind: LspMenuItemKind::ToggleServersButton { restart: true },
+                        id: new_lsp_items.len(),
+                    });
                 }
             }
 
