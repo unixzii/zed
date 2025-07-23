@@ -5,7 +5,7 @@ pub mod rust_analyzer_ext;
 
 mod inlay_hint_cache;
 
-use self::inlay_hint_cache::InlayHintCache;
+use self::inlay_hint_cache::BufferInlayHints;
 use crate::{
     CodeAction, ColorPresentation, Completion, CompletionResponse, CompletionSource,
     CoreCompletion, DocumentColor, Hover, InlayHint, LocationLink, LspAction, LspPullDiagnostics,
@@ -1047,7 +1047,7 @@ impl LocalLspStore {
             })
             .detach();
 
-        json_language_server_ext::register_requests(this.clone(), language_server);
+        json_language_server_ext::register_requests(lsp_store.clone(), language_server);
         rust_analyzer_ext::register_notifications(lsp_store.clone(), language_server);
         clangd_ext::register_notifications(lsp_store, language_server, adapter);
     }
@@ -3541,7 +3541,7 @@ pub struct LspStore {
         HashMap<WorktreeId, HashMap<Arc<Path>, HashMap<LanguageServerId, DiagnosticSummary>>>,
     lsp_document_colors: HashMap<BufferId, DocumentColorData>,
     lsp_code_lens: HashMap<BufferId, CodeLensData>,
-    inlay_hint_data: HashMap<BufferId, InlayHintCache>,
+    inlay_hint_data: HashMap<BufferId, BufferInlayHints>,
 }
 
 #[derive(Debug, Default, Clone)]
