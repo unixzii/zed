@@ -139,7 +139,7 @@ impl Tool for EditFileTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolPencil
+        IconName::Pencil
     }
 
     fn input_schema(&self, format: LanguageModelToolSchemaFormat) -> Result<serde_json::Value> {
@@ -278,9 +278,6 @@ impl Tool for EditFileTool {
                 .unwrap_or(false);
 
             if format_on_save_enabled {
-                action_log.update(cx, |log, cx| {
-                    log.buffer_edited(buffer.clone(), cx);
-                })?;
                 let format_task = project.update(cx, |project, cx| {
                     project.format(
                         HashSet::from_iter([buffer.clone()]),
@@ -786,8 +783,8 @@ impl ToolCard for EditFileToolCard {
             .child(
                 h_flex()
                     .child(
-                        Icon::new(IconName::ToolPencil)
-                            .size(IconSize::Small)
+                        Icon::new(IconName::Pencil)
+                            .size(IconSize::XSmall)
                             .color(Color::Muted),
                     )
                     .child(

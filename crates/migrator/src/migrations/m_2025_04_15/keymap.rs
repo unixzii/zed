@@ -25,7 +25,7 @@ fn replace_string_action(
     None
 }
 
-/// "space": "outline_panel::Open" -> "outline_panel::OpenSelectedEntry"
+/// "ctrl-k ctrl-1": "inline_completion::ToggleMenu" -> "edit_prediction::ToggleMenu"
 static STRING_REPLACE: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
     HashMap::from_iter([("outline_panel::Open", "outline_panel::OpenSelectedEntry")])
 });

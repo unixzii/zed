@@ -33,7 +33,6 @@ use project::{
     Entry, EntryKind, Fs, GitEntry, GitEntryRef, GitTraversal, Project, ProjectEntryId,
     ProjectPath, Worktree, WorktreeId,
     git_store::{GitStoreEvent, git_traversal::ChildEntriesGitIter},
-    project_settings::GoToDiagnosticSeverityFilter,
     relativize_path,
 };
 use project_panel_settings::{
@@ -108,13 +107,11 @@ pub struct ProjectPanel {
     hide_scrollbar_task: Option<Task<()>>,
     diagnostics: HashMap<(WorktreeId, PathBuf), DiagnosticSeverity>,
     max_width_item_index: Option<usize>,
-    diagnostic_summary_update: Task<()>,
     // We keep track of the mouse down state on entries so we don't flash the UI
     // in case a user clicks to open a file.
     mouse_down: bool,
     hover_expand_task: Option<Task<()>>,
     previous_drag_position: Option<Point<Pixels>>,
-    sticky_items_count: usize,
 }
 
 struct DragTargetEntry {
@@ -209,24 +206,6 @@ struct Trash {
     pub skip_prompt: bool,
 }
 
-/// Selects the next entry with diagnostics.
-#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
-#[action(namespace = project_panel)]
-#[serde(deny_unknown_fields)]
-struct SelectNextDiagnostic {
-    #[serde(default)]
-    pub severity: GoToDiagnosticSeverityFilter,
-}
-
-/// Selects the previous entry with diagnostics.
-#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
-#[action(namespace = project_panel)]
-#[serde(deny_unknown_fields)]
-struct SelectPrevDiagnostic {
-    #[serde(default)]
-    pub severity: GoToDiagnosticSeverityFilter,
-}
-
 actions!(
     project_panel,
     [
@@ -276,6 +255,10 @@ actions!(
         SelectNextGitEntry,
         /// Selects the previous entry with git changes.
         SelectPrevGitEntry,
+        /// Selects the next entry with diagnostics.
+        SelectNextDiagnostic,
+        /// Selects the previous entry with diagnostics.
+        SelectPrevDiagnostic,
         /// Selects the next directory.
         SelectNextDirectory,
         /// Selects the previous directory.
@@ -319,35 +302,6 @@ pub fn init(cx: &mut App) {
                 panel.update(cx, |panel, cx| {
                     panel.collapse_all_entries(action, window, cx);
                 });
-            }
-        });
-
-        workspace.register_action(|workspace, action: &Rename, window, cx| {
-            workspace.open_panel::<ProjectPanel>(window, cx);
-            if let Some(panel) = workspace.panel::<ProjectPanel>(cx) {
-                panel.update(cx, |panel, cx| {
-                    if let Some(first_marked) = panel.marked_entries.first() {
-                        let first_marked = *first_marked;
-                        panel.marked_entries.clear();
-                        panel.selection = Some(first_marked);
-                    }
-                    panel.rename(action, window, cx);
-                });
-            }
-        });
-
-        workspace.register_action(|workspace, action: &Duplicate, window, cx| {
-            workspace.open_panel::<ProjectPanel>(window, cx);
-            if let Some(panel) = workspace.panel::<ProjectPanel>(cx) {
-                panel.update(cx, |panel, cx| {
-                    panel.duplicate(action, window, cx);
-                });
-            }
-        });
-
-        workspace.register_action(|workspace, action: &Delete, window, cx| {
-            if let Some(panel) = workspace.panel::<ProjectPanel>(cx) {
-                panel.update(cx, |panel, cx| panel.delete(action, window, cx));
             }
         });
     })
@@ -459,16 +413,8 @@ impl ProjectPanel {
                 | project::Event::DiagnosticsUpdated { .. } => {
                     if ProjectPanelSettings::get_global(cx).show_diagnostics != ShowDiagnostics::Off
                     {
-                        this.diagnostic_summary_update = cx.spawn(async move |this, cx| {
-                            cx.background_executor()
-                                .timer(Duration::from_millis(30))
-                                .await;
-                            this.update(cx, |this, cx| {
-                                this.update_diagnostics(cx);
-                                cx.notify();
-                            })
-                            .log_err();
-                        });
+                        this.update_diagnostics(cx);
+                        cx.notify();
                     }
                 }
                 project::Event::WorktreeRemoved(id) => {
@@ -573,9 +519,6 @@ impl ProjectPanel {
                     if project_panel_settings.hide_root != new_settings.hide_root {
                         this.update_visible_entries(None, cx);
                     }
-                    if project_panel_settings.sticky_scroll && !new_settings.sticky_scroll {
-                        this.sticky_items_count = 0;
-                    }
                     project_panel_settings = new_settings;
                     this.update_diagnostics(cx);
                     cx.notify();
@@ -614,12 +557,10 @@ impl ProjectPanel {
                     .parent_entity(&cx.entity()),
                 max_width_item_index: None,
                 diagnostics: Default::default(),
-                diagnostic_summary_update: Task::ready(()),
                 scroll_handle,
                 mouse_down: false,
                 hover_expand_task: None,
                 previous_drag_position: None,
-                sticky_items_count: 0,
             };
             this.update_visible_entries(None, cx);
 
@@ -2021,7 +1962,7 @@ impl ProjectPanel {
 
     fn select_prev_diagnostic(
         &mut self,
-        action: &SelectPrevDiagnostic,
+        _: &SelectPrevDiagnostic,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -2040,8 +1981,7 @@ impl ProjectPanel {
                     && entry.is_file()
                     && self
                         .diagnostics
-                        .get(&(worktree_id, entry.path.to_path_buf()))
-                        .is_some_and(|severity| action.severity.matches(*severity))
+                        .contains_key(&(worktree_id, entry.path.to_path_buf()))
             },
             cx,
         );
@@ -2057,7 +1997,7 @@ impl ProjectPanel {
 
     fn select_next_diagnostic(
         &mut self,
-        action: &SelectNextDiagnostic,
+        _: &SelectNextDiagnostic,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -2076,8 +2016,7 @@ impl ProjectPanel {
                     && entry.is_file()
                     && self
                         .diagnostics
-                        .get(&(worktree_id, entry.path.to_path_buf()))
-                        .is_some_and(|severity| action.severity.matches(*severity))
+                        .contains_key(&(worktree_id, entry.path.to_path_buf()))
             },
             cx,
         );
@@ -2272,11 +2211,8 @@ impl ProjectPanel {
 
     fn autoscroll(&mut self, cx: &mut Context<Self>) {
         if let Some((_, _, index)) = self.selection.and_then(|s| self.index_for_selection(s)) {
-            self.scroll_handle.scroll_to_item_with_offset(
-                index,
-                ScrollStrategy::Center,
-                self.sticky_items_count,
-            );
+            self.scroll_handle
+                .scroll_to_item(index, ScrollStrategy::Center);
             cx.notify();
         }
     }
@@ -2731,7 +2667,26 @@ impl ProjectPanel {
     }
 
     fn index_for_selection(&self, selection: SelectedEntry) -> Option<(usize, usize, usize)> {
-        self.index_for_entry(selection.entry_id, selection.worktree_id)
+        let mut entry_index = 0;
+        let mut visible_entries_index = 0;
+        for (worktree_index, (worktree_id, worktree_entries, _)) in
+            self.visible_entries.iter().enumerate()
+        {
+            if *worktree_id == selection.worktree_id {
+                for entry in worktree_entries {
+                    if entry.id == selection.entry_id {
+                        return Some((worktree_index, entry_index, visible_entries_index));
+                    } else {
+                        visible_entries_index += 1;
+                        entry_index += 1;
+                    }
+                }
+                break;
+            } else {
+                visible_entries_index += worktree_entries.len();
+            }
+        }
+        None
     }
 
     fn disjoint_entries(&self, cx: &App) -> BTreeSet<SelectedEntry> {
@@ -3342,12 +3297,12 @@ impl ProjectPanel {
         entry_id: ProjectEntryId,
         worktree_id: WorktreeId,
     ) -> Option<(usize, usize, usize)> {
+        let mut worktree_ix = 0;
         let mut total_ix = 0;
-        for (worktree_ix, (current_worktree_id, visible_worktree_entries, _)) in
-            self.visible_entries.iter().enumerate()
-        {
+        for (current_worktree_id, visible_worktree_entries, _) in &self.visible_entries {
             if worktree_id != *current_worktree_id {
                 total_ix += visible_worktree_entries.len();
+                worktree_ix += 1;
                 continue;
             }
 
@@ -4215,7 +4170,10 @@ impl ProjectPanel {
                         this.marked_entries.clear();
                         if is_sticky {
                             if let Some((_, _, index)) = this.index_for_entry(entry_id, worktree_id) {
-                                this.scroll_handle.scroll_to_item_with_offset(index, ScrollStrategy::Top, sticky_index.unwrap_or(0));
+                                let strategy = sticky_index
+                                    .map(ScrollStrategy::ToPosition)
+                                    .unwrap_or(ScrollStrategy::Top);
+                                this.scroll_handle.scroll_to_item(index, strategy);
                                 cx.notify();
                                 // move down by 1px so that clicked item
                                 // don't count as sticky anymore
@@ -4345,7 +4303,6 @@ impl ProjectPanel {
                                         .collect::<Vec<_>>();
 
                                     let components_len = components.len();
-                                    // TODO this can underflow
                                     let active_index = components_len
                                         - 1
                                         - folded_ancestors.current_ancestor_depth;
@@ -5352,10 +5309,7 @@ impl Render for ProjectPanel {
                                 items
                             },
                             |this, marker_entry, window, cx| {
-                                let sticky_entries =
-                                    this.render_sticky_entries(marker_entry, window, cx);
-                                this.sticky_items_count = sticky_entries.len();
-                                sticky_entries
+                                this.render_sticky_entries(marker_entry, window, cx)
                             },
                         );
                         list.with_decoration(if show_indent_guides {

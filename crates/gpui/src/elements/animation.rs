@@ -1,7 +1,4 @@
-use std::{
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use crate::{
     AnyElement, App, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, Window,
@@ -11,7 +8,6 @@ pub use easing::*;
 use smallvec::SmallVec;
 
 /// An animation that can be applied to an element.
-#[derive(Clone)]
 pub struct Animation {
     /// The amount of time for which this animation should run
     pub duration: Duration,
@@ -19,7 +15,7 @@ pub struct Animation {
     pub oneshot: bool,
     /// A function that takes a delta between 0 and 1 and returns a new delta
     /// between 0 and 1 based on the given easing function.
-    pub easing: Rc<dyn Fn(f32) -> f32>,
+    pub easing: Box<dyn Fn(f32) -> f32>,
 }
 
 impl Animation {
@@ -29,7 +25,7 @@ impl Animation {
         Self {
             duration,
             oneshot: true,
-            easing: Rc::new(linear),
+            easing: Box::new(linear),
         }
     }
 
@@ -43,7 +39,7 @@ impl Animation {
     /// The easing function will take a time delta between 0 and 1 and return a new delta
     /// between 0 and 1
     pub fn with_easing(mut self, easing: impl Fn(f32) -> f32 + 'static) -> Self {
-        self.easing = Rc::new(easing);
+        self.easing = Box::new(easing);
         self
     }
 }

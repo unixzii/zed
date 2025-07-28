@@ -69,7 +69,6 @@ pub struct AgentSettings {
     pub enable_feedback: bool,
     pub expand_edit_card: bool,
     pub expand_terminal_card: bool,
-    pub use_modifier_to_send: bool,
 }
 
 impl AgentSettings {
@@ -173,10 +172,6 @@ impl AgentSettingsContent {
 
     pub fn set_single_file_review(&mut self, allow: bool) {
         self.single_file_review = Some(allow);
-    }
-
-    pub fn set_use_modifier_to_send(&mut self, always_use: bool) {
-        self.use_modifier_to_send = Some(always_use);
     }
 
     pub fn set_profile(&mut self, profile_id: AgentProfileId) {
@@ -306,10 +301,6 @@ pub struct AgentSettingsContent {
     ///
     /// Default: true
     expand_terminal_card: Option<bool>,
-    /// Whether to always use cmd-enter (or ctrl-enter on Linux) to send messages in the agent panel.
-    ///
-    /// Default: false
-    use_modifier_to_send: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
@@ -464,10 +455,6 @@ impl Settings for AgentSettings {
             merge(
                 &mut settings.expand_terminal_card,
                 value.expand_terminal_card,
-            );
-            merge(
-                &mut settings.use_modifier_to_send,
-                value.use_modifier_to_send,
             );
 
             settings

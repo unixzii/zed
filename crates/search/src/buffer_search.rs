@@ -228,17 +228,16 @@ impl Render for BufferSearchBar {
         if in_replace {
             key_context.add("in_replace");
         }
-        let query_border = if self.query_error.is_some() {
+        let editor_border = if self.query_error.is_some() {
             Color::Error.color(cx)
         } else {
             cx.theme().colors().border
         };
-        let replacement_border = cx.theme().colors().border;
 
         let container_width = window.viewport_size().width;
         let input_width = SearchInputWidth::calc_width(container_width);
 
-        let input_base_styles = |border_color| {
+        let input_base_styles = || {
             h_flex()
                 .min_w_32()
                 .w(input_width)
@@ -247,7 +246,7 @@ impl Render for BufferSearchBar {
                 .pr_1()
                 .py_1()
                 .border_1()
-                .border_color(border_color)
+                .border_color(editor_border)
                 .rounded_lg()
         };
 
@@ -257,7 +256,7 @@ impl Render for BufferSearchBar {
                 el.child(Label::new("Find in results").color(Color::Hint))
             })
             .child(
-                input_base_styles(query_border)
+                input_base_styles()
                     .id("editor-scroll")
                     .track_scroll(&self.editor_scroll_handle)
                     .child(self.render_text_input(&self.query_editor, color_override, cx))
@@ -431,13 +430,11 @@ impl Render for BufferSearchBar {
         let replace_line = should_show_replace_input.then(|| {
             h_flex()
                 .gap_2()
-                .child(
-                    input_base_styles(replacement_border).child(self.render_text_input(
-                        &self.replacement_editor,
-                        None,
-                        cx,
-                    )),
-                )
+                .child(input_base_styles().child(self.render_text_input(
+                    &self.replacement_editor,
+                    None,
+                    cx,
+                )))
                 .child(
                     h_flex()
                         .min_w_64()
@@ -703,11 +700,7 @@ impl BufferSearchBar {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let query_editor = cx.new(|cx| {
-            let mut editor = Editor::single_line(window, cx);
-            editor.set_use_autoclose(false);
-            editor
-        });
+        let query_editor = cx.new(|cx| Editor::single_line(window, cx));
         cx.subscribe_in(&query_editor, window, Self::on_query_editor_event)
             .detach();
         let replacement_editor = cx.new(|cx| Editor::single_line(window, cx));
@@ -778,7 +771,6 @@ impl BufferSearchBar {
 
     pub fn dismiss(&mut self, _: &Dismiss, window: &mut Window, cx: &mut Context<Self>) {
         self.dismissed = true;
-        self.query_error = None;
         for searchable_item in self.searchable_items_with_matches.keys() {
             if let Some(searchable_item) =
                 WeakSearchableItemHandle::upgrade(searchable_item.as_ref(), cx)

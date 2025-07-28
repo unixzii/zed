@@ -15,4 +15,4 @@ brackets = [
 tab_size = 4
 hard_tabs = true
 debuggers = ["Delve"]
-documentation_comment = { start = "/*", prefix = "* ", end = "*/", tab_size = 1 }
+documentation = { start = "/*", end = "*/", prefix = "* ", tab_size = 1 }

@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result};
 use futures::{AsyncBufReadExt, AsyncReadExt, StreamExt, io::BufReader, stream::BoxStream};
 use http_client::{AsyncBody, HttpClient, Method, Request as HttpRequest, http};
 use serde::{Deserialize, Serialize};
@@ -276,15 +276,10 @@ impl Capabilities {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct LmStudioError {
-    pub message: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum ResponseStreamResult {
     Ok(ResponseStreamEvent),
-    Err { error: LmStudioError },
+    Err { error: String },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -397,6 +392,7 @@ pub async fn stream_chat_completion(
     let mut response = client.send(request).await?;
     if response.status().is_success() {
         let reader = BufReader::new(response.into_body());
+
         Ok(reader
             .lines()
             .filter_map(|line| async move {
@@ -406,16 +402,18 @@ pub async fn stream_chat_completion(
                         if line == "[DONE]" {
                             None
                         } else {
-                            match serde_json::from_str(line) {
-                                Ok(ResponseStreamResult::Ok(response)) => Some(Ok(response)),
-                                Ok(ResponseStreamResult::Err { error, .. }) => {
-                                    Some(Err(anyhow!(error.message)))
-                                }
-                                Err(error) => Some(Err(anyhow!(error))),
+                            let result = serde_json::from_str(&line)
+                                .context("Unable to parse chat completions response");
+                            if let Err(ref e) = result {
+                                eprintln!("Error parsing line: {e}\nLine content: '{line}'");
                             }
+                            Some(result)
                         }
                     }
-                    Err(error) => Some(Err(anyhow!(error))),
+                    Err(e) => {
+                        eprintln!("Error reading line: {e}");
+                        Some(Err(e.into()))
+                    }
                 }
             })
             .boxed())

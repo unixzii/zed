@@ -38,7 +38,7 @@ impl Tool for ContextServerTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolHammer
+        IconName::Cog
     }
 
     fn source(&self) -> ToolSource {

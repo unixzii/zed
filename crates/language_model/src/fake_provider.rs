@@ -10,20 +10,24 @@ use http_client::Result;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-#[derive(Clone)]
-pub struct FakeLanguageModelProvider {
-    id: LanguageModelProviderId,
-    name: LanguageModelProviderName,
+pub fn language_model_id() -> LanguageModelId {
+    LanguageModelId::from("fake".to_string())
 }
 
-impl Default for FakeLanguageModelProvider {
-    fn default() -> Self {
-        Self {
-            id: LanguageModelProviderId::from("fake".to_string()),
-            name: LanguageModelProviderName::from("Fake".to_string()),
-        }
-    }
+pub fn language_model_name() -> LanguageModelName {
+    LanguageModelName::from("Fake".to_string())
 }
+
+pub fn provider_id() -> LanguageModelProviderId {
+    LanguageModelProviderId::from("fake".to_string())
+}
+
+pub fn provider_name() -> LanguageModelProviderName {
+    LanguageModelProviderName::from("Fake".to_string())
+}
+
+#[derive(Clone, Default)]
+pub struct FakeLanguageModelProvider;
 
 impl LanguageModelProviderState for FakeLanguageModelProvider {
     type ObservableEntity = ();
@@ -35,11 +39,11 @@ impl LanguageModelProviderState for FakeLanguageModelProvider {
 
 impl LanguageModelProvider for FakeLanguageModelProvider {
     fn id(&self) -> LanguageModelProviderId {
-        self.id.clone()
+        provider_id()
     }
 
     fn name(&self) -> LanguageModelProviderName {
-        self.name.clone()
+        provider_name()
     }
 
     fn default_model(&self, _cx: &App) -> Option<Arc<dyn LanguageModel>> {
@@ -72,10 +76,6 @@ impl LanguageModelProvider for FakeLanguageModelProvider {
 }
 
 impl FakeLanguageModelProvider {
-    pub fn new(id: LanguageModelProviderId, name: LanguageModelProviderName) -> Self {
-        Self { id, name }
-    }
-
     pub fn test_model(&self) -> FakeLanguageModel {
         FakeLanguageModel::default()
     }
@@ -89,20 +89,9 @@ pub struct ToolUseRequest {
     pub schema: serde_json::Value,
 }
 
+#[derive(Default)]
 pub struct FakeLanguageModel {
-    provider_id: LanguageModelProviderId,
-    provider_name: LanguageModelProviderName,
     current_completion_txs: Mutex<Vec<(LanguageModelRequest, mpsc::UnboundedSender<String>)>>,
-}
-
-impl Default for FakeLanguageModel {
-    fn default() -> Self {
-        Self {
-            provider_id: LanguageModelProviderId::from("fake".to_string()),
-            provider_name: LanguageModelProviderName::from("Fake".to_string()),
-            current_completion_txs: Mutex::new(Vec::new()),
-        }
-    }
 }
 
 impl FakeLanguageModel {
@@ -149,19 +138,19 @@ impl FakeLanguageModel {
 
 impl LanguageModel for FakeLanguageModel {
     fn id(&self) -> LanguageModelId {
-        LanguageModelId::from("fake".to_string())
+        language_model_id()
     }
 
     fn name(&self) -> LanguageModelName {
-        LanguageModelName::from("Fake".to_string())
+        language_model_name()
     }
 
     fn provider_id(&self) -> LanguageModelProviderId {
-        self.provider_id.clone()
+        provider_id()
     }
 
     fn provider_name(&self) -> LanguageModelProviderName {
-        self.provider_name.clone()
+        provider_name()
     }
 
     fn supports_tools(&self) -> bool {

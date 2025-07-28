@@ -2,7 +2,6 @@ use crate::persistence::DebuggerPaneItem;
 use crate::session::DebugSession;
 use crate::session::running::RunningState;
 use crate::session::running::breakpoint_list::BreakpointList;
-
 use crate::{
     ClearAllBreakpoints, Continue, CopyDebugAdapterArguments, Detach, FocusBreakpointList,
     FocusConsole, FocusFrames, FocusLoadedSources, FocusModules, FocusTerminal, FocusVariables,
@@ -10,7 +9,6 @@ use crate::{
     ToggleExpandItem, ToggleSessionPicker, ToggleThreadPicker, persistence, spawn_task_or_modal,
 };
 use anyhow::{Context as _, Result, anyhow};
-use collections::IndexMap;
 use dap::adapters::DebugAdapterName;
 use dap::debugger_settings::DebugPanelDockPosition;
 use dap::{
@@ -28,7 +26,7 @@ use text::ToPoint as _;
 
 use itertools::Itertools as _;
 use language::Buffer;
-use project::debugger::session::{Session, SessionQuirks, SessionState, SessionStateEvent};
+use project::debugger::session::{Session, SessionStateEvent};
 use project::{DebugScenarioContext, Fs, ProjectPath, TaskSourceKind, WorktreeId};
 use project::{Project, debugger::session::ThreadStatus};
 use rpc::proto::{self};
@@ -37,7 +35,7 @@ use std::sync::{Arc, LazyLock};
 use task::{DebugScenario, TaskContext};
 use tree_sitter::{Query, StreamingIterator as _};
 use ui::{ContextMenu, Divider, PopoverMenuHandle, Tooltip, prelude::*};
-use util::{ResultExt, debug_panic, maybe};
+use util::{ResultExt, maybe};
 use workspace::SplitDirection;
 use workspace::item::SaveOptions;
 use workspace::{
@@ -65,14 +63,13 @@ pub enum DebugPanelEvent {
 
 pub struct DebugPanel {
     size: Pixels,
+    sessions: Vec<Entity<DebugSession>>,
     active_session: Option<Entity<DebugSession>>,
     project: Entity<Project>,
     workspace: WeakEntity<Workspace>,
     focus_handle: FocusHandle,
     context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
     debug_scenario_scheduled_last: bool,
-    pub(crate) sessions_with_children:
-        IndexMap<Entity<DebugSession>, Vec<WeakEntity<DebugSession>>>,
     pub(crate) thread_picker_menu_handle: PopoverMenuHandle<ContextMenu>,
     pub(crate) session_picker_menu_handle: PopoverMenuHandle<ContextMenu>,
     fs: Arc<dyn Fs>,
@@ -103,7 +100,7 @@ impl DebugPanel {
 
             Self {
                 size: px(300.),
-                sessions_with_children: Default::default(),
+                sessions: vec![],
                 active_session: None,
                 focus_handle,
                 breakpoint_list: BreakpointList::new(
@@ -141,9 +138,8 @@ impl DebugPanel {
         });
     }
 
-    #[cfg(test)]
-    pub(crate) fn sessions(&self) -> impl Iterator<Item = Entity<DebugSession>> {
-        self.sessions_with_children.keys().cloned()
+    pub(crate) fn sessions(&self) -> Vec<Entity<DebugSession>> {
+        self.sessions.clone()
     }
 
     pub fn active_session(&self) -> Option<Entity<DebugSession>> {
@@ -189,20 +185,12 @@ impl DebugPanel {
         cx: &mut Context<Self>,
     ) {
         let dap_store = self.project.read(cx).dap_store();
-        let Some(adapter) = DapRegistry::global(cx).adapter(&scenario.adapter) else {
-            return;
-        };
-        let quirks = SessionQuirks {
-            compact: adapter.compact_child_session(),
-            prefer_thread_name: adapter.prefer_thread_name(),
-        };
         let session = dap_store.update(cx, |dap_store, cx| {
             dap_store.new_session(
-                Some(scenario.label.clone()),
+                scenario.label.clone(),
                 DebugAdapterName(scenario.adapter.clone()),
                 task_context.clone(),
                 None,
-                quirks,
                 cx,
             )
         });
@@ -279,34 +267,22 @@ impl DebugPanel {
             }
         });
 
-        let boot_task = cx.spawn({
-            let session = session.clone();
-
-            async move |_, cx| {
-                if let Err(error) = task.await {
-                    log::error!("{error}");
-                    session
-                        .update(cx, |session, cx| {
-                            session
-                                .console_output(cx)
-                                .unbounded_send(format!("error: {}", error))
-                                .ok();
-                            session.shutdown(cx)
-                        })?
-                        .await;
-                }
-                anyhow::Ok(())
+        cx.spawn(async move |_, cx| {
+            if let Err(error) = task.await {
+                log::error!("{error}");
+                session
+                    .update(cx, |session, cx| {
+                        session
+                            .console_output(cx)
+                            .unbounded_send(format!("error: {}", error))
+                            .ok();
+                        session.shutdown(cx)
+                    })?
+                    .await;
             }
-        });
-
-        session.update(cx, |session, _| match &mut session.mode {
-            SessionState::Building(state_task) => {
-                *state_task = Some(boot_task);
-            }
-            SessionState::Running(_) => {
-                debug_panic!("Session state should be in building because we are just starting it");
-            }
-        });
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
     }
 
     pub(crate) fn rerun_last_session(
@@ -387,15 +363,14 @@ impl DebugPanel {
         };
 
         let dap_store_handle = self.project.read(cx).dap_store().clone();
-        let label = curr_session.read(cx).label();
-        let quirks = curr_session.read(cx).quirks();
+        let label = curr_session.read(cx).label().clone();
         let adapter = curr_session.read(cx).adapter().clone();
         let binary = curr_session.read(cx).binary().cloned().unwrap();
         let task_context = curr_session.read(cx).task_context().clone();
 
         let curr_session_id = curr_session.read(cx).session_id();
-        self.sessions_with_children
-            .retain(|session, _| session.read(cx).session_id(cx) != curr_session_id);
+        self.sessions
+            .retain(|session| session.read(cx).session_id(cx) != curr_session_id);
         let task = dap_store_handle.update(cx, |dap_store, cx| {
             dap_store.shutdown_session(curr_session_id, cx)
         });
@@ -404,7 +379,7 @@ impl DebugPanel {
             task.await.log_err();
 
             let (session, task) = dap_store_handle.update(cx, |dap_store, cx| {
-                let session = dap_store.new_session(label, adapter, task_context, None, quirks, cx);
+                let session = dap_store.new_session(label, adapter, task_context, None, cx);
 
                 let task = session.update(cx, |session, cx| {
                     session.boot(binary, worktree, dap_store_handle.downgrade(), cx)
@@ -450,7 +425,6 @@ impl DebugPanel {
         let dap_store_handle = self.project.read(cx).dap_store().clone();
         let label = self.label_for_child_session(&parent_session, request, cx);
         let adapter = parent_session.read(cx).adapter().clone();
-        let quirks = parent_session.read(cx).quirks();
         let Some(mut binary) = parent_session.read(cx).binary().cloned() else {
             log::error!("Attempted to start a child-session without a binary");
             return;
@@ -464,7 +438,6 @@ impl DebugPanel {
                     adapter,
                     task_context,
                     Some(parent_session.clone()),
-                    quirks,
                     cx,
                 );
 
@@ -490,8 +463,8 @@ impl DebugPanel {
         cx: &mut Context<Self>,
     ) {
         let Some(session) = self
-            .sessions_with_children
-            .keys()
+            .sessions
+            .iter()
             .find(|other| entity_id == other.entity_id())
             .cloned()
         else {
@@ -525,14 +498,15 @@ impl DebugPanel {
             }
             session.update(cx, |session, cx| session.shutdown(cx)).ok();
             this.update(cx, |this, cx| {
-                this.retain_sessions(|other| entity_id != other.entity_id());
+                this.sessions.retain(|other| entity_id != other.entity_id());
+
                 if let Some(active_session_id) = this
                     .active_session
                     .as_ref()
                     .map(|session| session.entity_id())
                 {
                     if active_session_id == entity_id {
-                        this.active_session = this.sessions_with_children.keys().next().cloned();
+                        this.active_session = this.sessions.first().cloned();
                     }
                 }
                 cx.notify()
@@ -647,14 +621,6 @@ impl DebugPanel {
                 .icon_size(IconSize::Small)
                 .on_click(move |_, _, cx| cx.open_url("https://zed.dev/docs/debugger"))
                 .tooltip(Tooltip::text("Open Documentation"))
-        };
-        let logs_button = || {
-            IconButton::new("debug-open-logs", IconName::ScrollText)
-                .icon_size(IconSize::Small)
-                .on_click(move |_, window, cx| {
-                    window.dispatch_action(debugger_tools::OpenDebugAdapterLogs.boxed_clone(), cx)
-                })
-                .tooltip(Tooltip::text("Open Debug Adapter Logs"))
         };
 
         Some(
@@ -839,24 +805,13 @@ impl DebugPanel {
                                             .on_click(window.listener_for(
                                                 &running_state,
                                                 |this, _, _window, cx| {
-                                                    if this.session().read(cx).is_building() {
-                                                        this.session().update(cx, |session, cx| {
-                                                            session.shutdown(cx).detach()
-                                                        });
-                                                    } else {
-                                                        this.stop_thread(cx);
-                                                    }
+                                                    this.stop_thread(cx);
                                                 },
                                             ))
-                                            .disabled(active_session.as_ref().is_none_or(
-                                                |session| {
-                                                    session
-                                                        .read(cx)
-                                                        .session(cx)
-                                                        .read(cx)
-                                                        .is_terminated()
-                                                },
-                                            ))
+                                            .disabled(
+                                                thread_status != ThreadStatus::Stopped
+                                                    && thread_status != ThreadStatus::Running,
+                                            )
                                             .tooltip({
                                                 let focus_handle = focus_handle.clone();
                                                 let label = if capabilities
@@ -918,7 +873,6 @@ impl DebugPanel {
                         .justify_around()
                         .when(is_side, |this| {
                             this.child(new_session_button())
-                                .child(logs_button())
                                 .child(documentation_button())
                         }),
                 )
@@ -968,7 +922,6 @@ impl DebugPanel {
                                 ))
                                 .when(!is_side, |this| {
                                     this.child(new_session_button())
-                                        .child(logs_button())
                                         .child(documentation_button())
                                 }),
                         ),
@@ -1013,8 +966,8 @@ impl DebugPanel {
         cx: &mut Context<Self>,
     ) {
         if let Some(session) = self
-            .sessions_with_children
-            .keys()
+            .sessions
+            .iter()
             .find(|session| session.read(cx).session_id(cx) == session_id)
         {
             self.activate_session(session.clone(), window, cx);
@@ -1027,7 +980,7 @@ impl DebugPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        debug_assert!(self.sessions_with_children.contains_key(&session_item));
+        debug_assert!(self.sessions.contains(&session_item));
         session_item.focus_handle(cx).focus(window);
         session_item.update(cx, |this, cx| {
             this.running_state().update(cx, |this, cx| {
@@ -1298,27 +1251,18 @@ impl DebugPanel {
         parent_session: &Entity<Session>,
         request: &StartDebuggingRequestArguments,
         cx: &mut Context<'_, Self>,
-    ) -> Option<SharedString> {
+    ) -> SharedString {
         let adapter = parent_session.read(cx).adapter();
         if let Some(adapter) = DapRegistry::global(cx).adapter(&adapter) {
             if let Some(label) = adapter.label_for_child_session(request) {
-                return Some(label.into());
+                return label.into();
             }
         }
-        None
-    }
-
-    fn retain_sessions(&mut self, keep: impl Fn(&Entity<DebugSession>) -> bool) {
-        self.sessions_with_children
-            .retain(|session, _| keep(session));
-        for children in self.sessions_with_children.values_mut() {
-            children.retain(|child| {
-                let Some(child) = child.upgrade() else {
-                    return false;
-                };
-                keep(&child)
-            });
+        let mut label = parent_session.read(cx).label().clone();
+        if !label.ends_with("(child)") {
+            label = format!("{label} (child)").into();
         }
+        label
     }
 }
 
@@ -1348,11 +1292,11 @@ async fn register_session_inner(
     let serialized_layout = persistence::get_serialized_layout(adapter_name).await;
     let debug_session = this.update_in(cx, |this, window, cx| {
         let parent_session = this
-            .sessions_with_children
-            .keys()
+            .sessions
+            .iter()
             .find(|p| Some(p.read(cx).session_id(cx)) == session.read(cx).parent_id(cx))
             .cloned();
-        this.retain_sessions(|session| {
+        this.sessions.retain(|session| {
             !session
                 .read(cx)
                 .running_state()
@@ -1383,23 +1327,13 @@ async fn register_session_inner(
         )
         .detach();
         let insert_position = this
-            .sessions_with_children
-            .keys()
+            .sessions
+            .iter()
             .position(|session| Some(session) == parent_session.as_ref())
             .map(|position| position + 1)
-            .unwrap_or(this.sessions_with_children.len());
+            .unwrap_or(this.sessions.len());
         // Maintain topological sort order of sessions
-        let (_, old) = this.sessions_with_children.insert_before(
-            insert_position,
-            debug_session.clone(),
-            Default::default(),
-        );
-        debug_assert!(old.is_none());
-        if let Some(parent_session) = parent_session {
-            this.sessions_with_children
-                .entry(parent_session)
-                .and_modify(|children| children.push(debug_session.downgrade()));
-        }
+        this.sessions.insert(insert_position, debug_session.clone());
 
         debug_session
     })?;
@@ -1439,7 +1373,7 @@ impl Panel for DebugPanel {
         cx: &mut Context<Self>,
     ) {
         if position.axis() != self.position(window, cx).axis() {
-            self.sessions_with_children.keys().for_each(|session_item| {
+            self.sessions.iter().for_each(|session_item| {
                 session_item.update(cx, |item, cx| {
                     item.running_state()
                         .update(cx, |state, _| state.invert_axies())
@@ -1806,7 +1740,6 @@ impl Render for DebugPanel {
                                                 .child(breakpoint_list)
                                                 .child(Divider::vertical())
                                                 .child(welcome_experience)
-                                                .child(Divider::vertical())
                                         } else {
                                             this.items_end()
                                                 .child(welcome_experience)

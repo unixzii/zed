@@ -74,6 +74,7 @@ impl UndoMap {
                 undo_id: Default::default(),
             },
             Bias::Left,
+            &(),
         );
 
         let mut undo_count = 0;
@@ -98,6 +99,7 @@ impl UndoMap {
                 undo_id: Default::default(),
             },
             Bias::Left,
+            &(),
         );
 
         let mut undo_count = 0;

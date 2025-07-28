@@ -14,8 +14,7 @@ use futures::Future;
 use gpui::{Context, Entity, Focusable as _, VisualTestContext, Window};
 use indoc::indoc;
 use language::{
-    BlockCommentConfig, FakeLspAdapter, Language, LanguageConfig, LanguageMatcher, LanguageQueries,
-    point_to_lsp,
+    FakeLspAdapter, Language, LanguageConfig, LanguageMatcher, LanguageQueries, point_to_lsp,
 };
 use lsp::{notification, request};
 use multi_buffer::ToPointUtf16;
@@ -270,12 +269,7 @@ impl EditorLspTestContext {
                     path_suffixes: vec!["html".into()],
                     ..Default::default()
                 },
-                block_comment: Some(BlockCommentConfig {
-                    start: "<!--".into(),
-                    prefix: "".into(),
-                    end: "-->".into(),
-                    tab_size: 0,
-                }),
+                block_comment: Some(("<!-- ".into(), " -->".into())),
                 completion_query_characters: ['-'].into_iter().collect(),
                 ..Default::default()
             },

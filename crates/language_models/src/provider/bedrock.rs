@@ -243,7 +243,7 @@ impl State {
 
 pub struct BedrockLanguageModelProvider {
     http_client: AwsHttpClient,
-    handle: tokio::runtime::Handle,
+    handler: tokio::runtime::Handle,
     state: gpui::Entity<State>,
 }
 
@@ -258,9 +258,13 @@ impl BedrockLanguageModelProvider {
             }),
         });
 
+        let tokio_handle = Tokio::handle(cx);
+
+        let coerced_client = AwsHttpClient::new(http_client.clone(), tokio_handle.clone());
+
         Self {
-            http_client: AwsHttpClient::new(http_client.clone()),
-            handle: Tokio::handle(cx),
+            http_client: coerced_client,
+            handler: tokio_handle.clone(),
             state,
         }
     }
@@ -270,7 +274,7 @@ impl BedrockLanguageModelProvider {
             id: LanguageModelId::from(model.id().to_string()),
             model,
             http_client: self.http_client.clone(),
-            handle: self.handle.clone(),
+            handler: self.handler.clone(),
             state: self.state.clone(),
             client: OnceCell::new(),
             request_limiter: RateLimiter::new(4),
@@ -371,7 +375,7 @@ struct BedrockModel {
     id: LanguageModelId,
     model: Model,
     http_client: AwsHttpClient,
-    handle: tokio::runtime::Handle,
+    handler: tokio::runtime::Handle,
     client: OnceCell<BedrockClient>,
     state: gpui::Entity<State>,
     request_limiter: RateLimiter,
@@ -443,7 +447,7 @@ impl BedrockModel {
                     }
                 }
 
-                let config = self.handle.block_on(config_builder.load());
+                let config = self.handler.block_on(config_builder.load());
                 anyhow::Ok(BedrockClient::new(&config))
             })
             .context("initializing Bedrock client")?;
@@ -795,9 +799,7 @@ pub fn into_bedrock(
         max_tokens: max_output_tokens,
         system: Some(system_message),
         tools: Some(tool_config),
-        thinking: if request.thinking_allowed
-            && let BedrockModelMode::Thinking { budget_tokens } = mode
-        {
+        thinking: if let BedrockModelMode::Thinking { budget_tokens } = mode {
             Some(bedrock::Thinking::Enabled { budget_tokens })
         } else {
             None

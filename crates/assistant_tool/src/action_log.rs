@@ -8,10 +8,7 @@ use language::{Anchor, Buffer, BufferEvent, DiskState, Point, ToPoint};
 use project::{Project, ProjectItem, lsp_store::OpenLspBufferHandle};
 use std::{cmp, ops::Range, sync::Arc};
 use text::{Edit, Patch, Rope};
-use util::{
-    RangeExt, ResultExt as _,
-    paths::{PathStyle, RemotePathBuf},
-};
+use util::RangeExt;
 
 /// Tracks actions performed by tools in a thread
 pub struct ActionLog {
@@ -21,6 +18,8 @@ pub struct ActionLog {
     edited_since_project_diagnostics_check: bool,
     /// The project this action log is associated with
     project: Entity<Project>,
+    /// Tracks which buffer versions have already been notified as changed externally
+    notified_versions: BTreeMap<Entity<Buffer>, clock::Global>,
 }
 
 impl ActionLog {
@@ -30,6 +29,7 @@ impl ActionLog {
             tracked_buffers: BTreeMap::default(),
             edited_since_project_diagnostics_check: false,
             project,
+            notified_versions: BTreeMap::default(),
         }
     }
 
@@ -47,65 +47,6 @@ impl ActionLog {
         self.edited_since_project_diagnostics_check
     }
 
-    pub fn latest_snapshot(&self, buffer: &Entity<Buffer>) -> Option<text::BufferSnapshot> {
-        Some(self.tracked_buffers.get(buffer)?.snapshot.clone())
-    }
-
-    /// Return a unified diff patch with user edits made since last read or notification
-    pub fn unnotified_user_edits(&self, cx: &Context<Self>) -> Option<String> {
-        let diffs = self
-            .tracked_buffers
-            .values()
-            .filter_map(|tracked| {
-                if !tracked.may_have_unnotified_user_edits {
-                    return None;
-                }
-
-                let text_with_latest_user_edits = tracked.diff_base.to_string();
-                let text_with_last_seen_user_edits = tracked.last_seen_base.to_string();
-                if text_with_latest_user_edits == text_with_last_seen_user_edits {
-                    return None;
-                }
-                let patch = language::unified_diff(
-                    &text_with_last_seen_user_edits,
-                    &text_with_latest_user_edits,
-                );
-
-                let buffer = tracked.buffer.clone();
-                let file_path = buffer
-                    .read(cx)
-                    .file()
-                    .map(|file| RemotePathBuf::new(file.full_path(cx), PathStyle::Posix).to_proto())
-                    .unwrap_or_else(|| format!("buffer_{}", buffer.entity_id()));
-
-                let mut result = String::new();
-                result.push_str(&format!("--- a/{}\n", file_path));
-                result.push_str(&format!("+++ b/{}\n", file_path));
-                result.push_str(&patch);
-
-                Some(result)
-            })
-            .collect::<Vec<_>>();
-
-        if diffs.is_empty() {
-            return None;
-        }
-
-        let unified_diff = diffs.join("\n\n");
-        Some(unified_diff)
-    }
-
-    /// Return a unified diff patch with user edits made since last read/notification
-    /// and mark them as notified
-    pub fn flush_unnotified_user_edits(&mut self, cx: &Context<Self>) -> Option<String> {
-        let patch = self.unnotified_user_edits(cx);
-        self.tracked_buffers.values_mut().for_each(|tracked| {
-            tracked.may_have_unnotified_user_edits = false;
-            tracked.last_seen_base = tracked.diff_base.clone();
-        });
-        patch
-    }
-
     fn track_buffer_internal(
         &mut self,
         buffer: Entity<Buffer>,
@@ -114,6 +55,7 @@ impl ActionLog {
     ) -> &mut TrackedBuffer {
         let status = if is_created {
             if let Some(tracked) = self.tracked_buffers.remove(&buffer) {
+                self.notified_versions.remove(&buffer);
                 match tracked.status {
                     TrackedBufferStatus::Created {
                         existing_file_content,
@@ -155,31 +97,26 @@ impl ActionLog {
                 let diff = cx.new(|cx| BufferDiff::new(&text_snapshot, cx));
                 let (diff_update_tx, diff_update_rx) = mpsc::unbounded();
                 let diff_base;
-                let last_seen_base;
                 let unreviewed_edits;
                 if is_created {
                     diff_base = Rope::default();
-                    last_seen_base = Rope::default();
                     unreviewed_edits = Patch::new(vec![Edit {
                         old: 0..1,
                         new: 0..text_snapshot.max_point().row + 1,
                     }])
                 } else {
                     diff_base = buffer.read(cx).as_rope().clone();
-                    last_seen_base = diff_base.clone();
                     unreviewed_edits = Patch::default();
                 }
                 TrackedBuffer {
                     buffer: buffer.clone(),
                     diff_base,
-                    last_seen_base,
                     unreviewed_edits,
                     snapshot: text_snapshot.clone(),
                     status,
                     version: buffer.read(cx).version(),
                     diff,
                     diff_update: diff_update_tx,
-                    may_have_unnotified_user_edits: false,
                     _open_lsp_handle: open_lsp_handle,
                     _maintain_diff: cx.spawn({
                         let buffer = buffer.clone();
@@ -233,6 +170,7 @@ impl ActionLog {
                     // If the buffer had been edited by a tool, but it got
                     // deleted externally, we want to stop tracking it.
                     self.tracked_buffers.remove(&buffer);
+                    self.notified_versions.remove(&buffer);
                 }
                 cx.notify();
             }
@@ -246,6 +184,7 @@ impl ActionLog {
                     // resurrected externally, we want to clear the edits we
                     // were tracking and reset the buffer's state.
                     self.tracked_buffers.remove(&buffer);
+                    self.notified_versions.remove(&buffer);
                     self.track_buffer_internal(buffer, false, cx);
                 }
                 cx.notify();
@@ -319,10 +258,10 @@ impl ActionLog {
         buffer_snapshot: text::BufferSnapshot,
         cx: &mut AsyncApp,
     ) -> Result<()> {
-        let rebase = this.update(cx, |this, cx| {
+        let rebase = this.read_with(cx, |this, cx| {
             let tracked_buffer = this
                 .tracked_buffers
-                .get_mut(buffer)
+                .get(buffer)
                 .context("buffer not tracked")?;
 
             let rebase = cx.background_spawn({
@@ -330,35 +269,23 @@ impl ActionLog {
                 let old_snapshot = tracked_buffer.snapshot.clone();
                 let new_snapshot = buffer_snapshot.clone();
                 let unreviewed_edits = tracked_buffer.unreviewed_edits.clone();
-                let edits = diff_snapshots(&old_snapshot, &new_snapshot);
-                let mut has_user_changes = false;
                 async move {
+                    let edits = diff_snapshots(&old_snapshot, &new_snapshot);
                     if let ChangeAuthor::User = author {
-                        has_user_changes = apply_non_conflicting_edits(
+                        apply_non_conflicting_edits(
                             &unreviewed_edits,
                             edits,
                             &mut base_text,
                             new_snapshot.as_rope(),
                         );
                     }
-
-                    (Arc::new(base_text.to_string()), base_text, has_user_changes)
+                    (Arc::new(base_text.to_string()), base_text)
                 }
             });
 
             anyhow::Ok(rebase)
         })??;
-        let (new_base_text, new_diff_base, has_user_changes) = rebase.await;
-
-        this.update(cx, |this, _| {
-            let tracked_buffer = this
-                .tracked_buffers
-                .get_mut(buffer)
-                .context("buffer not tracked")
-                .unwrap();
-            tracked_buffer.may_have_unnotified_user_edits |= has_user_changes;
-        })?;
-
+        let (new_base_text, new_diff_base) = rebase.await;
         Self::update_diff(
             this,
             buffer,
@@ -563,6 +490,7 @@ impl ActionLog {
         match tracked_buffer.status {
             TrackedBufferStatus::Created { .. } => {
                 self.tracked_buffers.remove(&buffer);
+                self.notified_versions.remove(&buffer);
                 cx.notify();
             }
             TrackedBufferStatus::Modified => {
@@ -588,6 +516,7 @@ impl ActionLog {
         match tracked_buffer.status {
             TrackedBufferStatus::Deleted => {
                 self.tracked_buffers.remove(&buffer);
+                self.notified_versions.remove(&buffer);
                 cx.notify();
             }
             _ => {
@@ -696,6 +625,7 @@ impl ActionLog {
                 };
 
                 self.tracked_buffers.remove(&buffer);
+                self.notified_versions.remove(&buffer);
                 cx.notify();
                 task
             }
@@ -709,6 +639,7 @@ impl ActionLog {
 
                 // Clear all tracked edits for this buffer and start over as if we just read it.
                 self.tracked_buffers.remove(&buffer);
+                self.notified_versions.remove(&buffer);
                 self.buffer_read(buffer.clone(), cx);
                 cx.notify();
                 save
@@ -784,22 +715,6 @@ impl ActionLog {
         cx.notify();
     }
 
-    pub fn reject_all_edits(&mut self, cx: &mut Context<Self>) -> Task<()> {
-        let futures = self.changed_buffers(cx).into_keys().map(|buffer| {
-            let reject = self.reject_edits_in_ranges(buffer, vec![Anchor::MIN..Anchor::MAX], cx);
-
-            async move {
-                reject.await.log_err();
-            }
-        });
-
-        let task = futures::future::join_all(futures);
-
-        cx.spawn(async move |_, _| {
-            task.await;
-        })
-    }
-
     /// Returns the set of buffers that contain edits that haven't been reviewed by the user.
     pub fn changed_buffers(&self, cx: &App) -> BTreeMap<Entity<Buffer>, Entity<BufferDiff>> {
         self.tracked_buffers
@@ -807,6 +722,33 @@ impl ActionLog {
             .filter(|(_, tracked)| tracked.has_edits(cx))
             .map(|(buffer, tracked)| (buffer.clone(), tracked.diff.clone()))
             .collect()
+    }
+
+    /// Returns stale buffers that haven't been notified yet
+    pub fn unnotified_stale_buffers<'a>(
+        &'a self,
+        cx: &'a App,
+    ) -> impl Iterator<Item = &'a Entity<Buffer>> {
+        self.stale_buffers(cx).filter(|buffer| {
+            let buffer_entity = buffer.read(cx);
+            self.notified_versions
+                .get(buffer)
+                .map_or(true, |notified_version| {
+                    *notified_version != buffer_entity.version
+                })
+        })
+    }
+
+    /// Marks the given buffers as notified at their current versions
+    pub fn mark_buffers_as_notified(
+        &mut self,
+        buffers: impl IntoIterator<Item = Entity<Buffer>>,
+        cx: &App,
+    ) {
+        for buffer in buffers {
+            let version = buffer.read(cx).version.clone();
+            self.notified_versions.insert(buffer, version);
+        }
     }
 
     /// Iterate over buffers changed since last read or edited by the model
@@ -830,12 +772,11 @@ fn apply_non_conflicting_edits(
     edits: Vec<Edit<u32>>,
     old_text: &mut Rope,
     new_text: &Rope,
-) -> bool {
+) {
     let mut old_edits = patch.edits().iter().cloned().peekable();
     let mut new_edits = edits.into_iter().peekable();
     let mut applied_delta = 0i32;
     let mut rebased_delta = 0i32;
-    let mut has_made_changes = false;
 
     while let Some(mut new_edit) = new_edits.next() {
         let mut conflict = false;
@@ -885,10 +826,8 @@ fn apply_non_conflicting_edits(
                 &new_text.chunks_in_range(new_bytes).collect::<String>(),
             );
             applied_delta += new_edit.new_len() as i32 - new_edit.old_len() as i32;
-            has_made_changes = true;
         }
     }
-    has_made_changes
 }
 
 fn diff_snapshots(
@@ -955,14 +894,12 @@ enum TrackedBufferStatus {
 struct TrackedBuffer {
     buffer: Entity<Buffer>,
     diff_base: Rope,
-    last_seen_base: Rope,
     unreviewed_edits: Patch<u32>,
     status: TrackedBufferStatus,
     version: clock::Global,
     diff: Entity<BufferDiff>,
     snapshot: text::BufferSnapshot,
     diff_update: mpsc::UnboundedSender<(ChangeAuthor, text::BufferSnapshot)>,
-    may_have_unnotified_user_edits: bool,
     _open_lsp_handle: OpenLspBufferHandle,
     _maintain_diff: Task<()>,
     _subscription: Subscription,
@@ -993,7 +930,6 @@ mod tests {
     use super::*;
     use buffer_diff::DiffHunkStatusKind;
     use gpui::TestAppContext;
-    use indoc::indoc;
     use language::Point;
     use project::{FakeFs, Fs, Project, RemoveOptions};
     use rand::prelude::*;
@@ -1267,110 +1203,6 @@ mod tests {
                     old_text: "def\nghi\n".into(),
                 }],
             )]
-        );
-
-        action_log.update(cx, |log, cx| {
-            log.keep_edits_in_range(buffer.clone(), Point::new(0, 0)..Point::new(1, 0), cx)
-        });
-        cx.run_until_parked();
-        assert_eq!(unreviewed_hunks(&action_log, cx), vec![]);
-    }
-
-    #[gpui::test(iterations = 10)]
-    async fn test_user_edits_notifications(cx: &mut TestAppContext) {
-        init_test(cx);
-
-        let fs = FakeFs::new(cx.executor());
-        fs.insert_tree(
-            path!("/dir"),
-            json!({"file": indoc! {"
-            abc
-            def
-            ghi
-            jkl
-            mno"}}),
-        )
-        .await;
-        let project = Project::test(fs.clone(), [path!("/dir").as_ref()], cx).await;
-        let action_log = cx.new(|_| ActionLog::new(project.clone()));
-        let file_path = project
-            .read_with(cx, |project, cx| project.find_project_path("dir/file", cx))
-            .unwrap();
-        let buffer = project
-            .update(cx, |project, cx| project.open_buffer(file_path, cx))
-            .await
-            .unwrap();
-
-        // Agent edits
-        cx.update(|cx| {
-            action_log.update(cx, |log, cx| log.buffer_read(buffer.clone(), cx));
-            buffer.update(cx, |buffer, cx| {
-                buffer
-                    .edit([(Point::new(1, 2)..Point::new(2, 3), "F\nGHI")], None, cx)
-                    .unwrap()
-            });
-            action_log.update(cx, |log, cx| log.buffer_edited(buffer.clone(), cx));
-        });
-        cx.run_until_parked();
-        assert_eq!(
-            buffer.read_with(cx, |buffer, _| buffer.text()),
-            indoc! {"
-                abc
-                deF
-                GHI
-                jkl
-                mno"}
-        );
-        assert_eq!(
-            unreviewed_hunks(&action_log, cx),
-            vec![(
-                buffer.clone(),
-                vec![HunkStatus {
-                    range: Point::new(1, 0)..Point::new(3, 0),
-                    diff_status: DiffHunkStatusKind::Modified,
-                    old_text: "def\nghi\n".into(),
-                }],
-            )]
-        );
-
-        // User edits
-        buffer.update(cx, |buffer, cx| {
-            buffer.edit(
-                [
-                    (Point::new(0, 2)..Point::new(0, 2), "X"),
-                    (Point::new(3, 0)..Point::new(3, 0), "Y"),
-                ],
-                None,
-                cx,
-            )
-        });
-        cx.run_until_parked();
-        assert_eq!(
-            buffer.read_with(cx, |buffer, _| buffer.text()),
-            indoc! {"
-                abXc
-                deF
-                GHI
-                Yjkl
-                mno"}
-        );
-
-        // User edits should be stored separately from agent's
-        let user_edits = action_log.update(cx, |log, cx| log.unnotified_user_edits(cx));
-        assert_eq!(
-            user_edits.expect("should have some user edits"),
-            indoc! {"
-                --- a/dir/file
-                +++ b/dir/file
-                @@ -1,5 +1,5 @@
-                -abc
-                +abXc
-                 def
-                 ghi
-                -jkl
-                +Yjkl
-                 mno
-            "}
         );
 
         action_log.update(cx, |log, cx| {
@@ -2368,62 +2200,5 @@ mod tests {
                 })
                 .collect()
         })
-    }
-
-    #[gpui::test]
-    async fn test_format_patch(cx: &mut TestAppContext) {
-        init_test(cx);
-
-        let fs = FakeFs::new(cx.executor());
-        fs.insert_tree(
-            path!("/dir"),
-            json!({"test.txt": "line 1\nline 2\nline 3\n"}),
-        )
-        .await;
-        let project = Project::test(fs.clone(), [path!("/dir").as_ref()], cx).await;
-        let action_log = cx.new(|_| ActionLog::new(project.clone()));
-
-        let file_path = project
-            .read_with(cx, |project, cx| {
-                project.find_project_path("dir/test.txt", cx)
-            })
-            .unwrap();
-        let buffer = project
-            .update(cx, |project, cx| project.open_buffer(file_path, cx))
-            .await
-            .unwrap();
-
-        cx.update(|cx| {
-            // Track the buffer and mark it as read first
-            action_log.update(cx, |log, cx| {
-                log.buffer_read(buffer.clone(), cx);
-            });
-
-            // Make some edits to create a patch
-            buffer.update(cx, |buffer, cx| {
-                buffer
-                    .edit([(Point::new(1, 0)..Point::new(1, 6), "CHANGED")], None, cx)
-                    .unwrap(); // Replace "line2" with "CHANGED"
-            });
-        });
-
-        cx.run_until_parked();
-
-        // Get the patch
-        let patch = action_log.update(cx, |log, cx| log.unnotified_user_edits(cx));
-
-        // Verify the patch format contains expected unified diff elements
-        assert_eq!(
-            patch.unwrap(),
-            indoc! {"
-            --- a/dir/test.txt
-            +++ b/dir/test.txt
-            @@ -1,3 +1,3 @@
-             line 1
-            -line 2
-            +CHANGED
-             line 3
-            "}
-        );
     }
 }

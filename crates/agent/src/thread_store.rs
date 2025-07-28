@@ -41,9 +41,6 @@ use std::{
 };
 use util::ResultExt as _;
 
-pub static ZED_STATELESS: std::sync::LazyLock<bool> =
-    std::sync::LazyLock::new(|| std::env::var("ZED_STATELESS").map_or(false, |v| !v.is_empty()));
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataType {
     #[serde(rename = "json")]
@@ -877,11 +874,7 @@ impl ThreadsDatabase {
 
         let needs_migration_from_heed = mdb_path.exists();
 
-        let connection = if *ZED_STATELESS {
-            Connection::open_memory(Some("THREAD_FALLBACK_DB"))
-        } else {
-            Connection::open_file(&sqlite_path.to_string_lossy())
-        };
+        let connection = Connection::open_file(&sqlite_path.to_string_lossy());
 
         connection.exec(indoc! {"
                 CREATE TABLE IF NOT EXISTS threads (

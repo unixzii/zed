@@ -1,5 +1,3 @@
-use crate::session::running::{RunningState, memory_view::MemoryView};
-
 use super::stack_frame_list::{StackFrameList, StackFrameListEvent};
 use dap::{
     ScopePresentationHint, StackFrameId, VariablePresentationHint, VariablePresentationHintKind,
@@ -9,17 +7,13 @@ use editor::Editor;
 use gpui::{
     Action, AnyElement, ClickEvent, ClipboardItem, Context, DismissEvent, Empty, Entity,
     FocusHandle, Focusable, Hsla, MouseButton, MouseDownEvent, Point, Stateful, Subscription,
-    TextStyleRefinement, UniformListScrollHandle, WeakEntity, actions, anchored, deferred,
-    uniform_list,
+    TextStyleRefinement, UniformListScrollHandle, actions, anchored, deferred, uniform_list,
 };
 use menu::{SelectFirst, SelectLast, SelectNext, SelectPrevious};
-use project::debugger::{
-    dap_command::DataBreakpointContext,
-    session::{Session, SessionEvent, Watcher},
-};
+use project::debugger::session::{Session, SessionEvent, Watcher};
 use std::{collections::HashMap, ops::Range, sync::Arc};
 use ui::{ContextMenu, ListItem, ScrollableHandle, Scrollbar, ScrollbarState, Tooltip, prelude::*};
-use util::{debug_panic, maybe};
+use util::debug_panic;
 
 actions!(
     variable_list,
@@ -38,8 +32,6 @@ actions!(
         AddWatch,
         /// Removes the selected variable from the watch list.
         RemoveWatch,
-        /// Jump to variable's memory location.
-        GoToMemory,
     ]
 );
 
@@ -94,30 +86,30 @@ impl EntryPath {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum DapEntry {
+enum EntryKind {
     Watcher(Watcher),
     Variable(dap::Variable),
     Scope(dap::Scope),
 }
 
-impl DapEntry {
+impl EntryKind {
     fn as_watcher(&self) -> Option<&Watcher> {
         match self {
-            DapEntry::Watcher(watcher) => Some(watcher),
+            EntryKind::Watcher(watcher) => Some(watcher),
             _ => None,
         }
     }
 
     fn as_variable(&self) -> Option<&dap::Variable> {
         match self {
-            DapEntry::Variable(dap) => Some(dap),
+            EntryKind::Variable(dap) => Some(dap),
             _ => None,
         }
     }
 
     fn as_scope(&self) -> Option<&dap::Scope> {
         match self {
-            DapEntry::Scope(dap) => Some(dap),
+            EntryKind::Scope(dap) => Some(dap),
             _ => None,
         }
     }
@@ -125,38 +117,38 @@ impl DapEntry {
     #[cfg(test)]
     fn name(&self) -> &str {
         match self {
-            DapEntry::Watcher(watcher) => &watcher.expression,
-            DapEntry::Variable(dap) => &dap.name,
-            DapEntry::Scope(dap) => &dap.name,
+            EntryKind::Watcher(watcher) => &watcher.expression,
+            EntryKind::Variable(dap) => &dap.name,
+            EntryKind::Scope(dap) => &dap.name,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 struct ListEntry {
-    entry: DapEntry,
+    dap_kind: EntryKind,
     path: EntryPath,
 }
 
 impl ListEntry {
     fn as_watcher(&self) -> Option<&Watcher> {
-        self.entry.as_watcher()
+        self.dap_kind.as_watcher()
     }
 
     fn as_variable(&self) -> Option<&dap::Variable> {
-        self.entry.as_variable()
+        self.dap_kind.as_variable()
     }
 
     fn as_scope(&self) -> Option<&dap::Scope> {
-        self.entry.as_scope()
+        self.dap_kind.as_scope()
     }
 
     fn item_id(&self) -> ElementId {
         use std::fmt::Write;
-        let mut id = match &self.entry {
-            DapEntry::Watcher(watcher) => format!("watcher-{}", watcher.expression),
-            DapEntry::Variable(dap) => format!("variable-{}", dap.name),
-            DapEntry::Scope(dap) => format!("scope-{}", dap.name),
+        let mut id = match &self.dap_kind {
+            EntryKind::Watcher(watcher) => format!("watcher-{}", watcher.expression),
+            EntryKind::Variable(dap) => format!("variable-{}", dap.name),
+            EntryKind::Scope(dap) => format!("scope-{}", dap.name),
         };
         for name in self.path.indices.iter() {
             _ = write!(id, "-{}", name);
@@ -166,10 +158,10 @@ impl ListEntry {
 
     fn item_value_id(&self) -> ElementId {
         use std::fmt::Write;
-        let mut id = match &self.entry {
-            DapEntry::Watcher(watcher) => format!("watcher-{}", watcher.expression),
-            DapEntry::Variable(dap) => format!("variable-{}", dap.name),
-            DapEntry::Scope(dap) => format!("scope-{}", dap.name),
+        let mut id = match &self.dap_kind {
+            EntryKind::Watcher(watcher) => format!("watcher-{}", watcher.expression),
+            EntryKind::Variable(dap) => format!("variable-{}", dap.name),
+            EntryKind::Scope(dap) => format!("scope-{}", dap.name),
         };
         for name in self.path.indices.iter() {
             _ = write!(id, "-{}", name);
@@ -196,17 +188,13 @@ pub struct VariableList {
     focus_handle: FocusHandle,
     edited_path: Option<(EntryPath, Entity<Editor>)>,
     disabled: bool,
-    memory_view: Entity<MemoryView>,
-    weak_running: WeakEntity<RunningState>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl VariableList {
-    pub(crate) fn new(
+    pub fn new(
         session: Entity<Session>,
         stack_frame_list: Entity<StackFrameList>,
-        memory_view: Entity<MemoryView>,
-        weak_running: WeakEntity<RunningState>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -223,7 +211,6 @@ impl VariableList {
                 SessionEvent::Variables | SessionEvent::Watchers => {
                     this.build_entries(cx);
                 }
-
                 _ => {}
             }),
             cx.on_focus_out(&focus_handle, window, |this, _, _, cx| {
@@ -247,8 +234,6 @@ impl VariableList {
             edited_path: None,
             entries: Default::default(),
             entry_states: Default::default(),
-            weak_running,
-            memory_view,
         }
     }
 
@@ -299,7 +284,7 @@ impl VariableList {
                     scope.variables_reference,
                     scope.variables_reference,
                     EntryPath::for_scope(&scope.name),
-                    DapEntry::Scope(scope),
+                    EntryKind::Scope(scope),
                 )
             })
             .collect::<Vec<_>>();
@@ -313,7 +298,7 @@ impl VariableList {
                         watcher.variables_reference,
                         watcher.variables_reference,
                         EntryPath::for_watcher(watcher.expression.clone()),
-                        DapEntry::Watcher(watcher.clone()),
+                        EntryKind::Watcher(watcher.clone()),
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -324,9 +309,9 @@ impl VariableList {
         while let Some((container_reference, variables_reference, mut path, dap_kind)) = stack.pop()
         {
             match &dap_kind {
-                DapEntry::Watcher(watcher) => path = path.with_child(watcher.expression.clone()),
-                DapEntry::Variable(dap) => path = path.with_name(dap.name.clone().into()),
-                DapEntry::Scope(dap) => path = path.with_child(dap.name.clone().into()),
+                EntryKind::Watcher(watcher) => path = path.with_child(watcher.expression.clone()),
+                EntryKind::Variable(dap) => path = path.with_name(dap.name.clone().into()),
+                EntryKind::Scope(dap) => path = path.with_child(dap.name.clone().into()),
             }
 
             let var_state = self
@@ -351,7 +336,7 @@ impl VariableList {
                 });
 
             entries.push(ListEntry {
-                entry: dap_kind,
+                dap_kind,
                 path: path.clone(),
             });
 
@@ -364,7 +349,7 @@ impl VariableList {
                         variables_reference,
                         child.variables_reference,
                         path.with_child(child.name.clone().into()),
-                        DapEntry::Variable(child),
+                        EntryKind::Variable(child),
                     )
                 }));
             }
@@ -395,9 +380,9 @@ impl VariableList {
     pub fn completion_variables(&self, _cx: &mut Context<Self>) -> Vec<dap::Variable> {
         self.entries
             .iter()
-            .filter_map(|entry| match &entry.entry {
-                DapEntry::Variable(dap) => Some(dap.clone()),
-                DapEntry::Scope(_) | DapEntry::Watcher { .. } => None,
+            .filter_map(|entry| match &entry.dap_kind {
+                EntryKind::Variable(dap) => Some(dap.clone()),
+                EntryKind::Scope(_) | EntryKind::Watcher { .. } => None,
             })
             .collect()
     }
@@ -415,12 +400,12 @@ impl VariableList {
                     .get(ix)
                     .and_then(|entry| Some(entry).zip(self.entry_states.get(&entry.path)))?;
 
-                match &entry.entry {
-                    DapEntry::Watcher { .. } => {
+                match &entry.dap_kind {
+                    EntryKind::Watcher { .. } => {
                         Some(self.render_watcher(entry, *state, window, cx))
                     }
-                    DapEntry::Variable(_) => Some(self.render_variable(entry, *state, window, cx)),
-                    DapEntry::Scope(_) => Some(self.render_scope(entry, *state, cx)),
+                    EntryKind::Variable(_) => Some(self.render_variable(entry, *state, window, cx)),
+                    EntryKind::Scope(_) => Some(self.render_scope(entry, *state, cx)),
                 }
             })
             .collect()
@@ -577,51 +562,6 @@ impl VariableList {
         }
     }
 
-    fn jump_to_variable_memory(
-        &mut self,
-        _: &GoToMemory,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        _ = maybe!({
-            let selection = self.selection.as_ref()?;
-            let entry = self.entries.iter().find(|entry| &entry.path == selection)?;
-            let var = entry.entry.as_variable()?;
-            let memory_reference = var.memory_reference.as_deref()?;
-
-            let sizeof_expr = if var.type_.as_ref().is_some_and(|t| {
-                t.chars()
-                    .all(|c| c.is_whitespace() || c.is_alphabetic() || c == '*')
-            }) {
-                var.type_.as_deref()
-            } else {
-                var.evaluate_name
-                    .as_deref()
-                    .map(|name| name.strip_prefix("/nat ").unwrap_or_else(|| name))
-            };
-            self.memory_view.update(cx, |this, cx| {
-                this.go_to_memory_reference(
-                    memory_reference,
-                    sizeof_expr,
-                    self.selected_stack_frame_id,
-                    cx,
-                );
-            });
-            let weak_panel = self.weak_running.clone();
-
-            window.defer(cx, move |window, cx| {
-                _ = weak_panel.update(cx, |this, cx| {
-                    this.activate_item(
-                        crate::persistence::DebuggerPaneItem::MemoryView,
-                        window,
-                        cx,
-                    );
-                });
-            });
-            Some(())
-        });
-    }
-
     fn deploy_list_entry_context_menu(
         &mut self,
         entry: ListEntry,
@@ -629,197 +569,49 @@ impl VariableList {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let (supports_set_variable, supports_data_breakpoints, supports_go_to_memory) =
-            self.session.read_with(cx, |session, _| {
-                (
-                    session
-                        .capabilities()
-                        .supports_set_variable
-                        .unwrap_or_default(),
-                    session
-                        .capabilities()
-                        .supports_data_breakpoints
-                        .unwrap_or_default(),
-                    session
-                        .capabilities()
-                        .supports_read_memory_request
-                        .unwrap_or_default(),
-                )
-            });
-        let can_toggle_data_breakpoint = entry
-            .as_variable()
-            .filter(|_| supports_data_breakpoints)
-            .and_then(|variable| {
-                let variables_reference = self
-                    .entry_states
-                    .get(&entry.path)
-                    .map(|state| state.parent_reference)?;
-                Some(self.session.update(cx, |session, cx| {
-                    session.data_breakpoint_info(
-                        Arc::new(DataBreakpointContext::Variable {
-                            variables_reference,
-                            name: variable.name.clone(),
-                            bytes: None,
-                        }),
-                        None,
-                        cx,
-                    )
-                }))
-            });
+        let supports_set_variable = self
+            .session
+            .read(cx)
+            .capabilities()
+            .supports_set_variable
+            .unwrap_or_default();
 
-        let focus_handle = self.focus_handle.clone();
-        cx.spawn_in(window, async move |this, cx| {
-            let can_toggle_data_breakpoint = if let Some(task) = can_toggle_data_breakpoint {
-                task.await
-            } else {
-                None
-            };
-            cx.update(|window, cx| {
-                let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
-                    menu.when_some(entry.as_variable(), |menu, _| {
-                        menu.action("Copy Name", CopyVariableName.boxed_clone())
-                            .action("Copy Value", CopyVariableValue.boxed_clone())
-                            .when(supports_set_variable, |menu| {
-                                menu.action("Edit Value", EditVariable.boxed_clone())
-                            })
-                            .when(supports_go_to_memory, |menu| {
-                                menu.action("Go To Memory", GoToMemory.boxed_clone())
-                            })
-                            .action("Watch Variable", AddWatch.boxed_clone())
-                            .when_some(can_toggle_data_breakpoint, |mut menu, data_info| {
-                                menu = menu.separator();
-                                if let Some(access_types) = data_info.access_types {
-                                    for access in access_types {
-                                        menu = menu.action(
-                                            format!(
-                                                "Toggle {} Data Breakpoint",
-                                                match access {
-                                                    dap::DataBreakpointAccessType::Read => "Read",
-                                                    dap::DataBreakpointAccessType::Write => "Write",
-                                                    dap::DataBreakpointAccessType::ReadWrite =>
-                                                        "Read/Write",
-                                                }
-                                            ),
-                                            crate::ToggleDataBreakpoint {
-                                                access_type: Some(access),
-                                            }
-                                            .boxed_clone(),
-                                        );
-                                    }
-
-                                    menu
-                                } else {
-                                    menu.action(
-                                        "Toggle Data Breakpoint",
-                                        crate::ToggleDataBreakpoint { access_type: None }
-                                            .boxed_clone(),
-                                    )
-                                }
-                            })
+        let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
+            menu.when(entry.as_variable().is_some(), |menu| {
+                menu.action("Copy Name", CopyVariableName.boxed_clone())
+                    .action("Copy Value", CopyVariableValue.boxed_clone())
+                    .when(supports_set_variable, |menu| {
+                        menu.action("Edit Value", EditVariable.boxed_clone())
                     })
-                    .when(entry.as_watcher().is_some(), |menu| {
-                        menu.action("Copy Name", CopyVariableName.boxed_clone())
-                            .action("Copy Value", CopyVariableValue.boxed_clone())
-                            .when(supports_set_variable, |menu| {
-                                menu.action("Edit Value", EditVariable.boxed_clone())
-                            })
-                            .action("Remove Watch", RemoveWatch.boxed_clone())
-                    })
-                    .context(focus_handle.clone())
-                });
-
-                _ = this.update(cx, |this, cx| {
-                    cx.focus_view(&context_menu, window);
-                    let subscription = cx.subscribe_in(
-                        &context_menu,
-                        window,
-                        |this, _, _: &DismissEvent, window, cx| {
-                            if this.open_context_menu.as_ref().is_some_and(|context_menu| {
-                                context_menu.0.focus_handle(cx).contains_focused(window, cx)
-                            }) {
-                                cx.focus_self(window);
-                            }
-                            this.open_context_menu.take();
-                            cx.notify();
-                        },
-                    );
-
-                    this.open_context_menu = Some((context_menu, position, subscription));
-                });
+                    .action("Watch Variable", AddWatch.boxed_clone())
             })
-        })
-        .detach();
-    }
-
-    fn toggle_data_breakpoint(
-        &mut self,
-        data_info: &crate::ToggleDataBreakpoint,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(entry) = self
-            .selection
-            .as_ref()
-            .and_then(|selection| self.entries.iter().find(|entry| &entry.path == selection))
-        else {
-            return;
-        };
-
-        let Some((name, var_ref)) = entry.as_variable().map(|var| &var.name).zip(
-            self.entry_states
-                .get(&entry.path)
-                .map(|state| state.parent_reference),
-        ) else {
-            return;
-        };
-
-        let context = Arc::new(DataBreakpointContext::Variable {
-            variables_reference: var_ref,
-            name: name.clone(),
-            bytes: None,
-        });
-        let data_breakpoint = self.session.update(cx, |session, cx| {
-            session.data_breakpoint_info(context.clone(), None, cx)
+            .when(entry.as_watcher().is_some(), |menu| {
+                menu.action("Copy Name", CopyVariableName.boxed_clone())
+                    .action("Copy Value", CopyVariableValue.boxed_clone())
+                    .when(supports_set_variable, |menu| {
+                        menu.action("Edit Value", EditVariable.boxed_clone())
+                    })
+                    .action("Remove Watch", RemoveWatch.boxed_clone())
+            })
+            .context(self.focus_handle.clone())
         });
 
-        let session = self.session.downgrade();
-        let access_type = data_info.access_type;
-        cx.spawn(async move |_, cx| {
-            let Some((data_id, access_types)) = data_breakpoint
-                .await
-                .and_then(|info| Some((info.data_id?, info.access_types)))
-            else {
-                return;
-            };
-
-            // Because user's can manually add this action to the keymap
-            // we check if access type is supported
-            let access_type = match access_types {
-                None => None,
-                Some(access_types) => {
-                    if access_type.is_some_and(|access_type| access_types.contains(&access_type)) {
-                        access_type
-                    } else {
-                        None
-                    }
+        cx.focus_view(&context_menu, window);
+        let subscription = cx.subscribe_in(
+            &context_menu,
+            window,
+            |this, _, _: &DismissEvent, window, cx| {
+                if this.open_context_menu.as_ref().is_some_and(|context_menu| {
+                    context_menu.0.focus_handle(cx).contains_focused(window, cx)
+                }) {
+                    cx.focus_self(window);
                 }
-            };
-            _ = session.update(cx, |session, cx| {
-                session.create_data_breakpoint(
-                    context,
-                    data_id.clone(),
-                    dap::DataBreakpoint {
-                        data_id,
-                        access_type,
-                        condition: None,
-                        hit_condition: None,
-                    },
-                    cx,
-                );
+                this.open_context_menu.take();
                 cx.notify();
-            });
-        })
-        .detach();
+            },
+        );
+
+        self.open_context_menu = Some((context_menu, position, subscription));
     }
 
     fn copy_variable_name(
@@ -836,10 +628,10 @@ impl VariableList {
             return;
         };
 
-        let variable_name = match &entry.entry {
-            DapEntry::Variable(dap) => dap.name.clone(),
-            DapEntry::Watcher(watcher) => watcher.expression.to_string(),
-            DapEntry::Scope(_) => return,
+        let variable_name = match &entry.dap_kind {
+            EntryKind::Variable(dap) => dap.name.clone(),
+            EntryKind::Watcher(watcher) => watcher.expression.to_string(),
+            EntryKind::Scope(_) => return,
         };
 
         cx.write_to_clipboard(ClipboardItem::new_string(variable_name));
@@ -859,10 +651,10 @@ impl VariableList {
             return;
         };
 
-        let variable_value = match &entry.entry {
-            DapEntry::Variable(dap) => dap.value.clone(),
-            DapEntry::Watcher(watcher) => watcher.value.to_string(),
-            DapEntry::Scope(_) => return,
+        let variable_value = match &entry.dap_kind {
+            EntryKind::Variable(dap) => dap.value.clone(),
+            EntryKind::Watcher(watcher) => watcher.value.to_string(),
+            EntryKind::Scope(_) => return,
         };
 
         cx.write_to_clipboard(ClipboardItem::new_string(variable_value));
@@ -877,10 +669,10 @@ impl VariableList {
             return;
         };
 
-        let variable_value = match &entry.entry {
-            DapEntry::Watcher(watcher) => watcher.value.to_string(),
-            DapEntry::Variable(variable) => variable.value.clone(),
-            DapEntry::Scope(_) => return,
+        let variable_value = match &entry.dap_kind {
+            EntryKind::Watcher(watcher) => watcher.value.to_string(),
+            EntryKind::Variable(variable) => variable.value.clone(),
+            EntryKind::Scope(_) => return,
         };
 
         let editor = Self::create_variable_editor(&variable_value, window, cx);
@@ -961,7 +753,7 @@ impl VariableList {
                 "{}{} {}{}",
                 INDENT.repeat(state.depth - 1),
                 if state.is_expanded { "v" } else { ">" },
-                entry.entry.name(),
+                entry.dap_kind.name(),
                 if self.selection.as_ref() == Some(&entry.path) {
                     " <=== selected"
                 } else {
@@ -978,8 +770,8 @@ impl VariableList {
     pub(crate) fn scopes(&self) -> Vec<dap::Scope> {
         self.entries
             .iter()
-            .filter_map(|entry| match &entry.entry {
-                DapEntry::Scope(scope) => Some(scope),
+            .filter_map(|entry| match &entry.dap_kind {
+                EntryKind::Scope(scope) => Some(scope),
                 _ => None,
             })
             .cloned()
@@ -993,10 +785,10 @@ impl VariableList {
         let mut idx = 0;
 
         for entry in self.entries.iter() {
-            match &entry.entry {
-                DapEntry::Watcher { .. } => continue,
-                DapEntry::Variable(dap) => scopes[idx].1.push(dap.clone()),
-                DapEntry::Scope(scope) => {
+            match &entry.dap_kind {
+                EntryKind::Watcher { .. } => continue,
+                EntryKind::Variable(dap) => scopes[idx].1.push(dap.clone()),
+                EntryKind::Scope(scope) => {
                     if scopes.len() > 0 {
                         idx += 1;
                     }
@@ -1014,8 +806,8 @@ impl VariableList {
     pub(crate) fn variables(&self) -> Vec<dap::Variable> {
         self.entries
             .iter()
-            .filter_map(|entry| match &entry.entry {
-                DapEntry::Variable(variable) => Some(variable),
+            .filter_map(|entry| match &entry.dap_kind {
+                EntryKind::Variable(variable) => Some(variable),
                 _ => None,
             })
             .cloned()
@@ -1566,8 +1358,6 @@ impl Render for VariableList {
             .on_action(cx.listener(Self::edit_variable))
             .on_action(cx.listener(Self::add_watcher))
             .on_action(cx.listener(Self::remove_watcher))
-            .on_action(cx.listener(Self::toggle_data_breakpoint))
-            .on_action(cx.listener(Self::jump_to_variable_memory))
             .child(
                 uniform_list(
                     "variable-list",

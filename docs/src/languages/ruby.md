@@ -127,7 +127,7 @@ Solargraph reads its configuration from a file called `.solargraph.yml` in the r
 
 ## Setting up `ruby-lsp`
 
-You can pass Ruby LSP configuration to `initialization_options`, e.g.
+Ruby LSP uses pull-based diagnostics which Zed doesn't support yet. We can tell Zed to disable it by adding the following to your `settings.json`:
 
 ```json
 {
@@ -140,7 +140,8 @@ You can pass Ruby LSP configuration to `initialization_options`, e.g.
     "ruby-lsp": {
       "initialization_options": {
         "enabledFeatures": {
-          // "someFeature": false
+          // This disables diagnostics
+          "diagnostics": false
         }
       }
     }

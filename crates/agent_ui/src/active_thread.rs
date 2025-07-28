@@ -787,15 +787,6 @@ impl ActiveThread {
                     .unwrap()
             }
         });
-
-        let workspace_subscription = if let Some(workspace) = workspace.upgrade() {
-            Some(cx.observe_release(&workspace, |this, _, cx| {
-                this.dismiss_notifications(cx);
-            }))
-        } else {
-            None
-        };
-
         let mut this = Self {
             language_registry,
             thread_store,
@@ -841,10 +832,6 @@ impl ActiveThread {
                     cx,
                 );
             }
-        }
-
-        if let Some(subscription) = workspace_subscription {
-            this._subscriptions.push(subscription);
         }
 
         this
@@ -1509,7 +1496,6 @@ impl ActiveThread {
                             &configured_model.model,
                             cx,
                         ),
-                        thinking_allowed: true,
                     };
 
                     Some(configured_model.model.count_tokens(request, cx))
@@ -2629,8 +2615,8 @@ impl ActiveThread {
                                 h_flex()
                                     .gap_1p5()
                                     .child(
-                                        Icon::new(IconName::ToolBulb)
-                                            .size(IconSize::Small)
+                                        Icon::new(IconName::LightBulb)
+                                            .size(IconSize::XSmall)
                                             .color(Color::Muted),
                                     )
                                     .child(LoadingLabel::new("Thinking").size(LabelSize::Small)),
@@ -3043,7 +3029,7 @@ impl ActiveThread {
                                         .overflow_x_scroll()
                                         .child(
                                             Icon::new(tool_use.icon)
-                                                .size(IconSize::Small)
+                                                .size(IconSize::XSmall)
                                                 .color(Color::Muted),
                                         )
                                         .child(
@@ -3202,10 +3188,7 @@ impl ActiveThread {
                                 .border_color(self.tool_card_border_color(cx))
                                 .rounded_b_lg()
                                 .child(
-                                    div()
-                                        .min_w(rems_from_px(145.))
-                                        .child(LoadingLabel::new("Waiting for Confirmation").size(LabelSize::Small)
-                                    )
+                                    LoadingLabel::new("Waiting for Confirmation").size(LabelSize::Small)
                                 )
                                 .child(
                                     h_flex()
@@ -3250,6 +3233,7 @@ impl ActiveThread {
                                                 },
                                             ))
                                         })
+                                        .child(ui::Divider::vertical())
                                         .child({
                                             let tool_id = tool_use.id.clone();
                                             Button::new("allow-tool-action", "Allow")
@@ -3724,11 +3708,8 @@ pub(crate) fn open_context(
 
         AgentContextHandle::Thread(thread_context) => workspace.update(cx, |workspace, cx| {
             if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
-                let thread = thread_context.thread.clone();
-                window.defer(cx, move |window, cx| {
-                    panel.update(cx, |panel, cx| {
-                        panel.open_thread(thread, window, cx);
-                    });
+                panel.update(cx, |panel, cx| {
+                    panel.open_thread(thread_context.thread.clone(), window, cx);
                 });
             }
         }),
@@ -3736,11 +3717,8 @@ pub(crate) fn open_context(
         AgentContextHandle::TextThread(text_thread_context) => {
             workspace.update(cx, |workspace, cx| {
                 if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
-                    let context = text_thread_context.context.clone();
-                    window.defer(cx, move |window, cx| {
-                        panel.update(cx, |panel, cx| {
-                            panel.open_prompt_editor(context, window, cx)
-                        });
+                    panel.update(cx, |panel, cx| {
+                        panel.open_prompt_editor(text_thread_context.context.clone(), window, cx)
                     });
                 }
             })
@@ -3895,7 +3873,7 @@ mod tests {
             LanguageModelRegistry::global(cx).update(cx, |registry, cx| {
                 registry.set_default_model(
                     Some(ConfiguredModel {
-                        provider: Arc::new(FakeLanguageModelProvider::default()),
+                        provider: Arc::new(FakeLanguageModelProvider),
                         model,
                     }),
                     cx,
@@ -3979,7 +3957,7 @@ mod tests {
             LanguageModelRegistry::global(cx).update(cx, |registry, cx| {
                 registry.set_default_model(
                     Some(ConfiguredModel {
-                        provider: Arc::new(FakeLanguageModelProvider::default()),
+                        provider: Arc::new(FakeLanguageModelProvider),
                         model: model.clone(),
                     }),
                     cx,

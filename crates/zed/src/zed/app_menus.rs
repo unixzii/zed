@@ -1,6 +1,5 @@
 use collab_ui::collab_panel;
 use gpui::{Menu, MenuItem, OsAction};
-use settings_ui::keybindings;
 use terminal_view::terminal_panel;
 
 pub fn app_menus() -> Vec<Menu> {
@@ -17,7 +16,7 @@ pub fn app_menus() -> Vec<Menu> {
                     name: "Settings".into(),
                     items: vec![
                         MenuItem::action("Open Settings", super::OpenSettings),
-                        MenuItem::action("Open Key Bindings", keybindings::OpenKeymapEditor),
+                        MenuItem::action("Open Key Bindings", zed_actions::OpenKeymap),
                         MenuItem::action("Open Default Settings", super::OpenDefaultSettings),
                         MenuItem::action(
                             "Open Default Key Bindings",
@@ -145,15 +144,15 @@ pub fn app_menus() -> Vec<Menu> {
             items: vec![
                 MenuItem::action(
                     "Zoom In",
-                    zed_actions::IncreaseBufferFontSize { persist: false },
+                    zed_actions::IncreaseBufferFontSize { persist: true },
                 ),
                 MenuItem::action(
                     "Zoom Out",
-                    zed_actions::DecreaseBufferFontSize { persist: false },
+                    zed_actions::DecreaseBufferFontSize { persist: true },
                 ),
                 MenuItem::action(
                     "Reset Zoom",
-                    zed_actions::ResetBufferFontSize { persist: false },
+                    zed_actions::ResetBufferFontSize { persist: true },
                 ),
                 MenuItem::separator(),
                 MenuItem::action("Toggle Left Dock", workspace::ToggleLeftDock),
@@ -200,11 +199,8 @@ pub fn app_menus() -> Vec<Menu> {
                 MenuItem::action("Go to Type Definition", editor::actions::GoToTypeDefinition),
                 MenuItem::action("Find All References", editor::actions::FindAllReferences),
                 MenuItem::separator(),
-                MenuItem::action("Next Problem", editor::actions::GoToDiagnostic::default()),
-                MenuItem::action(
-                    "Previous Problem",
-                    editor::actions::GoToPreviousDiagnostic::default(),
-                ),
+                MenuItem::action("Next Problem", editor::actions::GoToDiagnostic),
+                MenuItem::action("Previous Problem", editor::actions::GoToPreviousDiagnostic),
             ],
         },
         Menu {

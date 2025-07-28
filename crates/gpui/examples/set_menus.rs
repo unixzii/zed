@@ -34,7 +34,7 @@ fn main() {
     });
 }
 
-// Associate actions using the `actions!` macro (or `Action` derive macro)
+// Associate actions using the `actions!` macro (or `impl_actions!` macro)
 actions!(set_menus, [Quit]);
 
 // Define the quit function that is registered with the App

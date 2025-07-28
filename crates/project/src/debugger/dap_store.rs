@@ -6,7 +6,6 @@ use super::{
 };
 use crate::{
     InlayHint, InlayHintLabel, ProjectEnvironment, ResolveState,
-    debugger::session::SessionQuirks,
     project_settings::ProjectSettings,
     terminals::{SshCommand, wrap_for_ssh},
     worktree_store::WorktreeStore,
@@ -386,11 +385,10 @@ impl DapStore {
 
     pub fn new_session(
         &mut self,
-        label: Option<SharedString>,
+        label: SharedString,
         adapter: DebugAdapterName,
         task_context: TaskContext,
         parent_session: Option<Entity<Session>>,
-        quirks: SessionQuirks,
         cx: &mut Context<Self>,
     ) -> Entity<Session> {
         let session_id = SessionId(util::post_inc(&mut self.next_session_id));
@@ -408,7 +406,6 @@ impl DapStore {
             label,
             adapter,
             task_context,
-            quirks,
             cx,
         );
 
@@ -563,11 +560,6 @@ impl DapStore {
         fn format_value(mut value: String) -> String {
             const LIMIT: usize = 100;
 
-            if let Some(index) = value.find("\n") {
-                value.truncate(index);
-                value.push_str("…");
-            }
-
             if value.len() > LIMIT {
                 let mut index = LIMIT;
                 // If index isn't a char boundary truncate will cause a panic
@@ -575,7 +567,7 @@ impl DapStore {
                     index -= 1;
                 }
                 value.truncate(index);
-                value.push_str("…");
+                value.push_str("...");
             }
 
             format!(": {}", value)
@@ -920,20 +912,10 @@ impl dap::adapters::DapDelegate for DapAdapterDelegate {
         self.console.unbounded_send(msg).ok();
     }
 
-    #[cfg(not(target_os = "windows"))]
     async fn which(&self, command: &OsStr) -> Option<PathBuf> {
         let worktree_abs_path = self.worktree.abs_path();
         let shell_path = self.shell_env().await.get("PATH").cloned();
         which::which_in(command, shell_path.as_ref(), worktree_abs_path).ok()
-    }
-
-    #[cfg(target_os = "windows")]
-    async fn which(&self, command: &OsStr) -> Option<PathBuf> {
-        // On Windows, `PATH` is handled differently from Unix. Windows generally expects users to modify the `PATH` themselves,
-        // and every program loads it directly from the system at startup.
-        // There's also no concept of a default shell on Windows, and you can't really retrieve one, so trying to get shell environment variables
-        // from a specific directory doesn’t make sense on Windows.
-        which::which(command).ok()
     }
 
     async fn shell_env(&self) -> HashMap<String, String> {

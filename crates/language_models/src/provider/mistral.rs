@@ -410,20 +410,8 @@ pub fn into_mistral(
                                 .push_part(mistral::MessagePart::Text { text: text.clone() });
                         }
                         MessageContent::RedactedThinking(_) => {}
-                        MessageContent::ToolUse(_) => {
-                            // Tool use is not supported in User messages for Mistral
-                        }
-                        MessageContent::ToolResult(tool_result) => {
-                            let tool_content = match &tool_result.content {
-                                LanguageModelToolResultContent::Text(text) => text.to_string(),
-                                LanguageModelToolResultContent::Image(_) => {
-                                    "[Tool responded with an image, but Zed doesn't support these in Mistral models yet]".to_string()
-                                }
-                            };
-                            messages.push(mistral::RequestMessage::Tool {
-                                content: tool_content,
-                                tool_call_id: tool_result.tool_use_id.to_string(),
-                            });
+                        MessageContent::ToolUse(_) | MessageContent::ToolResult(_) => {
+                            // Tool content is not supported in User messages for Mistral
                         }
                     }
                 }
@@ -490,6 +478,24 @@ pub fn into_mistral(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    for message in &request.messages {
+        for content in &message.content {
+            if let MessageContent::ToolResult(tool_result) = content {
+                let content = match &tool_result.content {
+                    LanguageModelToolResultContent::Text(text) => text.to_string(),
+                    LanguageModelToolResultContent::Image(_) => {
+                        "[Tool responded with an image, but Zed doesn't support these in Mistral models yet]".to_string()
+                    }
+                };
+
+                messages.push(mistral::RequestMessage::Tool {
+                    content,
+                    tool_call_id: tool_result.tool_use_id.to_string(),
+                });
             }
         }
     }
@@ -905,7 +911,6 @@ mod tests {
             intent: None,
             mode: None,
             stop: vec![],
-            thinking_allowed: true,
         };
 
         let mistral_request = into_mistral(request, "mistral-small-latest".into(), None);
@@ -938,7 +943,6 @@ mod tests {
             intent: None,
             mode: None,
             stop: vec![],
-            thinking_allowed: true,
         };
 
         let mistral_request = into_mistral(request, "pixtral-12b-latest".into(), None);

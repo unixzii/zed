@@ -30,7 +30,6 @@ use std::{
     sync::{Arc, OnceLock},
 };
 use task::{SpawnInTerminal, ZedDebugConfig};
-use url::Url;
 use util::{archive::extract_zip, fs::make_file_executable, maybe};
 use wasmtime::component::{Linker, Resource};
 
@@ -76,7 +75,7 @@ impl From<Range> for std::ops::Range<usize> {
 impl From<Command> for extension::Command {
     fn from(value: Command) -> Self {
         Self {
-            command: value.command.into(),
+            command: value.command,
             args: value.args,
             env: value.env,
         }
@@ -745,9 +744,6 @@ impl nodejs::Host for WasmState {
         package_name: String,
         version: String,
     ) -> wasmtime::Result<Result<(), String>> {
-        self.capability_granter
-            .grant_npm_install_package(&package_name)?;
-
         self.host
             .node_runtime
             .npm_install_packages(&self.work_dir(), &[(&package_name, &version)])
@@ -851,8 +847,7 @@ impl process::Host for WasmState {
         command: process::Command,
     ) -> wasmtime::Result<Result<process::Output, String>> {
         maybe!(async {
-            self.capability_granter
-                .grant_exec(&command.command, &command.args)?;
+            self.manifest.allow_exec(&command.command, &command.args)?;
 
             let output = util::command::new_smol_command(command.command.as_str())
                 .args(&command.args)
@@ -963,7 +958,7 @@ impl ExtensionImports for WasmState {
                                 command,
                             } => Ok(serde_json::to_string(&settings::ContextServerSettings {
                                 command: Some(settings::CommandSettings {
-                                    path: command.path.to_str().map(|path| path.to_string()),
+                                    path: Some(command.path),
                                     arguments: Some(command.args),
                                     env: command.env.map(|env| env.into_iter().collect()),
                                 }),
@@ -1015,9 +1010,6 @@ impl ExtensionImports for WasmState {
         file_type: DownloadedFileType,
     ) -> wasmtime::Result<Result<(), String>> {
         maybe!(async {
-            let parsed_url = Url::parse(&url)?;
-            self.capability_granter.grant_download_file(&parsed_url)?;
-
             let path = PathBuf::from(path);
             let extension_work_dir = self.host.work_dir.join(self.manifest.id.as_ref());
 

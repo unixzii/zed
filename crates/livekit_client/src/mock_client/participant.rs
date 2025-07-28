@@ -5,9 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use collections::HashMap;
-use gpui::{
-    AsyncApp, DevicePixels, ScreenCaptureSource, ScreenCaptureStream, SourceMetadata, size,
-};
+use gpui::{AsyncApp, ScreenCaptureSource, ScreenCaptureStream};
 
 #[derive(Clone, Debug)]
 pub struct LocalParticipant {
@@ -124,13 +122,4 @@ impl RemoteParticipant {
 
 struct TestScreenCaptureStream;
 
-impl ScreenCaptureStream for TestScreenCaptureStream {
-    fn metadata(&self) -> Result<SourceMetadata> {
-        Ok(SourceMetadata {
-            id: 0,
-            is_main: None,
-            label: None,
-            resolution: size(DevicePixels(1), DevicePixels(1)),
-        })
-    }
-}
+impl gpui::ScreenCaptureStream for TestScreenCaptureStream {}

@@ -162,8 +162,7 @@ enum InternalEvent {
     UpdateSelection(Point<Pixels>),
     // Adjusted mouse position, should open
     FindHyperlink(Point<Pixels>, bool),
-    // Whether keep selection when copy
-    Copy(Option<bool>),
+    Copy,
     // Vi mode events
     ToggleViMode,
     ViMotion(ViMotion),
@@ -372,48 +371,35 @@ impl TerminalBuilder {
             release_channel::AppVersion::global(cx).to_string(),
         );
 
-        #[derive(Default)]
-        struct ShellParams {
-            program: String,
-            args: Option<Vec<String>>,
-            title_override: Option<SharedString>,
-        }
-
-        let shell_params = match shell.clone() {
-            Shell::System => {
-                #[cfg(target_os = "windows")]
-                {
-                    Some(ShellParams {
-                        program: util::get_windows_system_shell(),
-                        ..Default::default()
-                    })
-                }
-                #[cfg(not(target_os = "windows"))]
-                None
-            }
-            Shell::Program(program) => Some(ShellParams {
-                program,
-                ..Default::default()
-            }),
-            Shell::WithArguments {
-                program,
-                args,
-                title_override,
-            } => Some(ShellParams {
-                program,
-                args: Some(args),
-                title_override,
-            }),
-        };
-        let terminal_title_override = shell_params.as_ref().and_then(|e| e.title_override.clone());
-
-        #[cfg(windows)]
-        let shell_program = shell_params.as_ref().map(|params| params.program.clone());
+        let mut terminal_title_override = None;
 
         let pty_options = {
-            let alac_shell = shell_params.map(|params| {
-                alacritty_terminal::tty::Shell::new(params.program, params.args.unwrap_or_default())
-            });
+            let alac_shell = match shell.clone() {
+                Shell::System => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        Some(alacritty_terminal::tty::Shell::new(
+                            util::get_windows_system_shell(),
+                            Vec::new(),
+                        ))
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        None
+                    }
+                }
+                Shell::Program(program) => {
+                    Some(alacritty_terminal::tty::Shell::new(program, Vec::new()))
+                }
+                Shell::WithArguments {
+                    program,
+                    args,
+                    title_override,
+                } => {
+                    terminal_title_override = title_override;
+                    Some(alacritty_terminal::tty::Shell::new(program, args))
+                }
+            };
 
             alacritty_terminal::tty::Options {
                 shell: alac_shell,
@@ -517,8 +503,6 @@ impl TerminalBuilder {
             python_venv_directory,
             last_mouse_move_time: Instant::now(),
             last_hyperlink_search_position: None,
-            #[cfg(windows)]
-            shell_program,
         };
 
         Ok(TerminalBuilder {
@@ -679,8 +663,6 @@ pub struct Terminal {
     is_ssh_terminal: bool,
     last_mouse_move_time: Instant,
     last_hyperlink_search_position: Option<Point<Pixels>>,
-    #[cfg(windows)]
-    shell_program: Option<String>,
 }
 
 pub struct TaskState {
@@ -726,20 +708,6 @@ impl Terminal {
     fn process_event(&mut self, event: AlacTermEvent, cx: &mut Context<Self>) {
         match event {
             AlacTermEvent::Title(title) => {
-                // ignore default shell program title change as windows always sends those events
-                // and it would end up showing the shell executable path in breadcrumbs
-                #[cfg(windows)]
-                {
-                    if self
-                        .shell_program
-                        .as_ref()
-                        .map(|e| *e == title)
-                        .unwrap_or(false)
-                    {
-                        return;
-                    }
-                }
-
                 self.breadcrumb_text = title;
                 cx.emit(Event::BreadcrumbsChanged);
             }
@@ -932,13 +900,13 @@ impl Terminal {
                 }
             }
 
-            InternalEvent::Copy(keep_selection) => {
+            InternalEvent::Copy => {
                 if let Some(txt) = term.selection_to_string() {
                     cx.write_to_clipboard(ClipboardItem::new_string(txt));
-                    if !keep_selection.unwrap_or_else(|| {
-                        let settings = TerminalSettings::get_global(cx);
-                        settings.keep_selection_on_copy
-                    }) {
+
+                    let settings = TerminalSettings::get_global(cx);
+
+                    if !settings.keep_selection_on_copy {
                         self.events.push_back(InternalEvent::SetSelection(None));
                     }
                 }
@@ -1109,8 +1077,8 @@ impl Terminal {
             .push_back(InternalEvent::SetSelection(selection));
     }
 
-    pub fn copy(&mut self, keep_selection: Option<bool>) {
-        self.events.push_back(InternalEvent::Copy(keep_selection));
+    pub fn copy(&mut self) {
+        self.events.push_back(InternalEvent::Copy);
     }
 
     pub fn clear(&mut self) {
@@ -1268,7 +1236,8 @@ impl Terminal {
             }
 
             "y" => {
-                self.copy(Some(false));
+                self.events.push_back(InternalEvent::Copy);
+                self.events.push_back(InternalEvent::SetSelection(None));
                 return;
             }
 
@@ -1653,7 +1622,7 @@ impl Terminal {
             }
         } else {
             if e.button == MouseButton::Left && setting.copy_on_select {
-                self.copy(Some(true));
+                self.copy();
             }
 
             //Hyperlinks
@@ -1821,14 +1790,6 @@ impl Terminal {
                         })
                         .unwrap_or_else(|| "Terminal".to_string())
                 }),
-        }
-    }
-
-    pub fn kill_active_task(&mut self) {
-        if let Some(task) = self.task() {
-            if task.status == TaskStatus::Running {
-                self.pty_info.kill_current_process();
-            }
         }
     }
 

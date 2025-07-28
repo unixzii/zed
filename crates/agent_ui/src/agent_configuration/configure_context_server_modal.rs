@@ -1,5 +1,4 @@
 use std::{
-    path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -189,7 +188,7 @@ fn context_server_input(existing: Option<(ContextServerId, ContextServerCommand)
         }
         None => (
             "some-mcp-server".to_string(),
-            PathBuf::new(),
+            "".to_string(),
             "[]".to_string(),
             "{}".to_string(),
         ),
@@ -200,14 +199,13 @@ fn context_server_input(existing: Option<(ContextServerId, ContextServerCommand)
   /// The name of your MCP server
   "{name}": {{
     /// The command which runs the MCP server
-    "command": "{}",
+    "command": "{command}",
     /// The arguments to pass to the MCP server
     "args": {args},
     /// The environment variables to set
     "env": {env}
   }}
-}}"#,
-        command.display()
+}}"#
     )
 }
 

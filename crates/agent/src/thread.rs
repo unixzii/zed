@@ -47,11 +47,11 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
-use util::{ResultExt as _, post_inc};
+use util::{ResultExt as _, debug_panic, post_inc};
 use uuid::Uuid;
 use zed_llm_client::{CompletionIntent, CompletionRequestStatus, UsageLimit};
 
-const MAX_RETRY_ATTEMPTS: u8 = 4;
+const MAX_RETRY_ATTEMPTS: u8 = 3;
 const BASE_RETRY_DELAY: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
@@ -1349,7 +1349,6 @@ impl Thread {
             tool_choice: None,
             stop: Vec::new(),
             temperature: AgentSettings::temperature_for_model(&model, cx),
-            thinking_allowed: true,
         };
 
         let available_tools = self.available_tools(cx, model.clone());
@@ -1515,7 +1514,6 @@ impl Thread {
             tool_choice: None,
             stop: Vec::new(),
             temperature: AgentSettings::temperature_for_model(model, cx),
-            thinking_allowed: false,
         };
 
         for message in &self.messages {
@@ -1582,18 +1580,18 @@ impl Thread {
         model: Arc<dyn LanguageModel>,
         cx: &mut App,
     ) -> Option<PendingToolUse> {
+        let action_log = self.action_log.read(cx);
+
+        action_log.unnotified_stale_buffers(cx).next()?;
+
         // Represent notification as a simulated `project_notifications` tool call
         let tool_name = Arc::from("project_notifications");
-        let tool = self.tools.read(cx).tool(&tool_name, cx)?;
+        let Some(tool) = self.tools.read(cx).tool(&tool_name, cx) else {
+            debug_panic!("`project_notifications` tool not found");
+            return None;
+        };
 
         if !self.profile.is_tool_enabled(tool.source(), tool.name(), cx) {
-            return None;
-        }
-
-        if self
-            .action_log
-            .update(cx, |log, cx| log.unnotified_user_edits(cx).is_none())
-        {
             return None;
         }
 
@@ -2037,12 +2035,6 @@ impl Thread {
                                         if let Some(retry_strategy) =
                                             Thread::get_retry_strategy(completion_error)
                                         {
-                                            log::info!(
-                                                "Retrying with {:?} for language model completion error {:?}",
-                                                retry_strategy,
-                                                completion_error
-                                            );
-
                                             retry_scheduled = thread
                                                 .handle_retryable_error_with_delay(
                                                     &completion_error,
@@ -2186,8 +2178,8 @@ impl Thread {
 
         // General strategy here:
         // - If retrying won't help (e.g. invalid API key or payload too large), return None so we don't retry at all.
-        // - If it's a time-based issue (e.g. server overloaded, rate limit exceeded), retry up to 4 times with exponential backoff.
-        // - If it's an issue that *might* be fixed by retrying (e.g. internal server error), retry up to 3 times.
+        // - If it's a time-based issue (e.g. server overloaded, rate limit exceeded), try multiple times with exponential backoff.
+        // - If it's an issue that *might* be fixed by retrying (e.g. internal server error), just retry once.
         match error {
             HttpResponseError {
                 status_code: StatusCode::TOO_MANY_REQUESTS,
@@ -2215,8 +2207,8 @@ impl Thread {
                 }
                 StatusCode::INTERNAL_SERVER_ERROR => Some(RetryStrategy::Fixed {
                     delay: retry_after.unwrap_or(BASE_RETRY_DELAY),
-                    // Internal Server Error could be anything, retry up to 3 times.
-                    max_attempts: 3,
+                    // Internal Server Error could be anything, so only retry once.
+                    max_attempts: 1,
                 }),
                 status => {
                     // There is no StatusCode variant for the unofficial HTTP 529 ("The service is overloaded"),
@@ -2227,23 +2219,20 @@ impl Thread {
                             max_attempts: MAX_RETRY_ATTEMPTS,
                         })
                     } else {
-                        Some(RetryStrategy::Fixed {
-                            delay: retry_after.unwrap_or(BASE_RETRY_DELAY),
-                            max_attempts: 2,
-                        })
+                        None
                     }
                 }
             },
             ApiInternalServerError { .. } => Some(RetryStrategy::Fixed {
                 delay: BASE_RETRY_DELAY,
-                max_attempts: 3,
+                max_attempts: 1,
             }),
             ApiReadResponseError { .. }
             | HttpSend { .. }
             | DeserializeResponse { .. }
             | BadRequestFormat { .. } => Some(RetryStrategy::Fixed {
                 delay: BASE_RETRY_DELAY,
-                max_attempts: 3,
+                max_attempts: 1,
             }),
             // Retrying these errors definitely shouldn't help.
             HttpResponseError {
@@ -2251,30 +2240,24 @@ impl Thread {
                     StatusCode::PAYLOAD_TOO_LARGE | StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED,
                 ..
             }
+            | SerializeRequest { .. }
+            | BuildRequestBody { .. }
+            | PromptTooLarge { .. }
             | AuthenticationError { .. }
             | PermissionError { .. }
-            | NoApiKey { .. }
             | ApiEndpointNotFound { .. }
-            | PromptTooLarge { .. } => None,
-            // These errors might be transient, so retry them
-            SerializeRequest { .. } | BuildRequestBody { .. } => Some(RetryStrategy::Fixed {
-                delay: BASE_RETRY_DELAY,
-                max_attempts: 1,
-            }),
+            | NoApiKey { .. } => None,
             // Retry all other 4xx and 5xx errors once.
             HttpResponseError { status_code, .. }
                 if status_code.is_client_error() || status_code.is_server_error() =>
             {
                 Some(RetryStrategy::Fixed {
                     delay: BASE_RETRY_DELAY,
-                    max_attempts: 3,
+                    max_attempts: 1,
                 })
             }
             // Conservatively assume that any other errors are non-retryable
-            HttpResponseError { .. } | Other(..) => Some(RetryStrategy::Fixed {
-                delay: BASE_RETRY_DELAY,
-                max_attempts: 2,
-            }),
+            HttpResponseError { .. } | Other(..) => None,
         }
     }
 
@@ -3378,6 +3361,7 @@ mod tests {
     use futures::stream::BoxStream;
     use gpui::TestAppContext;
     use http_client;
+    use indoc::indoc;
     use language_model::fake_provider::{FakeLanguageModel, FakeLanguageModelProvider};
     use language_model::{
         LanguageModelCompletionError, LanguageModelName, LanguageModelProviderId,
@@ -3706,7 +3690,6 @@ fn main() {{
     }
 
     #[gpui::test]
-    #[ignore] // turn this test on when project_notifications tool is re-enabled
     async fn test_stale_buffer_notification(cx: &mut TestAppContext) {
         init_test_settings(cx);
 
@@ -3739,7 +3722,6 @@ fn main() {{
                 cx,
             );
         });
-        cx.run_until_parked();
 
         // We shouldn't have a stale buffer notification yet
         let notifications = thread.read_with(cx, |thread, _| {
@@ -3769,13 +3751,11 @@ fn main() {{
                 cx,
             )
         });
-        cx.run_until_parked();
 
         // Check for the stale buffer warning
         thread.update(cx, |thread, cx| {
             thread.flush_notifications(model.clone(), CompletionIntent::UserPrompt, cx)
         });
-        cx.run_until_parked();
 
         let notifications = thread.read_with(cx, |thread, _cx| {
             find_tool_uses(thread, "project_notifications")
@@ -3789,8 +3769,12 @@ fn main() {{
             panic!("`project_notifications` should return text");
         };
 
-        assert!(notification_content.contains("These files have changed since the last read:"));
-        assert!(notification_content.contains("code.rs"));
+        let expected_content = indoc! {"[The following is an auto-generated notification; do not reply]
+
+        These files have changed since the last read:
+        - code.rs
+        "};
+        assert_eq!(notification_content, expected_content);
 
         // Insert another user message and flush notifications again
         thread.update(cx, |thread, cx| {
@@ -3806,7 +3790,6 @@ fn main() {{
         thread.update(cx, |thread, cx| {
             thread.flush_notifications(model.clone(), CompletionIntent::UserPrompt, cx)
         });
-        cx.run_until_parked();
 
         // There should be no new notifications (we already flushed one)
         let notifications = thread.read_with(cx, |thread, _cx| {
@@ -4365,7 +4348,7 @@ fn main() {{
             let retry_state = thread.retry_state.as_ref().unwrap();
             assert_eq!(retry_state.attempt, 1, "Should be first retry attempt");
             assert_eq!(
-                retry_state.max_attempts, 3,
+                retry_state.max_attempts, 1,
                 "Should have correct max attempts"
             );
         });
@@ -4381,9 +4364,8 @@ fn main() {{
                             if let MessageSegment::Text(text) = seg {
                                 text.contains("internal")
                                     && text.contains("Fake")
-                                    && text.contains("Retrying")
-                                    && text.contains("attempt 1 of 3")
-                                    && text.contains("seconds")
+                                    && text.contains("Retrying in")
+                                    && !text.contains("attempt")
                             } else {
                                 false
                             }
@@ -4478,8 +4460,8 @@ fn main() {{
             let retry_state = thread.retry_state.as_ref().unwrap();
             assert_eq!(retry_state.attempt, 1, "Should be first retry attempt");
             assert_eq!(
-                retry_state.max_attempts, 3,
-                "Internal server errors should retry up to 3 times"
+                retry_state.max_attempts, 1,
+                "Internal server errors should only retry once"
             );
         });
 
@@ -4487,15 +4469,7 @@ fn main() {{
         cx.executor().advance_clock(BASE_RETRY_DELAY);
         cx.run_until_parked();
 
-        // Advance clock for second retry
-        cx.executor().advance_clock(BASE_RETRY_DELAY);
-        cx.run_until_parked();
-
-        // Advance clock for third retry
-        cx.executor().advance_clock(BASE_RETRY_DELAY);
-        cx.run_until_parked();
-
-        // Should have completed all retries - count retry messages
+        // Should have scheduled second retry - count retry messages
         let retry_count = thread.update(cx, |thread, _| {
             thread
                 .messages
@@ -4513,24 +4487,24 @@ fn main() {{
                 .count()
         });
         assert_eq!(
-            retry_count, 3,
-            "Should have 3 retries for internal server errors"
+            retry_count, 1,
+            "Should have only one retry for internal server errors"
         );
 
-        // For internal server errors, we retry 3 times and then give up
-        // Check that retry_state is cleared after all retries
+        // For internal server errors, we only retry once and then give up
+        // Check that retry_state is cleared after the single retry
         thread.read_with(cx, |thread, _| {
             assert!(
                 thread.retry_state.is_none(),
-                "Retry state should be cleared after all retries"
+                "Retry state should be cleared after single retry"
             );
         });
 
-        // Verify total attempts (1 initial + 3 retries)
+        // Verify total attempts (1 initial + 1 retry)
         assert_eq!(
             *completion_count.lock(),
-            4,
-            "Should have attempted once plus 3 retries"
+            2,
+            "Should have attempted once plus 1 retry"
         );
     }
 
@@ -5495,7 +5469,7 @@ fn main() {{
         let thread = thread_store.update(cx, |store, cx| store.create_thread(cx));
         let context_store = cx.new(|_cx| ContextStore::new(project.downgrade(), None));
 
-        let provider = Arc::new(FakeLanguageModelProvider::default());
+        let provider = Arc::new(FakeLanguageModelProvider);
         let model = provider.test_model();
         let model: Arc<dyn LanguageModel> = Arc::new(model);
 

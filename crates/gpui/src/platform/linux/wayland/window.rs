@@ -76,7 +76,6 @@ struct InProgressConfigure {
     size: Option<Size<Pixels>>,
     fullscreen: bool,
     maximized: bool,
-    resizing: bool,
     tiling: Tiling,
 }
 
@@ -108,10 +107,9 @@ pub struct WaylandWindowState {
     active: bool,
     hovered: bool,
     in_progress_configure: Option<InProgressConfigure>,
-    resize_throttle: bool,
     in_progress_window_controls: Option<WindowControls>,
     window_controls: WindowControls,
-    client_inset: Option<Pixels>,
+    inset: Option<Pixels>,
 }
 
 #[derive(Clone)]
@@ -178,7 +176,6 @@ impl WaylandWindowState {
             tiling: Tiling::default(),
             window_bounds: options.bounds,
             in_progress_configure: None,
-            resize_throttle: false,
             client,
             appearance,
             handle,
@@ -186,7 +183,7 @@ impl WaylandWindowState {
             hovered: false,
             in_progress_window_controls: None,
             window_controls: WindowControls::default(),
-            client_inset: None,
+            inset: None,
         })
     }
 
@@ -210,13 +207,6 @@ impl WaylandWindowState {
         }
         self.display = current_output;
         scale
-    }
-
-    pub fn inset(&self) -> Pixels {
-        match self.decorations {
-            WindowDecorations::Server => px(0.0),
-            WindowDecorations::Client => self.client_inset.unwrap_or(px(0.0)),
-        }
     }
 }
 
@@ -345,7 +335,6 @@ impl WaylandWindowStatePtr {
     pub fn frame(&self) {
         let mut state = self.state.borrow_mut();
         state.surface.frame(&state.globals.qh, state.surface.id());
-        state.resize_throttle = false;
         drop(state);
 
         let mut cb = self.callbacks.borrow_mut();
@@ -377,17 +366,11 @@ impl WaylandWindowStatePtr {
                         state.fullscreen = configure.fullscreen;
                         state.maximized = configure.maximized;
                         state.tiling = configure.tiling;
-                        // Limit interactive resizes to once per vblank
-                        if configure.resizing && state.resize_throttle {
-                            return;
-                        } else if configure.resizing {
-                            state.resize_throttle = true;
-                        }
                         if !configure.fullscreen && !configure.maximized {
                             configure.size = if got_unmaximized {
                                 Some(state.window_bounds.size)
                             } else {
-                                compute_outer_size(state.inset(), configure.size, state.tiling)
+                                compute_outer_size(state.inset, configure.size, state.tiling)
                             };
                             if let Some(size) = configure.size {
                                 state.window_bounds = Bounds {
@@ -407,7 +390,7 @@ impl WaylandWindowStatePtr {
 
                 let window_geometry = inset_by_tiling(
                     state.bounds.map_origin(|_| px(0.0)),
-                    state.inset(),
+                    state.inset.unwrap_or(px(0.0)),
                     state.tiling,
                 )
                 .map(|v| v.0 as i32)
@@ -489,7 +472,6 @@ impl WaylandWindowStatePtr {
                 let mut tiling = Tiling::default();
                 let mut fullscreen = false;
                 let mut maximized = false;
-                let mut resizing = false;
 
                 for state in states {
                     match state {
@@ -499,7 +481,6 @@ impl WaylandWindowStatePtr {
                         xdg_toplevel::State::Fullscreen => {
                             fullscreen = true;
                         }
-                        xdg_toplevel::State::Resizing => resizing = true,
                         xdg_toplevel::State::TiledTop => {
                             tiling.top = true;
                         }
@@ -527,7 +508,6 @@ impl WaylandWindowStatePtr {
                     size,
                     fullscreen,
                     maximized,
-                    resizing,
                     tiling,
                 });
 
@@ -825,7 +805,7 @@ impl PlatformWindow for WaylandWindow {
         } else if state.maximized {
             WindowBounds::Maximized(state.window_bounds)
         } else {
-            let inset = state.inset();
+            let inset = state.inset.unwrap_or(px(0.));
             drop(state);
             WindowBounds::Windowed(self.bounds().inset(inset))
         }
@@ -1080,8 +1060,8 @@ impl PlatformWindow for WaylandWindow {
 
     fn set_client_inset(&self, inset: Pixels) {
         let mut state = self.borrow_mut();
-        if Some(inset) != state.client_inset {
-            state.client_inset = Some(inset);
+        if Some(inset) != state.inset {
+            state.inset = Some(inset);
             update_window(state);
         }
     }
@@ -1101,7 +1081,9 @@ fn update_window(mut state: RefMut<WaylandWindowState>) {
 
     state.renderer.update_transparency(!opaque);
     let mut opaque_area = state.window_bounds.map(|v| v.0 as i32);
-    opaque_area.inset(state.inset().0 as i32);
+    if let Some(inset) = state.inset {
+        opaque_area.inset(inset.0 as i32);
+    }
 
     let region = state
         .globals
@@ -1174,10 +1156,12 @@ impl ResizeEdge {
 /// updating to account for the client decorations. But that's not the area we want to render
 /// to, due to our intrusize CSD. So, here we calculate the 'actual' size, by adding back in the insets
 fn compute_outer_size(
-    inset: Pixels,
+    inset: Option<Pixels>,
     new_size: Option<Size<Pixels>>,
     tiling: Tiling,
 ) -> Option<Size<Pixels>> {
+    let Some(inset) = inset else { return new_size };
+
     new_size.map(|mut new_size| {
         if !tiling.top {
             new_size.height += inset;

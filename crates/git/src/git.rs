@@ -31,10 +31,8 @@ actions!(
     git,
     [
         // per-hunk
-        /// Toggles the staged state of the hunk or status entry at cursor.
+        /// Toggles the staged state of the hunk at cursor.
         ToggleStaged,
-        /// Stage status entries between an anchor entry and the cursor.
-        StageRange,
         /// Stages the current hunk and moves to the next one.
         StageAndNext,
         /// Unstages the current hunk and moves to the next one.
@@ -55,10 +53,6 @@ actions!(
         StageAll,
         /// Unstages all changes in the repository.
         UnstageAll,
-        /// Stashes all changes in the repository, including untracked files.
-        StashAll,
-        /// Pops the most recent stash.
-        StashPop,
         /// Restores all tracked files to their last committed state.
         RestoreTrackedFiles,
         /// Moves all untracked files to trash.
@@ -81,8 +75,6 @@ actions!(
         Commit,
         /// Amends the last commit with staged changes.
         Amend,
-        /// Enable the --signoff option.
-        Signoff,
         /// Cancels the current git operation.
         Cancel,
         /// Expands the commit message editor.

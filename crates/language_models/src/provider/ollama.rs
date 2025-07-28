@@ -192,16 +192,12 @@ impl LanguageModelProvider for OllamaLanguageModelProvider {
         IconName::AiOllama
     }
 
-    fn default_model(&self, _: &App) -> Option<Arc<dyn LanguageModel>> {
-        // We shouldn't try to select default model, because it might lead to a load call for an unloaded model.
-        // In a constrained environment where user might not have enough resources it'll be a bad UX to select something
-        // to load by default.
-        None
+    fn default_model(&self, cx: &App) -> Option<Arc<dyn LanguageModel>> {
+        self.provided_models(cx).into_iter().next()
     }
 
-    fn default_fast_model(&self, _: &App) -> Option<Arc<dyn LanguageModel>> {
-        // See explanation for default_model.
-        None
+    fn default_fast_model(&self, cx: &App) -> Option<Arc<dyn LanguageModel>> {
+        self.default_model(cx)
     }
 
     fn provided_models(&self, cx: &App) -> Vec<Arc<dyn LanguageModel>> {
@@ -338,10 +334,7 @@ impl OllamaLanguageModel {
                 temperature: request.temperature.or(Some(1.0)),
                 ..Default::default()
             }),
-            think: self
-                .model
-                .supports_thinking
-                .map(|supports_thinking| supports_thinking && request.thinking_allowed),
+            think: self.model.supports_thinking,
             tools: request.tools.into_iter().map(tool_into_ollama).collect(),
         }
     }

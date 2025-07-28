@@ -766,7 +766,14 @@ impl Render for NewProcessModal {
                             ))
                             .child(
                                 h_flex()
-                                    .child(div().child(self.adapter_drop_down_menu(window, cx))),
+                                    .child(div().child(self.adapter_drop_down_menu(window, cx)))
+                                    .child(
+                                        Button::new("debugger-spawn", "Start")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.start_new_session(window, cx)
+                                            }))
+                                            .disabled(disabled),
+                                    ),
                             )
                     }),
                     NewProcessMode::Debug => el,

@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use settings::Settings;
 use std::sync::Arc;
 use ui::IconName;
+use util::markdown::MarkdownInlineCode;
 
 /// If the model requests to read a file whose size exceeds this, then
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -67,7 +68,7 @@ impl Tool for ReadFileTool {
     }
 
     fn icon(&self) -> IconName {
-        IconName::ToolRead
+        IconName::FileSearch
     }
 
     fn input_schema(&self, format: LanguageModelToolSchemaFormat) -> Result<serde_json::Value> {
@@ -77,21 +78,11 @@ impl Tool for ReadFileTool {
     fn ui_text(&self, input: &serde_json::Value) -> String {
         match serde_json::from_value::<ReadFileToolInput>(input.clone()) {
             Ok(input) => {
-                let path = &input.path;
+                let path = MarkdownInlineCode(&input.path);
                 match (input.start_line, input.end_line) {
-                    (Some(start), Some(end)) => {
-                        format!(
-                            "[Read file `{}` (lines {}-{})](@selection:{}:({}-{}))",
-                            path, start, end, path, start, end
-                        )
-                    }
-                    (Some(start), None) => {
-                        format!(
-                            "[Read file `{}` (from line {})](@selection:{}:({}-{}))",
-                            path, start, path, start, start
-                        )
-                    }
-                    _ => format!("[Read file `{}`](@file:{})", path, path),
+                    (Some(start), None) => format!("Read file {path} (from line {start})"),
+                    (Some(start), Some(end)) => format!("Read file {path} (lines {start}-{end})"),
+                    _ => format!("Read file {path}"),
                 }
             }
             Err(_) => "Read file".to_string(),
@@ -285,10 +276,7 @@ impl Tool for ReadFileTool {
 
                         Using the line numbers in this outline, you can call this tool again
                         while specifying the start_line and end_line fields to see the
-                        implementations of symbols in the outline.
-                        
-                        Alternatively, you can fall back to the `grep` tool (if available)
-                        to search the file for specific content."
+                        implementations of symbols in the outline."
                     }
                     .into())
                 }

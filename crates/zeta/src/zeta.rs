@@ -7,7 +7,8 @@ mod onboarding_telemetry;
 mod rate_completion_modal;
 
 pub(crate) use completion_diff_element::*;
-use db::kvp::{Dismissable, KEY_VALUE_STORE};
+use db::kvp::KEY_VALUE_STORE;
+use feature_flags::{FeatureFlagAppExt as _, ZedCloudFeatureFlag};
 pub use init::*;
 use inline_completion::DataCollectionState;
 use license_detection::LICENSE_FILES_TO_CHECK;
@@ -92,38 +93,6 @@ impl From<InlineCompletionId> for gpui::ElementId {
 impl std::fmt::Display for InlineCompletionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-struct ZedPredictUpsell;
-
-impl Dismissable for ZedPredictUpsell {
-    const KEY: &'static str = "dismissed-edit-predict-upsell";
-
-    fn dismissed() -> bool {
-        // To make this backwards compatible with older versions of Zed, we
-        // check if the user has seen the previous Edit Prediction Onboarding
-        // before, by checking the data collection choice which was written to
-        // the database once the user clicked on "Accept and Enable"
-        if KEY_VALUE_STORE
-            .read_kvp(ZED_PREDICT_DATA_COLLECTION_CHOICE)
-            .log_err()
-            .map_or(false, |s| s.is_some())
-        {
-            return true;
-        }
-
-        KEY_VALUE_STORE
-            .read_kvp(Self::KEY)
-            .log_err()
-            .map_or(false, |s| s.is_some())
-    }
-}
-
-pub fn should_show_upsell_modal(user_store: &Entity<UserStore>, cx: &App) -> bool {
-    match user_store.read(cx).current_user_has_accepted_terms() {
-        Some(true) => !ZedPredictUpsell::dismissed(),
-        Some(false) | None => true,
     }
 }
 
@@ -422,6 +391,7 @@ impl Zeta {
         let client = self.client.clone();
         let llm_token = self.llm_token.clone();
         let app_version = AppVersion::global(cx);
+        let use_cloud = cx.has_flag::<ZedCloudFeatureFlag>();
 
         let buffer = buffer.clone();
 
@@ -512,6 +482,7 @@ impl Zeta {
                 llm_token,
                 app_version,
                 body,
+                use_cloud,
             })
             .await;
             let (response, usage) = match response {
@@ -777,6 +748,7 @@ and then another
                 llm_token,
                 app_version,
                 body,
+                use_cloud,
                 ..
             } = params;
 
@@ -792,7 +764,7 @@ and then another
                     } else {
                         request_builder.uri(
                             http_client
-                                .build_zed_llm_url("/predict_edits/v2", &[])?
+                                .build_zed_llm_url("/predict_edits/v2", &[], use_cloud)?
                                 .as_ref(),
                         )
                     };
@@ -852,6 +824,7 @@ and then another
         let client = self.client.clone();
         let llm_token = self.llm_token.clone();
         let app_version = AppVersion::global(cx);
+        let use_cloud = cx.has_flag::<ZedCloudFeatureFlag>();
         cx.spawn(async move |this, cx| {
             let http_client = client.http_client();
             let mut response = llm_token_retry(&llm_token, &client, |token| {
@@ -862,7 +835,7 @@ and then another
                     } else {
                         request_builder.uri(
                             http_client
-                                .build_zed_llm_url("/predict_edits/accept", &[])?
+                                .build_zed_llm_url("/predict_edits/accept", &[], use_cloud)?
                                 .as_ref(),
                         )
                     };
@@ -1158,6 +1131,7 @@ struct PerformPredictEditsParams {
     pub llm_token: LlmApiToken,
     pub app_version: SemanticVersion,
     pub body: PredictEditsBody,
+    pub use_cloud: bool,
 }
 
 #[derive(Error, Debug)]

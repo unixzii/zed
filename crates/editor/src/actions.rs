@@ -1,7 +1,6 @@
 //! This module contains all actions supported by [`Editor`].
 use super::*;
 use gpui::{Action, actions};
-use project::project_settings::GoToDiagnosticSeverityFilter;
 use schemars::JsonSchema;
 use util::serde::default_true;
 
@@ -259,36 +258,11 @@ pub struct SpawnNearestTask {
     pub reveal: task::RevealStrategy,
 }
 
-#[derive(Clone, PartialEq, Action)]
-#[action(no_json, no_register)]
-pub struct DiffClipboardWithSelectionData {
-    pub clipboard_text: String,
-    pub editor: Entity<Editor>,
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Deserialize, Default)]
 pub enum UuidVersion {
     #[default]
     V4,
     V7,
-}
-
-/// Goes to the next diagnostic in the file.
-#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
-#[action(namespace = editor)]
-#[serde(deny_unknown_fields)]
-pub struct GoToDiagnostic {
-    #[serde(default)]
-    pub severity: GoToDiagnosticSeverityFilter,
-}
-
-/// Goes to the previous diagnostic in the file.
-#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
-#[action(namespace = editor)]
-#[serde(deny_unknown_fields)]
-pub struct GoToPreviousDiagnostic {
-    #[serde(default)]
-    pub severity: GoToDiagnosticSeverityFilter,
 }
 
 actions!(
@@ -329,8 +303,6 @@ actions!(
         ApplyDiffHunk,
         /// Deletes the character before the cursor.
         Backspace,
-        /// Shows git blame information for the current line.
-        BlameHover,
         /// Cancels the current operation.
         Cancel,
         /// Cancels the running flycheck operation.
@@ -365,8 +337,6 @@ actions!(
         ConvertToLowerCase,
         /// Toggles the case of selected text.
         ConvertToOppositeCase,
-        /// Converts selected text to sentence case.
-        ConvertToSentenceCase,
         /// Converts selected text to snake_case.
         ConvertToSnakeCase,
         /// Converts selected text to Title Case.
@@ -407,8 +377,6 @@ actions!(
         DeleteToNextSubwordEnd,
         /// Deletes to the start of the previous subword.
         DeleteToPreviousSubwordStart,
-        /// Diffs the text stored in the clipboard against the current selection.
-        DiffClipboardWithSelection,
         /// Displays names of all active cursors.
         DisplayCursorNames,
         /// Duplicates the current line below.
@@ -438,14 +406,10 @@ actions!(
         FoldRecursive,
         /// Folds the selected ranges.
         FoldSelectedRanges,
-        /// Toggles focus back to the last active buffer.
-        ToggleFocus,
         /// Toggles folding at the current position.
         ToggleFold,
         /// Toggles recursive folding at the current position.
         ToggleFoldRecursive,
-        /// Toggles all folds in a buffer or all excerpts in multibuffer.
-        ToggleFoldAll,
         /// Formats the entire document.
         Format,
         /// Formats only the selected text.
@@ -458,6 +422,8 @@ actions!(
         GoToDefinition,
         /// Goes to definition in a split pane.
         GoToDefinitionSplit,
+        /// Goes to the next diagnostic in the file.
+        GoToDiagnostic,
         /// Goes to the next diff hunk.
         GoToHunk,
         /// Goes to the previous diff hunk.
@@ -472,6 +438,8 @@ actions!(
         GoToParentModule,
         /// Goes to the previous change in the file.
         GoToPreviousChange,
+        /// Goes to the previous diagnostic in the file.
+        GoToPreviousDiagnostic,
         /// Goes to the type definition of the symbol at cursor.
         GoToTypeDefinition,
         /// Goes to type definition in a split pane.

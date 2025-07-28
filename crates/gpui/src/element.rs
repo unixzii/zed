@@ -39,7 +39,7 @@ use crate::{
 use derive_more::{Deref, DerefMut};
 pub(crate) use smallvec::SmallVec;
 use std::{
-    any::{Any, type_name},
+    any::Any,
     fmt::{self, Debug, Display},
     mem, panic,
 };
@@ -220,17 +220,14 @@ impl<C: RenderOnce> Element for Component<C> {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        window.with_global_id(ElementId::Name(type_name::<C>().into()), |_, window| {
-            let mut element = self
-                .component
-                .take()
-                .unwrap()
-                .render(window, cx)
-                .into_any_element();
-
-            let layout_id = element.request_layout(window, cx);
-            (layout_id, element)
-        })
+        let mut element = self
+            .component
+            .take()
+            .unwrap()
+            .render(window, cx)
+            .into_any_element();
+        let layout_id = element.request_layout(window, cx);
+        (layout_id, element)
     }
 
     fn prepaint(
@@ -242,9 +239,7 @@ impl<C: RenderOnce> Element for Component<C> {
         window: &mut Window,
         cx: &mut App,
     ) {
-        window.with_global_id(ElementId::Name(type_name::<C>().into()), |_, window| {
-            element.prepaint(window, cx);
-        })
+        element.prepaint(window, cx);
     }
 
     fn paint(
@@ -257,9 +252,7 @@ impl<C: RenderOnce> Element for Component<C> {
         window: &mut Window,
         cx: &mut App,
     ) {
-        window.with_global_id(ElementId::Name(type_name::<C>().into()), |_, window| {
-            element.paint(window, cx);
-        })
+        element.paint(window, cx);
     }
 }
 

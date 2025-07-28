@@ -3,7 +3,7 @@ use std::any::Any;
 use ::settings::Settings;
 use command_palette_hooks::CommandPaletteFilter;
 use commit_modal::CommitModal;
-use editor::{Editor, actions::DiffClipboardWithSelectionData};
+use editor::Editor;
 mod blame_ui;
 use git::{
     repository::{Branch, Upstream, UpstreamTracking, UpstreamTrackingStatus},
@@ -15,9 +15,6 @@ use onboarding::GitOnboardingModal;
 use project_diff::ProjectDiff;
 use ui::prelude::*;
 use workspace::Workspace;
-use zed_actions;
-
-use crate::text_diff_view::TextDiffView;
 
 mod askpass_modal;
 pub mod branch_picker;
@@ -25,7 +22,7 @@ mod commit_modal;
 pub mod commit_tooltip;
 mod commit_view;
 mod conflict_view;
-pub mod file_diff_view;
+pub mod diff_view;
 pub mod git_panel;
 mod git_panel_settings;
 pub mod onboarding;
@@ -33,7 +30,6 @@ pub mod picker_prompt;
 pub mod project_diff;
 pub(crate) mod remote_output;
 pub mod repository_selector;
-pub mod text_diff_view;
 
 actions!(
     git,
@@ -114,22 +110,6 @@ pub fn init(cx: &mut App) {
                 });
             });
         }
-        workspace.register_action(|workspace, action: &git::StashAll, window, cx| {
-            let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
-                return;
-            };
-            panel.update(cx, |panel, cx| {
-                panel.stash_all(action, window, cx);
-            });
-        });
-        workspace.register_action(|workspace, action: &git::StashPop, window, cx| {
-            let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
-                return;
-            };
-            panel.update(cx, |panel, cx| {
-                panel.stash_pop(action, window, cx);
-            });
-        });
         workspace.register_action(|workspace, action: &git::StageAll, window, cx| {
             let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
                 return;
@@ -172,13 +152,6 @@ pub fn init(cx: &mut App) {
         workspace.register_action(|workspace, _: &git::OpenModifiedFiles, window, cx| {
             open_modified_files(workspace, window, cx);
         });
-        workspace.register_action(
-            |workspace, action: &DiffClipboardWithSelectionData, window, cx| {
-                if let Some(task) = TextDiffView::open(action, workspace, window, cx) {
-                    task.detach();
-                };
-            },
-        );
     })
     .detach();
 }
@@ -528,7 +501,7 @@ mod remote_button {
         )
         .into_any_element();
 
-        SplitButton::new(left, right)
+        SplitButton { left, right }
     }
 }
 

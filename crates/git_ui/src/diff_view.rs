@@ -1,4 +1,4 @@
-//! FileDiffView provides a UI for displaying differences between two buffers.
+//! DiffView provides a UI for displaying differences between two buffers.
 
 use anyhow::Result;
 use buffer_diff::{BufferDiff, BufferDiffSnapshot};
@@ -25,7 +25,7 @@ use workspace::{
     searchable::SearchableItemHandle,
 };
 
-pub struct FileDiffView {
+pub struct DiffView {
     editor: Entity<Editor>,
     old_buffer: Entity<Buffer>,
     new_buffer: Entity<Buffer>,
@@ -35,7 +35,7 @@ pub struct FileDiffView {
 
 const RECALCULATE_DIFF_DEBOUNCE: Duration = Duration::from_millis(250);
 
-impl FileDiffView {
+impl DiffView {
     pub fn open(
         old_path: PathBuf,
         new_path: PathBuf,
@@ -57,7 +57,7 @@ impl FileDiffView {
 
             workspace.update_in(cx, |workspace, window, cx| {
                 let diff_view = cx.new(|cx| {
-                    FileDiffView::new(
+                    DiffView::new(
                         old_buffer,
                         new_buffer,
                         buffer_diff,
@@ -190,15 +190,15 @@ async fn build_buffer_diff(
     })
 }
 
-impl EventEmitter<EditorEvent> for FileDiffView {}
+impl EventEmitter<EditorEvent> for DiffView {}
 
-impl Focusable for FileDiffView {
+impl Focusable for DiffView {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.editor.focus_handle(cx)
     }
 }
 
-impl Item for FileDiffView {
+impl Item for DiffView {
     type Event = EditorEvent;
 
     fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
@@ -216,37 +216,48 @@ impl Item for FileDiffView {
     }
 
     fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
-        let title_text = |buffer: &Entity<Buffer>| {
-            buffer
-                .read(cx)
-                .file()
-                .and_then(|file| {
-                    Some(
-                        file.full_path(cx)
-                            .file_name()?
-                            .to_string_lossy()
-                            .to_string(),
-                    )
-                })
-                .unwrap_or_else(|| "untitled".into())
-        };
-        let old_filename = title_text(&self.old_buffer);
-        let new_filename = title_text(&self.new_buffer);
-
+        let old_filename = self
+            .old_buffer
+            .read(cx)
+            .file()
+            .and_then(|file| {
+                Some(
+                    file.full_path(cx)
+                        .file_name()?
+                        .to_string_lossy()
+                        .to_string(),
+                )
+            })
+            .unwrap_or_else(|| "untitled".into());
+        let new_filename = self
+            .new_buffer
+            .read(cx)
+            .file()
+            .and_then(|file| {
+                Some(
+                    file.full_path(cx)
+                        .file_name()?
+                        .to_string_lossy()
+                        .to_string(),
+                )
+            })
+            .unwrap_or_else(|| "untitled".into());
         format!("{old_filename} ↔ {new_filename}").into()
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<ui::SharedString> {
-        let path = |buffer: &Entity<Buffer>| {
-            buffer
-                .read(cx)
-                .file()
-                .map(|file| file.full_path(cx).compact().to_string_lossy().to_string())
-                .unwrap_or_else(|| "untitled".into())
-        };
-        let old_path = path(&self.old_buffer);
-        let new_path = path(&self.new_buffer);
-
+        let old_path = self
+            .old_buffer
+            .read(cx)
+            .file()
+            .map(|file| file.full_path(cx).compact().to_string_lossy().to_string())
+            .unwrap_or_else(|| "untitled".into());
+        let new_path = self
+            .new_buffer
+            .read(cx)
+            .file()
+            .map(|file| file.full_path(cx).compact().to_string_lossy().to_string())
+            .unwrap_or_else(|| "untitled".into());
         Some(format!("{old_path} ↔ {new_path}").into())
     }
 
@@ -352,7 +363,7 @@ impl Item for FileDiffView {
     }
 }
 
-impl Render for FileDiffView {
+impl Render for DiffView {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         self.editor.clone()
     }
@@ -396,16 +407,16 @@ mod tests {
         )
         .await;
 
-        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let project = Project::test(fs.clone(), ["/test".as_ref()], cx).await;
 
         let (workspace, mut cx) =
             cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
 
         let diff_view = workspace
             .update_in(cx, |workspace, window, cx| {
-                FileDiffView::open(
-                    path!("/test/old_file.txt").into(),
-                    path!("/test/new_file.txt").into(),
+                DiffView::open(
+                    PathBuf::from(path!("/test/old_file.txt")),
+                    PathBuf::from(path!("/test/new_file.txt")),
                     workspace,
                     window,
                     cx,
@@ -499,21 +510,6 @@ mod tests {
                 ",
             ),
         );
-
-        diff_view.read_with(cx, |diff_view, cx| {
-            assert_eq!(
-                diff_view.tab_content_text(0, cx),
-                "old_file.txt ↔ new_file.txt"
-            );
-            assert_eq!(
-                diff_view.tab_tooltip_text(cx).unwrap(),
-                format!(
-                    "{} ↔ {}",
-                    path!("test/old_file.txt"),
-                    path!("test/new_file.txt")
-                )
-            );
-        })
     }
 
     #[gpui::test]
@@ -537,7 +533,7 @@ mod tests {
 
         let diff_view = workspace
             .update_in(cx, |workspace, window, cx| {
-                FileDiffView::open(
+                DiffView::open(
                     PathBuf::from(path!("/test/old_file.txt")),
                     PathBuf::from(path!("/test/new_file.txt")),
                     workspace,

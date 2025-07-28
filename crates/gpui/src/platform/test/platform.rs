@@ -2,7 +2,7 @@ use crate::{
     AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DevicePixels,
     ForegroundExecutor, Keymap, NoopTextSystem, Platform, PlatformDisplay, PlatformKeyboardLayout,
     PlatformTextSystem, PromptButton, ScreenCaptureFrame, ScreenCaptureSource, ScreenCaptureStream,
-    SourceMetadata, Task, TestDisplay, TestWindow, WindowAppearance, WindowParams, size,
+    Size, Task, TestDisplay, TestWindow, WindowAppearance, WindowParams, size,
 };
 use anyhow::Result;
 use collections::VecDeque;
@@ -44,17 +44,11 @@ pub(crate) struct TestPlatform {
 /// A fake screen capture source, used for testing.
 pub struct TestScreenCaptureSource {}
 
-/// A fake screen capture stream, used for testing.
 pub struct TestScreenCaptureStream {}
 
 impl ScreenCaptureSource for TestScreenCaptureSource {
-    fn metadata(&self) -> Result<SourceMetadata> {
-        Ok(SourceMetadata {
-            id: 0,
-            is_main: None,
-            label: None,
-            resolution: size(DevicePixels(1), DevicePixels(1)),
-        })
+    fn resolution(&self) -> Result<Size<DevicePixels>> {
+        Ok(size(DevicePixels(1), DevicePixels(1)))
     }
 
     fn stream(
@@ -70,11 +64,7 @@ impl ScreenCaptureSource for TestScreenCaptureSource {
     }
 }
 
-impl ScreenCaptureStream for TestScreenCaptureStream {
-    fn metadata(&self) -> Result<SourceMetadata> {
-        TestScreenCaptureSource {}.metadata()
-    }
-}
+impl ScreenCaptureStream for TestScreenCaptureStream {}
 
 struct TestPrompt {
     msg: String,
@@ -281,13 +271,13 @@ impl Platform for TestPlatform {
     #[cfg(feature = "screen-capture")]
     fn screen_capture_sources(
         &self,
-    ) -> oneshot::Receiver<Result<Vec<Rc<dyn ScreenCaptureSource>>>> {
+    ) -> oneshot::Receiver<Result<Vec<Box<dyn ScreenCaptureSource>>>> {
         let (mut tx, rx) = oneshot::channel();
         tx.send(Ok(self
             .screen_capture_sources
             .borrow()
             .iter()
-            .map(|source| Rc::new(source.clone()) as Rc<dyn ScreenCaptureSource>)
+            .map(|source| Box::new(source.clone()) as Box<dyn ScreenCaptureSource>)
             .collect()))
             .ok();
         rx

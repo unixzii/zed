@@ -50,8 +50,8 @@
 ///  KeyBinding::new("cmd-k left", pane::SplitLeft, Some("Pane"))
 ///
 use crate::{
-    Action, ActionRegistry, App, DispatchPhase, EntityId, FocusId, KeyBinding, KeyContext, Keymap,
-    Keystroke, ModifiersChangedEvent, Window,
+    Action, ActionRegistry, App, BindingIndex, DispatchPhase, EntityId, FocusId, KeyBinding,
+    KeyContext, Keymap, Keystroke, ModifiersChangedEvent, Window,
 };
 use collections::FxHashMap;
 use smallvec::SmallVec;
@@ -406,11 +406,16 @@ impl DispatchTree {
         // methods, but this can't be done very cleanly since keymap must be borrowed.
         let keymap = self.keymap.borrow();
         keymap
-            .bindings_for_action(action)
-            .filter(|binding| {
-                Self::binding_matches_predicate_and_not_shadowed(&keymap, &binding, context_stack)
+            .bindings_for_action_with_indices(action)
+            .filter(|(binding_index, binding)| {
+                Self::binding_matches_predicate_and_not_shadowed(
+                    &keymap,
+                    *binding_index,
+                    &binding.keystrokes,
+                    context_stack,
+                )
             })
-            .cloned()
+            .map(|(_, binding)| binding.clone())
             .collect()
     }
 
@@ -423,22 +428,28 @@ impl DispatchTree {
     ) -> Option<KeyBinding> {
         let keymap = self.keymap.borrow();
         keymap
-            .bindings_for_action(action)
+            .bindings_for_action_with_indices(action)
             .rev()
-            .find(|binding| {
-                Self::binding_matches_predicate_and_not_shadowed(&keymap, &binding, context_stack)
+            .find_map(|(binding_index, binding)| {
+                let found = Self::binding_matches_predicate_and_not_shadowed(
+                    &keymap,
+                    binding_index,
+                    &binding.keystrokes,
+                    context_stack,
+                );
+                if found { Some(binding.clone()) } else { None }
             })
-            .cloned()
     }
 
     fn binding_matches_predicate_and_not_shadowed(
         keymap: &Keymap,
-        binding: &KeyBinding,
+        binding_index: BindingIndex,
+        keystrokes: &[Keystroke],
         context_stack: &[KeyContext],
     ) -> bool {
-        let (bindings, _) = keymap.bindings_for_input(&binding.keystrokes, context_stack);
-        if let Some(found) = bindings.iter().next() {
-            found.action.partial_eq(binding.action.as_ref())
+        let (bindings, _) = keymap.bindings_for_input_with_indices(&keystrokes, context_stack);
+        if let Some((highest_precedence_index, _)) = bindings.iter().next() {
+            binding_index == *highest_precedence_index
         } else {
             false
         }

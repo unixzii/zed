@@ -326,11 +326,11 @@ pub(crate) async fn capture_local_video_track(
     capture_source: &dyn ScreenCaptureSource,
     cx: &mut gpui::AsyncApp,
 ) -> Result<(crate::LocalVideoTrack, Box<dyn ScreenCaptureStream>)> {
-    let metadata = capture_source.metadata()?;
+    let resolution = capture_source.resolution()?;
     let track_source = gpui_tokio::Tokio::spawn(cx, async move {
         NativeVideoSource::new(VideoResolution {
-            width: metadata.resolution.width.0 as u32,
-            height: metadata.resolution.height.0 as u32,
+            width: resolution.width.0 as u32,
+            height: resolution.height.0 as u32,
         })
     })?
     .await?;
@@ -585,10 +585,10 @@ fn video_frame_buffer_from_webrtc(buffer: Box<dyn VideoBuffer>) -> Option<Remote
         if start_ptr.is_null() {
             return None;
         }
-        let argb_frame_slice = std::slice::from_raw_parts_mut(start_ptr, byte_len);
+        let bgra_frame_slice = std::slice::from_raw_parts_mut(start_ptr, byte_len);
         buffer.to_argb(
-            VideoFormatType::ARGB,
-            argb_frame_slice,
+            VideoFormatType::ARGB, // For some reason, this displays correctly while RGBA (the correct format) does not
+            bgra_frame_slice,
             stride,
             width as i32,
             height as i32,
@@ -596,13 +596,12 @@ fn video_frame_buffer_from_webrtc(buffer: Box<dyn VideoBuffer>) -> Option<Remote
         Vec::from_raw_parts(start_ptr, byte_len, byte_len)
     };
 
-    // TODO: Unclear why providing argb_image to RgbaImage works properly.
-    let image = RgbaImage::from_raw(width, height, argb_image)
-        .with_context(|| "Bug: not enough bytes allocated for image.")
-        .log_err()?;
-
     Some(Arc::new(RenderImage::new(SmallVec::from_elem(
-        Frame::new(image),
+        Frame::new(
+            RgbaImage::from_raw(width, height, argb_image)
+                .with_context(|| "Bug: not enough bytes allocated for image.")
+                .log_err()?,
+        ),
         1,
     ))))
 }
@@ -618,9 +617,9 @@ fn video_frame_buffer_to_webrtc(frame: ScreenCaptureFrame) -> Option<impl AsRef<
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn video_frame_buffer_to_webrtc(frame: ScreenCaptureFrame) -> Option<impl AsRef<dyn VideoBuffer>> {
-    use libwebrtc::native::yuv_helper::{abgr_to_nv12, argb_to_nv12};
+    use libwebrtc::native::yuv_helper::argb_to_nv12;
     use livekit::webrtc::prelude::NV12Buffer;
     match frame.0 {
         scap::frame::Frame::BGRx(frame) => {
@@ -628,22 +627,6 @@ fn video_frame_buffer_to_webrtc(frame: ScreenCaptureFrame) -> Option<impl AsRef<
             let (stride_y, stride_uv) = buffer.strides();
             let (data_y, data_uv) = buffer.data_mut();
             argb_to_nv12(
-                &frame.data,
-                frame.width as u32 * 4,
-                data_y,
-                stride_y,
-                data_uv,
-                stride_uv,
-                frame.width,
-                frame.height,
-            );
-            Some(buffer)
-        }
-        scap::frame::Frame::RGBx(frame) => {
-            let mut buffer = NV12Buffer::new(frame.width as u32, frame.height as u32);
-            let (stride_y, stride_uv) = buffer.strides();
-            let (data_y, data_uv) = buffer.data_mut();
-            abgr_to_nv12(
                 &frame.data,
                 frame.width as u32 * 4,
                 data_y,
@@ -674,6 +657,11 @@ fn video_frame_buffer_to_webrtc(frame: ScreenCaptureFrame) -> Option<impl AsRef<
             None
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn video_frame_buffer_to_webrtc(_frame: ScreenCaptureFrame) -> Option<impl AsRef<dyn VideoBuffer>> {
+    None as Option<Box<dyn VideoBuffer>>
 }
 
 trait DeviceChangeListenerApi: Stream<Item = ()> + Sized {

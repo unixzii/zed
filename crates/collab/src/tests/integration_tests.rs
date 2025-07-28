@@ -277,19 +277,11 @@ async fn test_basic_calls(
     let events_b = active_call_events(cx_b);
     let events_c = active_call_events(cx_c);
     cx_a.set_screen_capture_sources(vec![display]);
-    let screen_a = cx_a
-        .update(|cx| cx.screen_capture_sources())
-        .await
-        .unwrap()
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap();
     active_call_a
         .update(cx_a, |call, cx| {
             call.room()
                 .unwrap()
-                .update(cx, |room, cx| room.share_screen(screen_a, cx))
+                .update(cx, |room, cx| room.share_screen(cx))
         })
         .await
         .unwrap();
@@ -6320,20 +6312,11 @@ async fn test_join_call_after_screen_was_shared(
     // User A shares their screen
     let display = gpui::TestScreenCaptureSource::new();
     cx_a.set_screen_capture_sources(vec![display]);
-    let screen_a = cx_a
-        .update(|cx| cx.screen_capture_sources())
-        .await
-        .unwrap()
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap();
-
     active_call_a
         .update(cx_a, |call, cx| {
             call.room()
                 .unwrap()
-                .update(cx, |room, cx| room.share_screen(screen_a, cx))
+                .update(cx, |room, cx| room.share_screen(cx))
         })
         .await
         .unwrap();

@@ -128,7 +128,6 @@ mod macos {
             "AtlasTile".into(),
             "PathRasterizationInputIndex".into(),
             "PathVertex_ScaledPixels".into(),
-            "PathRasterizationVertex".into(),
             "ShadowInputIndex".into(),
             "Shadow".into(),
             "QuadInputIndex".into(),

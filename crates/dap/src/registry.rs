@@ -46,7 +46,6 @@ impl DapRegistry {
         let name = adapter.name();
         let _previous_value = self.0.write().adapters.insert(name, adapter);
     }
-
     pub fn add_locator(&self, locator: Arc<dyn DapLocator>) {
         self.0.write().locators.insert(locator.name(), locator);
     }

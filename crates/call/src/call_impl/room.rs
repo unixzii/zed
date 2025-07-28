@@ -11,18 +11,15 @@ use client::{
 use collections::{BTreeMap, HashMap, HashSet};
 use fs::Fs;
 use futures::{FutureExt, StreamExt};
-use gpui::{
-    App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, ScreenCaptureSource,
-    ScreenCaptureStream, Task, WeakEntity,
-};
+use gpui::{App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, Task, WeakEntity};
 use gpui_tokio::Tokio;
 use language::LanguageRegistry;
 use livekit::{LocalTrackPublication, ParticipantIdentity, RoomEvent};
-use livekit_client::{self as livekit, AudioStream, TrackSid};
+use livekit_client::{self as livekit, TrackSid};
 use postage::{sink::Sink, stream::Stream, watch};
 use project::Project;
 use settings::Settings as _;
-use std::{future::Future, mem, rc::Rc, sync::Arc, time::Duration};
+use std::{any::Any, future::Future, mem, rc::Rc, sync::Arc, time::Duration};
 use util::{ResultExt, TryFutureExt, post_inc};
 
 pub const RECONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1254,18 +1251,9 @@ impl Room {
         })
     }
 
-    pub fn is_sharing_screen(&self) -> bool {
+    pub fn is_screen_sharing(&self) -> bool {
         self.live_kit.as_ref().map_or(false, |live_kit| {
             !matches!(live_kit.screen_track, LocalTrack::None)
-        })
-    }
-
-    pub fn shared_screen_id(&self) -> Option<u64> {
-        self.live_kit.as_ref().and_then(|lk| match lk.screen_track {
-            LocalTrack::Published { ref _stream, .. } => {
-                _stream.metadata().ok().map(|meta| meta.id)
-            }
-            _ => None,
         })
     }
 
@@ -1381,15 +1369,11 @@ impl Room {
         })
     }
 
-    pub fn share_screen(
-        &mut self,
-        source: Rc<dyn ScreenCaptureSource>,
-        cx: &mut Context<Self>,
-    ) -> Task<Result<()>> {
+    pub fn share_screen(&mut self, cx: &mut Context<Self>) -> Task<Result<()>> {
         if self.status.is_offline() {
             return Task::ready(Err(anyhow!("room is offline")));
         }
-        if self.is_sharing_screen() {
+        if self.is_screen_sharing() {
             return Task::ready(Err(anyhow!("screen was already shared")));
         }
 
@@ -1402,8 +1386,13 @@ impl Room {
             return Task::ready(Err(anyhow!("live-kit was not initialized")));
         };
 
+        let sources = cx.screen_capture_sources();
+
         cx.spawn(async move |this, cx| {
-            let publication = participant.publish_screenshare_track(&*source, cx).await;
+            let sources = sources.await??;
+            let source = sources.first().context("no display found")?;
+
+            let publication = participant.publish_screenshare_track(&**source, cx).await;
 
             this.update(cx, |this, cx| {
                 let live_kit = this
@@ -1430,7 +1419,7 @@ impl Room {
                         } else {
                             live_kit.screen_track = LocalTrack::Published {
                                 track_publication: publication,
-                                _stream: stream,
+                                _stream: Box::new(stream),
                             };
                             cx.notify();
                         }
@@ -1496,7 +1485,7 @@ impl Room {
         }
     }
 
-    pub fn unshare_screen(&mut self, play_sound: bool, cx: &mut Context<Self>) -> Result<()> {
+    pub fn unshare_screen(&mut self, cx: &mut Context<Self>) -> Result<()> {
         anyhow::ensure!(!self.status.is_offline(), "room is offline");
 
         let live_kit = self
@@ -1520,10 +1509,7 @@ impl Room {
                     cx.notify();
                 }
 
-                if play_sound {
-                    Audio::play_sound(Sound::StopScreenshare, cx);
-                }
-
+                Audio::play_sound(Sound::StopScreenshare, cx);
                 Ok(())
             }
         }
@@ -1631,8 +1617,8 @@ fn spawn_room_connection(
 
 struct LiveKitRoom {
     room: Rc<livekit::Room>,
-    screen_track: LocalTrack<dyn ScreenCaptureStream>,
-    microphone_track: LocalTrack<AudioStream>,
+    screen_track: LocalTrack,
+    microphone_track: LocalTrack,
     /// Tracks whether we're currently in a muted state due to auto-mute from deafening or manual mute performed by user.
     muted_by_user: bool,
     deafened: bool,
@@ -1670,18 +1656,18 @@ impl LiveKitRoom {
     }
 }
 
-enum LocalTrack<Stream: ?Sized> {
+enum LocalTrack {
     None,
     Pending {
         publish_id: usize,
     },
     Published {
         track_publication: LocalTrackPublication,
-        _stream: Box<Stream>,
+        _stream: Box<dyn Any>,
     },
 }
 
-impl<T: ?Sized> Default for LocalTrack<T> {
+impl Default for LocalTrack {
     fn default() -> Self {
         Self::None
     }
