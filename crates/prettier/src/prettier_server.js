@@ -152,10 +152,6 @@ async function handleMessage(message, prettier) {
     throw new Error(`Message method is undefined: ${JSON.stringify(message)}`);
   } else if (method == "initialized") {
     return;
-  } else if (method === "shutdown") {
-    sendResponse({ result: {} });
-  } else if (method == "exit") {
-    process.exit(0);
   }
 
   if (id === undefined) {

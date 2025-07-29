@@ -114,7 +114,6 @@ pub struct ProjectPanel {
     mouse_down: bool,
     hover_expand_task: Option<Task<()>>,
     previous_drag_position: Option<Point<Pixels>>,
-    sticky_items_count: usize,
 }
 
 struct DragTargetEntry {
@@ -573,9 +572,6 @@ impl ProjectPanel {
                     if project_panel_settings.hide_root != new_settings.hide_root {
                         this.update_visible_entries(None, cx);
                     }
-                    if project_panel_settings.sticky_scroll && !new_settings.sticky_scroll {
-                        this.sticky_items_count = 0;
-                    }
                     project_panel_settings = new_settings;
                     this.update_diagnostics(cx);
                     cx.notify();
@@ -619,7 +615,6 @@ impl ProjectPanel {
                 mouse_down: false,
                 hover_expand_task: None,
                 previous_drag_position: None,
-                sticky_items_count: 0,
             };
             this.update_visible_entries(None, cx);
 
@@ -2272,11 +2267,8 @@ impl ProjectPanel {
 
     fn autoscroll(&mut self, cx: &mut Context<Self>) {
         if let Some((_, _, index)) = self.selection.and_then(|s| self.index_for_selection(s)) {
-            self.scroll_handle.scroll_to_item_with_offset(
-                index,
-                ScrollStrategy::Center,
-                self.sticky_items_count,
-            );
+            self.scroll_handle
+                .scroll_to_item(index, ScrollStrategy::Center);
             cx.notify();
         }
     }
@@ -2731,7 +2723,26 @@ impl ProjectPanel {
     }
 
     fn index_for_selection(&self, selection: SelectedEntry) -> Option<(usize, usize, usize)> {
-        self.index_for_entry(selection.entry_id, selection.worktree_id)
+        let mut entry_index = 0;
+        let mut visible_entries_index = 0;
+        for (worktree_index, (worktree_id, worktree_entries, _)) in
+            self.visible_entries.iter().enumerate()
+        {
+            if *worktree_id == selection.worktree_id {
+                for entry in worktree_entries {
+                    if entry.id == selection.entry_id {
+                        return Some((worktree_index, entry_index, visible_entries_index));
+                    } else {
+                        visible_entries_index += 1;
+                        entry_index += 1;
+                    }
+                }
+                break;
+            } else {
+                visible_entries_index += worktree_entries.len();
+            }
+        }
+        None
     }
 
     fn disjoint_entries(&self, cx: &App) -> BTreeSet<SelectedEntry> {
@@ -3342,12 +3353,12 @@ impl ProjectPanel {
         entry_id: ProjectEntryId,
         worktree_id: WorktreeId,
     ) -> Option<(usize, usize, usize)> {
+        let mut worktree_ix = 0;
         let mut total_ix = 0;
-        for (worktree_ix, (current_worktree_id, visible_worktree_entries, _)) in
-            self.visible_entries.iter().enumerate()
-        {
+        for (current_worktree_id, visible_worktree_entries, _) in &self.visible_entries {
             if worktree_id != *current_worktree_id {
                 total_ix += visible_worktree_entries.len();
+                worktree_ix += 1;
                 continue;
             }
 
@@ -4215,7 +4226,10 @@ impl ProjectPanel {
                         this.marked_entries.clear();
                         if is_sticky {
                             if let Some((_, _, index)) = this.index_for_entry(entry_id, worktree_id) {
-                                this.scroll_handle.scroll_to_item_with_offset(index, ScrollStrategy::Top, sticky_index.unwrap_or(0));
+                                let strategy = sticky_index
+                                    .map(ScrollStrategy::ToPosition)
+                                    .unwrap_or(ScrollStrategy::Top);
+                                this.scroll_handle.scroll_to_item(index, strategy);
                                 cx.notify();
                                 // move down by 1px so that clicked item
                                 // don't count as sticky anymore
@@ -5352,10 +5366,7 @@ impl Render for ProjectPanel {
                                 items
                             },
                             |this, marker_entry, window, cx| {
-                                let sticky_entries =
-                                    this.render_sticky_entries(marker_entry, window, cx);
-                                this.sticky_items_count = sticky_entries.len();
-                                sticky_entries
+                                this.render_sticky_entries(marker_entry, window, cx)
                             },
                         );
                         list.with_decoration(if show_indent_guides {

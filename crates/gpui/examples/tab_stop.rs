@@ -6,7 +6,6 @@ use gpui::{
 actions!(example, [Tab, TabPrev]);
 
 struct Example {
-    focus_handle: FocusHandle,
     items: Vec<FocusHandle>,
     message: SharedString,
 }
@@ -21,11 +20,8 @@ impl Example {
             cx.focus_handle().tab_index(2).tab_stop(true),
         ];
 
-        let focus_handle = cx.focus_handle();
-        window.focus(&focus_handle);
-
+        window.focus(items.first().unwrap());
         Self {
-            focus_handle,
             items,
             message: SharedString::from("Press `Tab`, `Shift-Tab` to switch focus."),
         }
@@ -44,10 +40,6 @@ impl Example {
 
 impl Render for Example {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        fn tab_stop_style<T: Styled>(this: T) -> T {
-            this.border_3().border_color(gpui::blue())
-        }
-
         fn button(id: impl Into<ElementId>) -> Stateful<Div> {
             div()
                 .id(id)
@@ -60,13 +52,12 @@ impl Render for Example {
                 .border_color(gpui::black())
                 .bg(gpui::black())
                 .text_color(gpui::white())
-                .focus(tab_stop_style)
+                .focus(|this| this.border_color(gpui::blue()))
                 .shadow_sm()
         }
 
         div()
             .id("app")
-            .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::on_tab))
             .on_action(cx.listener(Self::on_tab_prev))
             .size_full()
@@ -95,7 +86,7 @@ impl Render for Example {
                             .border_color(gpui::black())
                             .when(
                                 item_handle.tab_stop && item_handle.is_focused(window),
-                                tab_stop_style,
+                                |this| this.border_color(gpui::blue()),
                             )
                             .map(|this| match item_handle.tab_stop {
                                 true => this

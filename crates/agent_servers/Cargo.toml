@@ -18,7 +18,6 @@ doctest = false
 
 [dependencies]
 acp_thread.workspace = true
-agent-client-protocol.workspace = true
 agentic-coding-protocol.workspace = true
 anyhow.workspace = true
 collections.workspace = true
@@ -29,7 +28,6 @@ itertools.workspace = true
 log.workspace = true
 paths.workspace = true
 project.workspace = true
-rand.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -41,7 +39,6 @@ ui.workspace = true
 util.workspace = true
 uuid.workspace = true
 watch.workspace = true
-indoc.workspace = true
 which.workspace = true
 workspace-hack.workspace = true
 

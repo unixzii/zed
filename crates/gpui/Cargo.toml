@@ -121,7 +121,7 @@ smallvec.workspace = true
 smol.workspace = true
 strum.workspace = true
 sum_tree.workspace = true
-taffy = "=0.8.3"
+taffy = "=0.5.1"
 thiserror.workspace = true
 util.workspace = true
 uuid.workspace = true
@@ -286,10 +286,6 @@ path = "examples/shadow.rs"
 [[example]]
 name = "svg"
 path = "examples/svg/svg.rs"
-
-[[example]]
-name = "tab_stop"
-path = "examples/tab_stop.rs"
 
 [[example]]
 name = "text"

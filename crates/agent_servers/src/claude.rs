@@ -1,35 +1,39 @@
 mod mcp_server;
-pub mod tools;
+mod tools;
 
 use collections::HashMap;
-use context_server::listener::McpServerTool;
 use project::Project;
 use settings::SettingsStore;
 use smol::process::Child;
 use std::cell::RefCell;
 use std::fmt::Display;
 use std::path::Path;
+use std::pin::pin;
 use std::rc::Rc;
 use uuid::Uuid;
 
-use agent_client_protocol as acp;
+use agentic_coding_protocol::{
+    self as acp, AnyAgentRequest, AnyAgentResult, Client, ProtocolVersion,
+    StreamAssistantMessageChunkParams, ToolCallContent, UpdateToolCallParams,
+};
 use anyhow::{Result, anyhow};
 use futures::channel::oneshot;
-use futures::{AsyncBufReadExt, AsyncWriteExt};
+use futures::future::LocalBoxFuture;
+use futures::{AsyncBufReadExt, AsyncWriteExt, SinkExt};
 use futures::{
     AsyncRead, AsyncWrite, FutureExt, StreamExt,
     channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
     io::BufReader,
     select_biased,
 };
-use gpui::{App, AppContext, AsyncApp, Entity, Task, WeakEntity};
+use gpui::{App, AppContext, Entity, Task};
 use serde::{Deserialize, Serialize};
 use util::ResultExt;
 
-use crate::claude::mcp_server::{ClaudeZedMcpServer, McpConfig};
+use crate::claude::mcp_server::ClaudeMcpServer;
 use crate::claude::tools::ClaudeTool;
 use crate::{AgentServer, AgentServerCommand, AllAgentServersSettings};
-use acp_thread::{AcpThread, AgentConnection};
+use acp_thread::{AcpClientDelegate, AcpThread, AgentConnection};
 
 #[derive(Clone)]
 pub struct ClaudeCode;
@@ -44,51 +48,36 @@ impl AgentServer for ClaudeCode {
     }
 
     fn empty_state_message(&self) -> &'static str {
-        "How can I help you today?"
+        ""
     }
 
     fn logo(&self) -> ui::IconName {
         ui::IconName::AiClaude
     }
 
-    fn connect(
-        &self,
-        _root_dir: &Path,
-        _project: &Entity<Project>,
-        _cx: &mut App,
-    ) -> Task<Result<Rc<dyn AgentConnection>>> {
-        let connection = ClaudeAgentConnection {
-            sessions: Default::default(),
-        };
-
-        Task::ready(Ok(Rc::new(connection) as _))
-    }
-}
-
-struct ClaudeAgentConnection {
-    sessions: Rc<RefCell<HashMap<acp::SessionId, ClaudeAgentSession>>>,
-}
-
-impl AgentConnection for ClaudeAgentConnection {
-    fn name(&self) -> &'static str {
-        ClaudeCode.name()
+    fn supports_always_allow(&self) -> bool {
+        false
     }
 
     fn new_thread(
-        self: Rc<Self>,
-        project: Entity<Project>,
-        cwd: &Path,
-        cx: &mut AsyncApp,
+        &self,
+        root_dir: &Path,
+        project: &Entity<Project>,
+        cx: &mut App,
     ) -> Task<Result<Entity<AcpThread>>> {
-        let cwd = cwd.to_owned();
+        let project = project.clone();
+        let root_dir = root_dir.to_path_buf();
+        let title = self.name().into();
         cx.spawn(async move |cx| {
-            let (mut thread_tx, thread_rx) = watch::channel(WeakEntity::new_invalid());
-            let permission_mcp_server = ClaudeZedMcpServer::new(thread_rx.clone(), cx).await?;
+            let (mut delegate_tx, delegate_rx) = watch::channel(None);
+            let tool_id_map = Rc::new(RefCell::new(HashMap::default()));
+
+            let mcp_server = ClaudeMcpServer::new(delegate_rx, tool_id_map.clone(), cx).await?;
 
             let mut mcp_servers = HashMap::default();
             mcp_servers.insert(
                 mcp_server::SERVER_NAME.to_string(),
-                permission_mcp_server.server_config()?,
+                mcp_server.server_config()?,
             );
             let mcp_config = McpConfig { mcp_servers };
 
@@ -113,158 +102,192 @@ impl AgentConnection for ClaudeAgentConnection {
 
             let (incoming_message_tx, mut incoming_message_rx) = mpsc::unbounded();
             let (outgoing_tx, outgoing_rx) = mpsc::unbounded();
+            let (cancel_tx, mut cancel_rx) = mpsc::unbounded::<oneshot::Sender<Result<()>>>();
 
-            let session_id = acp::SessionId(Uuid::new_v4().to_string().into());
+            let session_id = Uuid::new_v4();
 
             log::trace!("Starting session with id: {}", session_id);
 
-            cx.background_spawn({
-                let session_id = session_id.clone();
-                async move {
-                    let mut outgoing_rx = Some(outgoing_rx);
+            cx.background_spawn(async move {
+                let mut outgoing_rx = Some(outgoing_rx);
+                let mut mode = ClaudeSessionMode::Start;
 
-                    let mut child = spawn_claude(
-                        &command,
-                        ClaudeSessionMode::Start,
-                        session_id.clone(),
-                        &mcp_config_path,
-                        &cwd,
-                    )
-                    .await?;
+                loop {
+                    let mut child =
+                        spawn_claude(&command, mode, session_id, &mcp_config_path, &root_dir)
+                            .await?;
+                    mode = ClaudeSessionMode::Resume;
 
                     let pid = child.id();
                     log::trace!("Spawned (pid: {})", pid);
 
-                    ClaudeAgentSession::handle_io(
-                        outgoing_rx.take().unwrap(),
-                        incoming_message_tx.clone(),
-                        child.stdin.take().unwrap(),
-                        child.stdout.take().unwrap(),
-                    )
-                    .await?;
+                    let mut io_fut = pin!(
+                        ClaudeAgentConnection::handle_io(
+                            outgoing_rx.take().unwrap(),
+                            incoming_message_tx.clone(),
+                            child.stdin.take().unwrap(),
+                            child.stdout.take().unwrap(),
+                        )
+                        .fuse()
+                    );
+
+                    select_biased! {
+                        done_tx = cancel_rx.next() => {
+                            if let Some(done_tx) = done_tx {
+                                log::trace!("Interrupted (pid: {})", pid);
+                                let result = send_interrupt(pid as i32);
+                                outgoing_rx.replace(io_fut.await?);
+                                done_tx.send(result).log_err();
+                                continue;
+                            }
+                        }
+                        result = io_fut => {
+                            result?;
+                        }
+                    }
 
                     log::trace!("Stopped (pid: {})", pid);
-
-                    drop(mcp_config_path);
-                    anyhow::Ok(())
+                    break;
                 }
+
+                drop(mcp_config_path);
+                anyhow::Ok(())
             })
             .detach();
 
-            let end_turn_tx = Rc::new(RefCell::new(None));
-            let handler_task = cx.spawn({
-                let end_turn_tx = end_turn_tx.clone();
-                let thread_rx = thread_rx.clone();
-                async move |cx| {
-                    while let Some(message) = incoming_message_rx.next().await {
-                        ClaudeAgentSession::handle_message(
-                            thread_rx.clone(),
-                            message,
-                            end_turn_tx.clone(),
-                            cx,
-                        )
-                        .await
+            cx.new(|cx| {
+                let end_turn_tx = Rc::new(RefCell::new(None));
+                let delegate = AcpClientDelegate::new(cx.entity().downgrade(), cx.to_async());
+                delegate_tx.send(Some(delegate.clone())).log_err();
+
+                let handler_task = cx.foreground_executor().spawn({
+                    let end_turn_tx = end_turn_tx.clone();
+                    let tool_id_map = tool_id_map.clone();
+                    let delegate = delegate.clone();
+                    async move {
+                        while let Some(message) = incoming_message_rx.next().await {
+                            ClaudeAgentConnection::handle_message(
+                                delegate.clone(),
+                                message,
+                                end_turn_tx.clone(),
+                                tool_id_map.clone(),
+                            )
+                            .await
+                        }
                     }
-                }
-            });
+                });
 
-            let thread =
-                cx.new(|cx| AcpThread::new(self.clone(), project, session_id.clone(), cx))?;
+                let mut connection = ClaudeAgentConnection {
+                    delegate,
+                    outgoing_tx,
+                    end_turn_tx,
+                    cancel_tx,
+                    session_id,
+                    _handler_task: handler_task,
+                    _mcp_server: None,
+                };
 
-            thread_tx.send(thread.downgrade())?;
-
-            let session = ClaudeAgentSession {
-                outgoing_tx,
-                end_turn_tx,
-                _handler_task: handler_task,
-                _mcp_server: Some(permission_mcp_server),
-            };
-
-            self.sessions.borrow_mut().insert(session_id, session);
-
-            Ok(thread)
+                connection._mcp_server = Some(mcp_server);
+                acp_thread::AcpThread::new(connection, title, None, project.clone(), cx)
+            })
         })
     }
+}
 
-    fn authenticate(&self, _cx: &mut App) -> Task<Result<()>> {
-        Task::ready(Err(anyhow!("Authentication not supported")))
-    }
+#[cfg(unix)]
+fn send_interrupt(pid: libc::pid_t) -> anyhow::Result<()> {
+    let pid = nix::unistd::Pid::from_raw(pid);
 
-    fn prompt(&self, params: acp::PromptArguments, cx: &mut App) -> Task<Result<()>> {
-        let sessions = self.sessions.borrow();
-        let Some(session) = sessions.get(&params.session_id) else {
-            return Task::ready(Err(anyhow!(
-                "Attempted to send message to nonexistent session {}",
-                params.session_id
-            )));
-        };
+    nix::sys::signal::kill(pid, nix::sys::signal::SIGINT)
+        .map_err(|e| anyhow!("Failed to interrupt process: {}", e))
+}
 
-        let (tx, rx) = oneshot::channel();
-        session.end_turn_tx.borrow_mut().replace(tx);
+#[cfg(windows)]
+fn send_interrupt(_pid: i32) -> anyhow::Result<()> {
+    panic!("Cancel not implemented on Windows")
+}
 
-        let mut content = String::new();
-        for chunk in params.prompt {
-            match chunk {
-                acp::ContentBlock::Text(text_content) => {
-                    content.push_str(&text_content.text);
+impl AgentConnection for ClaudeAgentConnection {
+    /// Send a request to the agent and wait for a response.
+    fn request_any(
+        &self,
+        params: AnyAgentRequest,
+    ) -> LocalBoxFuture<'static, Result<acp::AnyAgentResult>> {
+        let delegate = self.delegate.clone();
+        let end_turn_tx = self.end_turn_tx.clone();
+        let outgoing_tx = self.outgoing_tx.clone();
+        let mut cancel_tx = self.cancel_tx.clone();
+        let session_id = self.session_id;
+        async move {
+            match params {
+                // todo: consider sending an empty request so we get the init response?
+                AnyAgentRequest::InitializeParams(_) => Ok(AnyAgentResult::InitializeResponse(
+                    acp::InitializeResponse {
+                        is_authenticated: true,
+                        protocol_version: ProtocolVersion::latest(),
+                    },
+                )),
+                AnyAgentRequest::AuthenticateParams(_) => {
+                    Err(anyhow!("Authentication not supported"))
                 }
-                acp::ContentBlock::ResourceLink(resource_link) => {
-                    content.push_str(&format!("@{}", resource_link.uri));
+                AnyAgentRequest::SendUserMessageParams(message) => {
+                    delegate.clear_completed_plan_entries().await?;
+
+                    let (tx, rx) = oneshot::channel();
+                    end_turn_tx.borrow_mut().replace(tx);
+                    let mut content = String::new();
+                    for chunk in message.chunks {
+                        match chunk {
+                            agentic_coding_protocol::UserMessageChunk::Text { text } => {
+                                content.push_str(&text)
+                            }
+                            agentic_coding_protocol::UserMessageChunk::Path { path } => {
+                                content.push_str(&format!("@{path:?}"))
+                            }
+                        }
+                    }
+                    outgoing_tx.unbounded_send(SdkMessage::User {
+                        message: Message {
+                            role: Role::User,
+                            content: Content::UntaggedText(content),
+                            id: None,
+                            model: None,
+                            stop_reason: None,
+                            stop_sequence: None,
+                            usage: None,
+                        },
+                        session_id: Some(session_id),
+                    })?;
+                    rx.await??;
+                    Ok(AnyAgentResult::SendUserMessageResponse(
+                        acp::SendUserMessageResponse,
+                    ))
                 }
-                acp::ContentBlock::Audio(_)
-                | acp::ContentBlock::Image(_)
-                | acp::ContentBlock::Resource(_) => {
-                    // TODO
+                AnyAgentRequest::CancelSendMessageParams(_) => {
+                    let (done_tx, done_rx) = oneshot::channel();
+                    cancel_tx.send(done_tx).await?;
+                    done_rx.await??;
+
+                    Ok(AnyAgentResult::CancelSendMessageResponse(
+                        acp::CancelSendMessageResponse,
+                    ))
                 }
             }
         }
-
-        if let Err(err) = session.outgoing_tx.unbounded_send(SdkMessage::User {
-            message: Message {
-                role: Role::User,
-                content: Content::UntaggedText(content),
-                id: None,
-                model: None,
-                stop_reason: None,
-                stop_sequence: None,
-                usage: None,
-            },
-            session_id: Some(params.session_id.to_string()),
-        }) {
-            return Task::ready(Err(anyhow!(err)));
-        }
-
-        cx.foreground_executor().spawn(async move {
-            rx.await??;
-            Ok(())
-        })
-    }
-
-    fn cancel(&self, session_id: &acp::SessionId, _cx: &mut App) {
-        let sessions = self.sessions.borrow();
-        let Some(session) = sessions.get(&session_id) else {
-            log::warn!("Attempted to cancel nonexistent session {}", session_id);
-            return;
-        };
-
-        session
-            .outgoing_tx
-            .unbounded_send(SdkMessage::new_interrupt_message())
-            .log_err();
+        .boxed_local()
     }
 }
 
 #[derive(Clone, Copy)]
 enum ClaudeSessionMode {
     Start,
-    #[expect(dead_code)]
     Resume,
 }
 
 async fn spawn_claude(
     command: &AgentServerCommand,
     mode: ClaudeSessionMode,
-    session_id: acp::SessionId,
+    session_id: Uuid,
     mcp_config_path: &Path,
     root_dir: &Path,
 ) -> Result<Child> {
@@ -282,16 +305,10 @@ async fn spawn_claude(
             &format!(
                 "mcp__{}__{}",
                 mcp_server::SERVER_NAME,
-                mcp_server::PermissionTool::NAME,
+                mcp_server::PERMISSION_TOOL
             ),
             "--allowedTools",
-            &format!(
-                "mcp__{}__{},mcp__{}__{}",
-                mcp_server::SERVER_NAME,
-                mcp_server::EditTool::NAME,
-                mcp_server::SERVER_NAME,
-                mcp_server::ReadTool::NAME
-            ),
+            "mcp__zed__Read,mcp__zed__Edit",
             "--disallowedTools",
             "Read,Edit",
         ])
@@ -310,135 +327,105 @@ async fn spawn_claude(
     Ok(child)
 }
 
-struct ClaudeAgentSession {
+struct ClaudeAgentConnection {
+    delegate: AcpClientDelegate,
+    session_id: Uuid,
     outgoing_tx: UnboundedSender<SdkMessage>,
     end_turn_tx: Rc<RefCell<Option<oneshot::Sender<Result<()>>>>>,
-    _mcp_server: Option<ClaudeZedMcpServer>,
+    cancel_tx: UnboundedSender<oneshot::Sender<Result<()>>>,
+    _mcp_server: Option<ClaudeMcpServer>,
     _handler_task: Task<()>,
 }
 
-impl ClaudeAgentSession {
+impl ClaudeAgentConnection {
     async fn handle_message(
-        mut thread_rx: watch::Receiver<WeakEntity<AcpThread>>,
+        delegate: AcpClientDelegate,
         message: SdkMessage,
         end_turn_tx: Rc<RefCell<Option<oneshot::Sender<Result<()>>>>>,
-        cx: &mut AsyncApp,
+        tool_id_map: Rc<RefCell<HashMap<String, acp::ToolCallId>>>,
     ) {
         match message {
-            // we should only be sending these out, they don't need to be in the thread
-            SdkMessage::ControlRequest { .. } => {}
-            SdkMessage::Assistant {
-                message,
-                session_id: _,
-            }
-            | SdkMessage::User {
-                message,
-                session_id: _,
-            } => {
-                let Some(thread) = thread_rx
-                    .recv()
-                    .await
-                    .log_err()
-                    .and_then(|entity| entity.upgrade())
-                else {
-                    log::error!("Received an SDK message but thread is gone");
-                    return;
-                };
-
+            SdkMessage::Assistant { message, .. } | SdkMessage::User { message, .. } => {
                 for chunk in message.content.chunks() {
                     match chunk {
                         ContentChunk::Text { text } | ContentChunk::UntaggedText(text) => {
-                            thread
-                                .update(cx, |thread, cx| {
-                                    thread.push_assistant_content_block(text.into(), false, cx)
+                            delegate
+                                .stream_assistant_message_chunk(StreamAssistantMessageChunkParams {
+                                    chunk: acp::AssistantMessageChunk::Text { text },
                                 })
+                                .await
                                 .log_err();
                         }
                         ContentChunk::ToolUse { id, name, input } => {
                             let claude_tool = ClaudeTool::infer(&name, input);
 
-                            thread
-                                .update(cx, |thread, cx| {
-                                    if let ClaudeTool::TodoWrite(Some(params)) = claude_tool {
-                                        thread.update_plan(
-                                            acp::Plan {
-                                                entries: params
-                                                    .todos
-                                                    .into_iter()
-                                                    .map(Into::into)
-                                                    .collect(),
-                                            },
-                                            cx,
-                                        )
-                                    } else {
-                                        thread.upsert_tool_call(
-                                            claude_tool.as_acp(acp::ToolCallId(id.into())),
-                                            cx,
-                                        );
-                                    }
-                                })
-                                .log_err();
+                            if let ClaudeTool::TodoWrite(Some(params)) = claude_tool {
+                                delegate
+                                    .update_plan(acp::UpdatePlanParams {
+                                        entries: params.todos.into_iter().map(Into::into).collect(),
+                                    })
+                                    .await
+                                    .log_err();
+                            } else if let Some(resp) = delegate
+                                .push_tool_call(claude_tool.as_acp())
+                                .await
+                                .log_err()
+                            {
+                                tool_id_map.borrow_mut().insert(id, resp.id);
+                            }
                         }
                         ContentChunk::ToolResult {
                             content,
                             tool_use_id,
                         } => {
-                            let content = content.to_string();
-                            thread
-                                .update(cx, |thread, cx| {
-                                    thread.update_tool_call(
-                                        acp::ToolCallUpdate {
-                                            id: acp::ToolCallId(tool_use_id.into()),
-                                            fields: acp::ToolCallUpdateFields {
-                                                status: Some(acp::ToolCallStatus::Completed),
-                                                content: (!content.is_empty())
-                                                    .then(|| vec![content.into()]),
-                                                ..Default::default()
+                            let id = tool_id_map.borrow_mut().remove(&tool_use_id);
+                            if let Some(id) = id {
+                                let content = content.to_string();
+                                delegate
+                                    .update_tool_call(UpdateToolCallParams {
+                                        tool_call_id: id,
+                                        status: acp::ToolCallStatus::Finished,
+                                        // Don't unset existing content
+                                        content: (!content.is_empty()).then_some(
+                                            ToolCallContent::Markdown {
+                                                // For now we only include text content
+                                                markdown: content,
                                             },
-                                        },
-                                        cx,
-                                    )
-                                })
-                                .log_err();
+                                        ),
+                                    })
+                                    .await
+                                    .log_err();
+                            }
                         }
                         ContentChunk::Image
                         | ContentChunk::Document
                         | ContentChunk::Thinking
                         | ContentChunk::RedactedThinking
                         | ContentChunk::WebSearchToolResult => {
-                            thread
-                                .update(cx, |thread, cx| {
-                                    thread.push_assistant_content_block(
-                                        format!("Unsupported content: {:?}", chunk).into(),
-                                        false,
-                                        cx,
-                                    )
+                            delegate
+                                .stream_assistant_message_chunk(StreamAssistantMessageChunkParams {
+                                    chunk: acp::AssistantMessageChunk::Text {
+                                        text: format!("Unsupported content: {:?}", chunk),
+                                    },
                                 })
+                                .await
                                 .log_err();
                         }
                     }
                 }
             }
             SdkMessage::Result {
-                is_error,
-                subtype,
-                result,
-                ..
+                is_error, subtype, ..
             } => {
                 if let Some(end_turn_tx) = end_turn_tx.borrow_mut().take() {
                     if is_error {
-                        end_turn_tx
-                            .send(Err(anyhow!(
-                                "Error: {}",
-                                result.unwrap_or_else(|| subtype.to_string())
-                            )))
-                            .ok();
+                        end_turn_tx.send(Err(anyhow!("Error: {subtype}"))).ok();
                     } else {
                         end_turn_tx.send(Ok(())).ok();
                     }
                 }
             }
-            SdkMessage::System { .. } | SdkMessage::ControlResponse { .. } => {}
+            SdkMessage::System { .. } => {}
         }
     }
 
@@ -605,14 +592,16 @@ enum SdkMessage {
     Assistant {
         message: Message, // from Anthropic SDK
         #[serde(skip_serializing_if = "Option::is_none")]
-        session_id: Option<String>,
+        session_id: Option<Uuid>,
     },
+
     // A user message
     User {
         message: Message, // from Anthropic SDK
         #[serde(skip_serializing_if = "Option::is_none")]
-        session_id: Option<String>,
+        session_id: Option<Uuid>,
     },
+
     // Emitted as the last message in a conversation
     Result {
         subtype: ResultErrorType,
@@ -637,26 +626,6 @@ enum SdkMessage {
         #[serde(rename = "permissionMode")]
         permission_mode: PermissionMode,
     },
-    /// Messages used to control the conversation, outside of chat messages to the model
-    ControlRequest {
-        request_id: String,
-        request: ControlRequest,
-    },
-    /// Response to a control request
-    ControlResponse { response: ControlResponse },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "subtype", rename_all = "snake_case")]
-enum ControlRequest {
-    /// Cancel the current conversation
-    Interrupt,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ControlResponse {
-    request_id: String,
-    subtype: ResultErrorType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -677,24 +646,6 @@ impl Display for ResultErrorType {
     }
 }
 
-impl SdkMessage {
-    fn new_interrupt_message() -> Self {
-        use rand::Rng;
-        // In the Claude Code TS SDK they just generate a random 12 character string,
-        // `Math.random().toString(36).substring(2, 15)`
-        let request_id = rand::thread_rng()
-            .sample_iter(&rand::distributions::Alphanumeric)
-            .take(12)
-            .map(char::from)
-            .collect();
-
-        Self::ControlRequest {
-            request_id,
-            request: ControlRequest::Interrupt,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct McpServer {
     name: String,
@@ -710,12 +661,27 @@ enum PermissionMode {
     Plan,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct McpConfig {
+    mcp_servers: HashMap<String, McpServerConfig>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct McpServerConfig {
+    command: String,
+    args: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    env: Option<HashMap<String, String>>,
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use serde_json::json;
 
-    crate::common_e2e_tests!(ClaudeCode, allow_option_id = "allow");
+    crate::common_e2e_tests!(ClaudeCode);
 
     pub fn local_command() -> AgentServerCommand {
         AgentServerCommand {

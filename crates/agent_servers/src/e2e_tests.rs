@@ -1,17 +1,15 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use crate::{AgentServer, AgentServerSettings, AllAgentServersSettings};
-use acp_thread::{AcpThread, AgentThreadEntry, ToolCall, ToolCallStatus};
-use agent_client_protocol as acp;
-
+use acp_thread::{
+    AcpThread, AgentThreadEntry, ToolCall, ToolCallConfirmation, ToolCallContent, ToolCallStatus,
+};
+use agentic_coding_protocol as acp;
 use futures::{FutureExt, StreamExt, channel::mpsc, select};
 use gpui::{Entity, TestAppContext};
 use indoc::indoc;
 use project::{FakeFs, Project};
+use serde_json::json;
 use settings::{Settings, SettingsStore};
 use util::path;
 
@@ -26,11 +24,7 @@ pub async fn test_basic(server: impl AgentServer + 'static, cx: &mut TestAppCont
         .unwrap();
 
     thread.read_with(cx, |thread, _| {
-        assert!(
-            thread.entries().len() >= 2,
-            "Expected at least 2 entries. Got: {:?}",
-            thread.entries()
-        );
+        assert_eq!(thread.entries().len(), 2);
         assert!(matches!(
             thread.entries()[0],
             AgentThreadEntry::UserMessage(_)
@@ -60,25 +54,19 @@ pub async fn test_path_mentions(server: impl AgentServer + 'static, cx: &mut Tes
     thread
         .update(cx, |thread, cx| {
             thread.send(
-                vec![
-                    acp::ContentBlock::Text(acp::TextContent {
-                        text: "Read the file ".into(),
-                        annotations: None,
-                    }),
-                    acp::ContentBlock::ResourceLink(acp::ResourceLink {
-                        uri: "foo.rs".into(),
-                        name: "foo.rs".into(),
-                        annotations: None,
-                        description: None,
-                        mime_type: None,
-                        size: None,
-                        title: None,
-                    }),
-                    acp::ContentBlock::Text(acp::TextContent {
-                        text: " and tell me what the content of the println! is".into(),
-                        annotations: None,
-                    }),
-                ],
+                acp::SendUserMessageParams {
+                    chunks: vec![
+                        acp::UserMessageChunk::Text {
+                            text: "Read the file ".into(),
+                        },
+                        acp::UserMessageChunk::Path {
+                            path: Path::new("foo.rs").into(),
+                        },
+                        acp::UserMessageChunk::Text {
+                            text: " and tell me what the content of the println! is".into(),
+                        },
+                    ],
+                },
                 cx,
             )
         })
@@ -86,44 +74,37 @@ pub async fn test_path_mentions(server: impl AgentServer + 'static, cx: &mut Tes
         .unwrap();
 
     thread.read_with(cx, |thread, cx| {
+        assert_eq!(thread.entries().len(), 3);
         assert!(matches!(
             thread.entries()[0],
             AgentThreadEntry::UserMessage(_)
         ));
-        let assistant_message = &thread
-            .entries()
-            .iter()
-            .rev()
-            .find_map(|entry| match entry {
-                AgentThreadEntry::AssistantMessage(msg) => Some(msg),
-                _ => None,
-            })
-            .unwrap();
-
+        assert!(matches!(thread.entries()[1], AgentThreadEntry::ToolCall(_)));
+        let AgentThreadEntry::AssistantMessage(assistant_message) = &thread.entries()[2] else {
+            panic!("Expected AssistantMessage")
+        };
         assert!(
             assistant_message.to_markdown(cx).contains("Hello, world!"),
             "unexpected assistant message: {:?}",
             assistant_message.to_markdown(cx)
         );
     });
-
-    drop(tempdir);
 }
 
 pub async fn test_tool_call(server: impl AgentServer + 'static, cx: &mut TestAppContext) {
-    let _fs = init_test(cx).await;
-
-    let tempdir = tempfile::tempdir().unwrap();
-    let foo_path = tempdir.path().join("foo");
-    std::fs::write(&foo_path, "Lorem ipsum dolor").expect("failed to write file");
-
-    let project = Project::example([tempdir.path()], &mut cx.to_async()).await;
+    let fs = init_test(cx).await;
+    fs.insert_tree(
+        path!("/private/tmp"),
+        json!({"foo": "Lorem ipsum dolor", "bar": "bar", "baz": "baz"}),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/private/tmp").as_ref()], cx).await;
     let thread = new_test_thread(server, project.clone(), "/private/tmp", cx).await;
 
     thread
         .update(cx, |thread, cx| {
             thread.send_raw(
-                &format!("Read {} and tell me what you see.", foo_path.display()),
+                "Read the '/private/tmp/foo' file and tell me what you see.",
                 cx,
             )
         })
@@ -146,13 +127,10 @@ pub async fn test_tool_call(server: impl AgentServer + 'static, cx: &mut TestApp
                 .any(|entry| { matches!(entry, AgentThreadEntry::AssistantMessage(_)) })
         );
     });
-
-    drop(tempdir);
 }
 
 pub async fn test_tool_call_with_confirmation(
     server: impl AgentServer + 'static,
-    allow_option_id: acp::PermissionOptionId,
     cx: &mut TestAppContext,
 ) {
     let fs = init_test(cx).await;
@@ -160,7 +138,7 @@ pub async fn test_tool_call_with_confirmation(
     let thread = new_test_thread(server, project.clone(), "/private/tmp", cx).await;
     let full_turn = thread.update(cx, |thread, cx| {
         thread.send_raw(
-            r#"Run exactly `touch hello.txt && echo "Hello, world!" | tee hello.txt` in the terminal."#,
+            r#"Run `touch hello.txt && echo "Hello, world!" | tee hello.txt`"#,
             cx,
         )
     });
@@ -180,11 +158,14 @@ pub async fn test_tool_call_with_confirmation(
     )
     .await;
 
-    let tool_call_id = thread.read_with(cx, |thread, cx| {
+    let tool_call_id = thread.read_with(cx, |thread, _cx| {
         let AgentThreadEntry::ToolCall(ToolCall {
             id,
-            label,
-            status: ToolCallStatus::WaitingForConfirmation { .. },
+            status:
+                ToolCallStatus::WaitingForConfirmation {
+                    confirmation: ToolCallConfirmation::Execute { root_command, .. },
+                    ..
+                },
             ..
         }) = &thread
             .entries()
@@ -195,19 +176,13 @@ pub async fn test_tool_call_with_confirmation(
             panic!();
         };
 
-        let label = label.read(cx).source();
-        assert!(label.contains("touch"), "Got: {}", label);
+        assert!(root_command.contains("touch"));
 
-        id.clone()
+        *id
     });
 
     thread.update(cx, |thread, cx| {
-        thread.authorize_tool_call(
-            tool_call_id,
-            allow_option_id,
-            acp::PermissionOptionKind::AllowOnce,
-            cx,
-        );
+        thread.authorize_tool_call(tool_call_id, acp::ToolCallConfirmationOutcome::Allow, cx);
 
         assert!(thread.entries().iter().any(|entry| matches!(
             entry,
@@ -222,7 +197,7 @@ pub async fn test_tool_call_with_confirmation(
 
     thread.read_with(cx, |thread, cx| {
         let AgentThreadEntry::ToolCall(ToolCall {
-            content,
+            content: Some(ToolCallContent::Markdown { markdown }),
             status: ToolCallStatus::Allowed { .. },
             ..
         }) = thread
@@ -234,10 +209,13 @@ pub async fn test_tool_call_with_confirmation(
             panic!();
         };
 
-        assert!(
-            content.iter().any(|c| c.to_markdown(cx).contains("Hello")),
-            "Expected content to contain 'Hello'"
-        );
+        markdown.read_with(cx, |md, _cx| {
+            assert!(
+                md.source().contains("Hello"),
+                r#"Expected '{}' to contain "Hello""#,
+                md.source()
+            );
+        });
     });
 }
 
@@ -248,7 +226,7 @@ pub async fn test_cancel(server: impl AgentServer + 'static, cx: &mut TestAppCon
     let thread = new_test_thread(server, project.clone(), "/private/tmp", cx).await;
     let full_turn = thread.update(cx, |thread, cx| {
         thread.send_raw(
-            r#"Run exactly `touch hello.txt && echo "Hello, world!" | tee hello.txt` in the terminal."#,
+            r#"Run `touch hello.txt && echo "Hello, world!" >> hello.txt`"#,
             cx,
         )
     });
@@ -268,24 +246,29 @@ pub async fn test_cancel(server: impl AgentServer + 'static, cx: &mut TestAppCon
     )
     .await;
 
-    thread.read_with(cx, |thread, cx| {
+    thread.read_with(cx, |thread, _cx| {
         let AgentThreadEntry::ToolCall(ToolCall {
             id,
-            label,
-            status: ToolCallStatus::WaitingForConfirmation { .. },
+            status:
+                ToolCallStatus::WaitingForConfirmation {
+                    confirmation: ToolCallConfirmation::Execute { root_command, .. },
+                    ..
+                },
             ..
         }) = &thread.entries()[first_tool_call_ix]
         else {
             panic!("{:?}", thread.entries()[1]);
         };
 
-        let label = label.read(cx).source();
-        assert!(label.contains("touch"), "Got: {}", label);
+        assert!(root_command.contains("touch"));
 
-        id.clone()
+        *id
     });
 
-    let _ = thread.update(cx, |thread, cx| thread.cancel(cx));
+    thread
+        .update(cx, |thread, cx| thread.cancel(cx))
+        .await
+        .unwrap();
     full_turn.await.unwrap();
     thread.read_with(cx, |thread, _| {
         let AgentThreadEntry::ToolCall(ToolCall {
@@ -313,7 +296,7 @@ pub async fn test_cancel(server: impl AgentServer + 'static, cx: &mut TestAppCon
 
 #[macro_export]
 macro_rules! common_e2e_tests {
-    ($server:expr, allow_option_id = $allow_option_id:expr) => {
+    ($server:expr) => {
         mod common_e2e {
             use super::*;
 
@@ -338,12 +321,7 @@ macro_rules! common_e2e_tests {
             #[::gpui::test]
             #[cfg_attr(not(feature = "e2e"), ignore)]
             async fn tool_call_with_confirmation(cx: &mut ::gpui::TestAppContext) {
-                $crate::e2e_tests::test_tool_call_with_confirmation(
-                    $server,
-                    ::agent_client_protocol::PermissionOptionId($allow_option_id.into()),
-                    cx,
-                )
-                .await;
+                $crate::e2e_tests::test_tool_call_with_confirmation($server, cx).await;
             }
 
             #[::gpui::test]
@@ -375,9 +353,6 @@ pub async fn init_test(cx: &mut TestAppContext) -> Arc<FakeFs> {
                 gemini: Some(AgentServerSettings {
                     command: crate::gemini::tests::local_command(),
                 }),
-                codex: Some(AgentServerSettings {
-                    command: crate::codex::tests::local_command(),
-                }),
             },
             cx,
         );
@@ -394,16 +369,15 @@ pub async fn new_test_thread(
     current_dir: impl AsRef<Path>,
     cx: &mut TestAppContext,
 ) -> Entity<AcpThread> {
-    let connection = cx
-        .update(|cx| server.connect(current_dir.as_ref(), &project, cx))
+    let thread = cx
+        .update(|cx| server.new_thread(current_dir.as_ref(), &project, cx))
         .await
         .unwrap();
 
-    let thread = connection
-        .new_thread(project.clone(), current_dir.as_ref(), &mut cx.to_async())
+    thread
+        .update(cx, |thread, _| thread.initialize())
         .await
         .unwrap();
-
     thread
 }
 
@@ -435,25 +409,4 @@ pub async fn run_until_first_tool_call(
             ix.unwrap()
         }
     }
-}
-
-pub fn get_zed_path() -> PathBuf {
-    let mut zed_path = std::env::current_exe().unwrap();
-
-    while zed_path
-        .file_name()
-        .map_or(true, |name| name.to_string_lossy() != "debug")
-    {
-        if !zed_path.pop() {
-            panic!("Could not find target directory");
-        }
-    }
-
-    zed_path.push("zed");
-
-    if !zed_path.exists() {
-        panic!("\n🚨 Run `cargo build` at least once before running e2e tests\n\n");
-    }
-
-    zed_path
 }
