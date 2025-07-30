@@ -19,7 +19,6 @@ use collections::VecDeque;
 use debugger_ui::debugger_panel::DebugPanel;
 use editor::ProposedChangesEditorToolbar;
 use editor::{Editor, MultiBuffer};
-use feature_flags::{FeatureFlagAppExt, PanicFeatureFlag};
 use futures::future::Either;
 use futures::{StreamExt, channel::mpsc, select_biased};
 use git_ui::git_panel::GitPanel;
@@ -54,12 +53,9 @@ use settings::{
     initial_local_debug_tasks_content, initial_project_settings_content, initial_tasks_content,
     update_settings_file,
 };
-use std::{
-    borrow::Cow,
-    path::{Path, PathBuf},
-    sync::Arc,
-    sync::atomic::{self, AtomicBool},
-};
+use std::path::PathBuf;
+use std::sync::atomic::{self, AtomicBool};
+use std::{borrow::Cow, path::Path, sync::Arc};
 use terminal_view::terminal_panel::{self, TerminalPanel};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{PopoverMenuHandle, prelude::*};
@@ -111,8 +107,6 @@ actions!(
         Zoom,
         /// Triggers a test panic for debugging.
         TestPanic,
-        /// Triggers a hard crash for debugging.
-        TestCrash,
     ]
 );
 
@@ -126,28 +120,11 @@ pub fn init(cx: &mut App) {
     cx.on_action(quit);
 
     cx.on_action(|_: &RestoreBanner, cx| title_bar::restore_banner(cx));
-    let flag = cx.wait_for_flag::<PanicFeatureFlag>();
-    cx.spawn(async |cx| {
-        if cx
-            .update(|cx| ReleaseChannel::global(cx) == ReleaseChannel::Dev)
-            .unwrap_or_default()
-            || flag.await
-        {
-            cx.update(|cx| {
-                cx.on_action(|_: &TestPanic, _| panic!("Ran the TestPanic action"));
-                cx.on_action(|_: &TestCrash, _| {
-                    unsafe extern "C" {
-                        fn puts(s: *const i8);
-                    }
-                    unsafe {
-                        puts(0xabad1d3a as *const i8);
-                    }
-                });
-            })
-            .ok();
-        };
-    })
-    .detach();
+
+    if ReleaseChannel::global(cx) == ReleaseChannel::Dev {
+        cx.on_action(test_panic);
+    }
+
     cx.on_action(|_: &OpenLog, cx| {
         with_active_or_new_workspace(cx, |workspace, window, cx| {
             open_log_file(workspace, window, cx);
@@ -1008,6 +985,10 @@ fn about(
         }
     })
     .detach();
+}
+
+fn test_panic(_: &TestPanic, _: &mut App) {
+    panic!("Ran the TestPanic action")
 }
 
 fn install_cli(

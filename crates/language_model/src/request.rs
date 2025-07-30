@@ -1,9 +1,10 @@
 use std::io::{Cursor, Write};
 use std::sync::Arc;
 
+use crate::role::Role;
+use crate::{LanguageModelToolUse, LanguageModelToolUseId};
 use anyhow::Result;
 use base64::write::EncoderWriter;
-use cloud_llm_client::{CompletionIntent, CompletionMode};
 use gpui::{
     App, AppContext as _, DevicePixels, Image, ImageFormat, ObjectFit, SharedString, Size, Task,
     point, px, size,
@@ -11,9 +12,7 @@ use gpui::{
 use image::codecs::png::PngEncoder;
 use serde::{Deserialize, Serialize};
 use util::ResultExt;
-
-use crate::role::Role;
-use crate::{LanguageModelToolUse, LanguageModelToolUseId};
+use zed_llm_client::{CompletionIntent, CompletionMode};
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct LanguageModelImage {

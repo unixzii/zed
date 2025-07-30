@@ -136,7 +136,10 @@ impl RenderOnce for ApiKeysWithoutProviders {
                     .full_width()
                     .style(ButtonStyle::Outlined)
                     .on_click(move |_, window, cx| {
-                        window.dispatch_action(zed_actions::agent::OpenSettings.boxed_clone(), cx);
+                        window.dispatch_action(
+                            zed_actions::agent::OpenConfiguration.boxed_clone(),
+                            cx,
+                        );
                     }),
             )
     }

@@ -365,8 +365,6 @@ actions!(
         ConvertToLowerCase,
         /// Toggles the case of selected text.
         ConvertToOppositeCase,
-        /// Converts selected text to sentence case.
-        ConvertToSentenceCase,
         /// Converts selected text to snake_case.
         ConvertToSnakeCase,
         /// Converts selected text to Title Case.

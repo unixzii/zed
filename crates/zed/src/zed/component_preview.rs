@@ -105,7 +105,6 @@ enum PreviewPage {
 struct ComponentPreview {
     active_page: PreviewPage,
     active_thread: Option<Entity<ActiveThread>>,
-    reset_key: usize,
     component_list: ListState,
     component_map: HashMap<ComponentId, ComponentMetadata>,
     components: Vec<ComponentMetadata>,
@@ -189,7 +188,6 @@ impl ComponentPreview {
         let mut component_preview = Self {
             active_page,
             active_thread: None,
-            reset_key: 0,
             component_list,
             component_map: component_registry.component_map(),
             components: sorted_components,
@@ -267,13 +265,8 @@ impl ComponentPreview {
     }
 
     fn set_active_page(&mut self, page: PreviewPage, cx: &mut Context<Self>) {
-        if self.active_page == page {
-            // Force the current preview page to render again
-            self.reset_key = self.reset_key.wrapping_add(1);
-        } else {
-            self.active_page = page;
-            cx.emit(ItemEvent::UpdateTab);
-        }
+        self.active_page = page;
+        cx.emit(ItemEvent::UpdateTab);
         cx.notify();
     }
 
@@ -697,7 +690,6 @@ impl ComponentPreview {
                     component.clone(),
                     self.workspace.clone(),
                     self.active_thread.clone(),
-                    self.reset_key,
                 ))
                 .into_any_element()
         } else {
@@ -1049,7 +1041,6 @@ pub struct ComponentPreviewPage {
     component: ComponentMetadata,
     workspace: WeakEntity<Workspace>,
     active_thread: Option<Entity<ActiveThread>>,
-    reset_key: usize,
 }
 
 impl ComponentPreviewPage {
@@ -1057,7 +1048,6 @@ impl ComponentPreviewPage {
         component: ComponentMetadata,
         workspace: WeakEntity<Workspace>,
         active_thread: Option<Entity<ActiveThread>>,
-        reset_key: usize,
         // languages: Arc<LanguageRegistry>
     ) -> Self {
         Self {
@@ -1065,7 +1055,6 @@ impl ComponentPreviewPage {
             component,
             workspace,
             active_thread,
-            reset_key,
         }
     }
 
@@ -1166,7 +1155,6 @@ impl ComponentPreviewPage {
         };
 
         v_flex()
-            .id(("component-preview", self.reset_key))
             .size_full()
             .flex_1()
             .px_12()

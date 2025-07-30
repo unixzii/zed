@@ -1,14 +1,12 @@
 mod agent_api_keys_onboarding;
 mod agent_panel_onboarding_card;
 mod agent_panel_onboarding_content;
-mod ai_upsell_card;
 mod edit_prediction_onboarding_content;
 mod young_account_banner;
 
 pub use agent_api_keys_onboarding::{ApiKeysWithProviders, ApiKeysWithoutProviders};
 pub use agent_panel_onboarding_card::AgentPanelOnboardingCard;
 pub use agent_panel_onboarding_content::AgentPanelOnboarding;
-pub use ai_upsell_card::AiUpsellCard;
 pub use edit_prediction_onboarding_content::EditPredictionOnboarding;
 pub use young_account_banner::YoungAccountBanner;
 
@@ -56,7 +54,6 @@ impl RenderOnce for BulletItem {
     }
 }
 
-#[derive(PartialEq)]
 pub enum SignInStatus {
     SignedIn,
     SigningIn,

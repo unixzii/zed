@@ -3390,7 +3390,26 @@ Run the `theme selector: toggle` action in the command palette to see a current 
 
 ## Agent
 
-Visit [the Configuration page](./ai/configuration.md) under the AI section to learn more about all the agent-related settings.
+- Description: Customize agent behavior
+- Setting: `agent`
+- Default:
+
+```json
+"agent": {
+  "version": "2",
+  "enabled": true,
+  "button": true,
+  "dock": "right",
+  "default_width": 640,
+  "default_height": 320,
+  "default_view": "thread",
+  "default_model": {
+    "provider": "zed.dev",
+    "model": "claude-sonnet-4"
+  },
+  "single_file_review": true,
+}
+```
 
 ## Outline Panel
 

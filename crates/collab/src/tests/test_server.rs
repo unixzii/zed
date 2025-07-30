@@ -256,7 +256,6 @@ impl TestServer {
                             ZedVersion(SemanticVersion::new(1, 0, 0)),
                             None,
                             None,
-                            None,
                             Some(connection_id_tx),
                             Executor::Deterministic(cx.background_executor().clone()),
                             None,

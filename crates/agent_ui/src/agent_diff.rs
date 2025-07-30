@@ -1506,7 +1506,8 @@ impl AgentDiff {
                     .read(cx)
                     .entries()
                     .last()
-                    .map_or(false, |entry| entry.diffs().next().is_some())
+                    .and_then(|entry| entry.diff())
+                    .is_some()
                 {
                     self.update_reviewing_editors(workspace, window, cx);
                 }
@@ -1516,7 +1517,8 @@ impl AgentDiff {
                     .read(cx)
                     .entries()
                     .get(*ix)
-                    .map_or(false, |entry| entry.diffs().next().is_some())
+                    .and_then(|entry| entry.diff())
+                    .is_some()
                 {
                     self.update_reviewing_editors(workspace, window, cx);
                 }

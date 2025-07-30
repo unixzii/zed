@@ -809,6 +809,7 @@ pub(crate) struct AtlasTextureId {
 pub(crate) enum AtlasTextureKind {
     Monochrome = 0,
     Polychrome = 1,
+    Path = 2,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -1216,10 +1217,6 @@ pub enum WindowKind {
     /// A window that appears above all other windows, usually used for alerts or popups
     /// use sparingly!
     PopUp,
-    /// An overlay such as a notification window, a launcher, ...
-    ///
-    /// Only supported on wayland
-    Overlay,
 }
 
 /// The appearance of the window, as defined by the operating system.

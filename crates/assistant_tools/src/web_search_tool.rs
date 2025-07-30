@@ -6,7 +6,6 @@ use anyhow::{Context as _, Result, anyhow};
 use assistant_tool::{
     ActionLog, Tool, ToolCard, ToolResult, ToolResultContent, ToolResultOutput, ToolUseStatus,
 };
-use cloud_llm_client::{WebSearchResponse, WebSearchResult};
 use futures::{Future, FutureExt, TryFutureExt};
 use gpui::{
     AnyWindowHandle, App, AppContext, Context, Entity, IntoElement, Task, WeakEntity, Window,
@@ -18,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use ui::{IconName, Tooltip, prelude::*};
 use web_search::WebSearchRegistry;
 use workspace::Workspace;
+use zed_llm_client::{WebSearchResponse, WebSearchResult};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct WebSearchToolInput {

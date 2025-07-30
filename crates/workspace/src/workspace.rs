@@ -32,7 +32,7 @@ use futures::{
         mpsc::{self, UnboundedReceiver, UnboundedSender},
         oneshot,
     },
-    future::{Shared, try_join_all},
+    future::try_join_all,
 };
 use gpui::{
     Action, AnyEntity, AnyView, AnyWeakView, App, AsyncApp, AsyncWindowContext, Bounds, Context,
@@ -87,7 +87,7 @@ use std::{
     borrow::Cow,
     cell::RefCell,
     cmp,
-    collections::{VecDeque, hash_map::DefaultHasher},
+    collections::hash_map::DefaultHasher,
     env,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
@@ -1043,13 +1043,6 @@ type PromptForOpenPath = Box<
     ) -> oneshot::Receiver<Option<Vec<PathBuf>>>,
 >;
 
-#[derive(Default)]
-struct DispatchingKeystrokes {
-    dispatched: HashSet<Vec<Keystroke>>,
-    queue: VecDeque<Keystroke>,
-    task: Option<Shared<Task<()>>>,
-}
-
 /// Collects everything project-related for a certain window opened.
 /// In some way, is a counterpart of a window, as the [`WindowHandle`] could be downcast into `Workspace`.
 ///
@@ -1065,6 +1058,7 @@ pub struct Workspace {
     center: PaneGroup,
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
+    bottom_dock_layout: BottomDockLayout,
     right_dock: Entity<Dock>,
     panes: Vec<Entity<Pane>>,
     panes_by_item: HashMap<EntityId, WeakEntity<Pane>>,
@@ -1086,7 +1080,7 @@ pub struct Workspace {
     leader_updates_tx: mpsc::UnboundedSender<(PeerId, proto::UpdateFollowers)>,
     database_id: Option<WorkspaceId>,
     app_state: Arc<AppState>,
-    dispatching_keystrokes: Rc<RefCell<DispatchingKeystrokes>>,
+    dispatching_keystrokes: Rc<RefCell<(HashSet<String>, Vec<Keystroke>)>>,
     _subscriptions: Vec<Subscription>,
     _apply_leader_updates: Task<Result<()>>,
     _observe_current_user: Task<Result<()>>,
@@ -1306,6 +1300,7 @@ impl Workspace {
         )
         .detach();
 
+        let bottom_dock_layout = WorkspaceSettings::get_global(cx).bottom_dock_layout;
         let left_dock = Dock::new(DockPosition::Left, modal_layer.clone(), window, cx);
         let bottom_dock = Dock::new(DockPosition::Bottom, modal_layer.clone(), window, cx);
         let right_dock = Dock::new(DockPosition::Right, modal_layer.clone(), window, cx);
@@ -1404,6 +1399,7 @@ impl Workspace {
             suppressed_notifications: HashSet::default(),
             left_dock,
             bottom_dock,
+            bottom_dock_layout,
             right_dock,
             project: project.clone(),
             follower_states: Default::default(),
@@ -1630,6 +1626,10 @@ impl Workspace {
         &self.bottom_dock
     }
 
+    pub fn bottom_dock_layout(&self) -> BottomDockLayout {
+        self.bottom_dock_layout
+    }
+
     pub fn set_bottom_dock_layout(
         &mut self,
         layout: BottomDockLayout,
@@ -1641,6 +1641,7 @@ impl Workspace {
             content.bottom_dock_layout = Some(layout);
         });
 
+        self.bottom_dock_layout = layout;
         cx.notify();
         self.serialize_workspace(window, cx);
     }
@@ -2312,65 +2313,49 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let keystrokes: Vec<Keystroke> = action
+        let mut state = self.dispatching_keystrokes.borrow_mut();
+        if !state.0.insert(action.0.clone()) {
+            cx.propagate();
+            return;
+        }
+        let mut keystrokes: Vec<Keystroke> = action
             .0
             .split(' ')
             .flat_map(|k| Keystroke::parse(k).log_err())
             .collect();
-        let _ = self.send_keystrokes_impl(keystrokes, window, cx);
-    }
+        keystrokes.reverse();
 
-    pub fn send_keystrokes_impl(
-        &mut self,
-        keystrokes: Vec<Keystroke>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Shared<Task<()>> {
-        let mut state = self.dispatching_keystrokes.borrow_mut();
-        if !state.dispatched.insert(keystrokes.clone()) {
-            cx.propagate();
-            return state.task.clone().unwrap();
-        }
-
-        state.queue.extend(keystrokes);
+        state.1.append(&mut keystrokes);
+        drop(state);
 
         let keystrokes = self.dispatching_keystrokes.clone();
-        if state.task.is_none() {
-            state.task = Some(
-                window
-                    .spawn(cx, async move |cx| {
-                        // limit to 100 keystrokes to avoid infinite recursion.
-                        for _ in 0..100 {
-                            let mut state = keystrokes.borrow_mut();
-                            let Some(keystroke) = state.queue.pop_front() else {
-                                state.dispatched.clear();
-                                state.task.take();
-                                return;
-                            };
-                            drop(state);
-                            cx.update(|window, cx| {
-                                let focused = window.focused(cx);
-                                window.dispatch_keystroke(keystroke.clone(), cx);
-                                if window.focused(cx) != focused {
-                                    // dispatch_keystroke may cause the focus to change.
-                                    // draw's side effect is to schedule the FocusChanged events in the current flush effect cycle
-                                    // And we need that to happen before the next keystroke to keep vim mode happy...
-                                    // (Note that the tests always do this implicitly, so you must manually test with something like:
-                                    //   "bindings": { "g z": ["workspace::SendKeystrokes", ": j <enter> u"]}
-                                    // )
-                                    window.draw(cx).clear();
-                                }
-                            })
-                            .ok();
+        window
+            .spawn(cx, async move |cx| {
+                // limit to 100 keystrokes to avoid infinite recursion.
+                for _ in 0..100 {
+                    let Some(keystroke) = keystrokes.borrow_mut().1.pop() else {
+                        keystrokes.borrow_mut().0.clear();
+                        return Ok(());
+                    };
+                    cx.update(|window, cx| {
+                        let focused = window.focused(cx);
+                        window.dispatch_keystroke(keystroke.clone(), cx);
+                        if window.focused(cx) != focused {
+                            // dispatch_keystroke may cause the focus to change.
+                            // draw's side effect is to schedule the FocusChanged events in the current flush effect cycle
+                            // And we need that to happen before the next keystroke to keep vim mode happy...
+                            // (Note that the tests always do this implicitly, so you must manually test with something like:
+                            //   "bindings": { "g z": ["workspace::SendKeystrokes", ": j <enter> u"]}
+                            // )
+                            window.draw(cx).clear();
                         }
+                    })?;
+                }
 
-                        *keystrokes.borrow_mut() = Default::default();
-                        log::error!("over 100 keystrokes passed to send_keystrokes");
-                    })
-                    .shared(),
-            );
-        }
-        state.task.clone().unwrap()
+                *keystrokes.borrow_mut() = Default::default();
+                anyhow::bail!("over 100 keystrokes passed to send_keystrokes");
+            })
+            .detach_and_log_err(cx);
     }
 
     fn save_all_internal(
@@ -6238,7 +6223,6 @@ impl Render for Workspace {
             .iter()
             .map(|(_, notification)| notification.entity_id())
             .collect::<Vec<_>>();
-        let bottom_dock_layout = WorkspaceSettings::get_global(cx).bottom_dock_layout;
 
         client_side_decorations(
             self.actions(div(), window, cx)
@@ -6362,7 +6346,7 @@ impl Render for Workspace {
                                     ))
                                 })
                                 .child({
-                                    match bottom_dock_layout {
+                                    match self.bottom_dock_layout {
                                         BottomDockLayout::Full => div()
                                             .flex()
                                             .flex_col()

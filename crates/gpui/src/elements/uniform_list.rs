@@ -322,8 +322,9 @@ impl Element for UniformList {
                     bounds.bottom_right() - point(border.right + padding.right, border.bottom),
                 );
 
-                let y_flipped = if let Some(scroll_handle) = &self.scroll_handle {
-                    let scroll_state = scroll_handle.0.borrow();
+                let y_flipped = if let Some(scroll_handle) = self.scroll_handle.as_mut() {
+                    let mut scroll_state = scroll_handle.0.borrow_mut();
+                    scroll_state.base_handle.set_bounds(bounds);
                     scroll_state.y_flipped
                 } else {
                     false

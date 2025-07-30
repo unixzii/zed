@@ -44,7 +44,6 @@ use assistant_context::{AssistantContext, ContextEvent, ContextSummary};
 use assistant_slash_command::SlashCommandWorkingSet;
 use assistant_tool::ToolWorkingSet;
 use client::{DisableAiSettings, UserStore, zed_urls};
-use cloud_llm_client::{CompletionIntent, UsageLimit};
 use editor::{Anchor, AnchorRangeExt as _, Editor, EditorEvent, MultiBuffer};
 use feature_flags::{self, FeatureFlagAppExt};
 use fs::Fs;
@@ -78,9 +77,10 @@ use workspace::{
 };
 use zed_actions::{
     DecreaseBufferFontSize, IncreaseBufferFontSize, ResetBufferFontSize,
-    agent::{OpenOnboardingModal, OpenSettings, ResetOnboarding, ToggleModelSelector},
+    agent::{OpenConfiguration, OpenOnboardingModal, ResetOnboarding, ToggleModelSelector},
     assistant::{OpenRulesLibrary, ToggleFocus},
 };
+use zed_llm_client::{CompletionIntent, UsageLimit};
 
 const AGENT_PANEL_KEY: &str = "agent_panel";
 
@@ -105,7 +105,7 @@ pub fn init(cx: &mut App) {
                         panel.update(cx, |panel, cx| panel.open_history(window, cx));
                     }
                 })
-                .register_action(|workspace, _: &OpenSettings, window, cx| {
+                .register_action(|workspace, _: &OpenConfiguration, window, cx| {
                     if let Some(panel) = workspace.panel::<AgentPanel>(cx) {
                         workspace.focus_panel::<AgentPanel>(window, cx);
                         panel.update(cx, |panel, cx| panel.open_configuration(window, cx));
@@ -440,7 +440,7 @@ pub struct AgentPanel {
     local_timezone: UtcOffset,
     active_view: ActiveView,
     acp_message_history:
-        Rc<RefCell<crate::acp::MessageHistory<Vec<agent_client_protocol::ContentBlock>>>>,
+        Rc<RefCell<crate::acp::MessageHistory<agentic_coding_protocol::SendUserMessageParams>>>,
     previous_view: Option<ActiveView>,
     history_store: Entity<HistoryStore>,
     history: Entity<ThreadHistory>,
@@ -1991,20 +1991,6 @@ impl AgentPanel {
                                                 );
                                             }),
                                     )
-                                    .item(
-                                        ContextMenuEntry::new("New Codex Thread")
-                                            .icon(IconName::AiOpenAi)
-                                            .icon_color(Color::Muted)
-                                            .handler(move |window, cx| {
-                                                window.dispatch_action(
-                                                    NewExternalAgentThread {
-                                                        agent: Some(crate::ExternalAgent::Codex),
-                                                    }
-                                                    .boxed_clone(),
-                                                    cx,
-                                                );
-                                            }),
-                                    )
                             });
                         menu
                     }))
@@ -2030,69 +2016,65 @@ impl AgentPanel {
             )
             .anchor(Corner::TopRight)
             .with_handle(self.agent_panel_menu_handle.clone())
-            .menu({
-                let focus_handle = focus_handle.clone();
-                move |window, cx| {
-                    Some(ContextMenu::build(window, cx, |mut menu, _window, _| {
-                        menu = menu.context(focus_handle.clone());
-                        if let Some(usage) = usage {
-                            menu = menu
-                                .header_with_link("Prompt Usage", "Manage", account_url.clone())
-                                .custom_entry(
-                                    move |_window, cx| {
-                                        let used_percentage = match usage.limit {
-                                            UsageLimit::Limited(limit) => {
-                                                Some((usage.amount as f32 / limit as f32) * 100.)
-                                            }
-                                            UsageLimit::Unlimited => None,
-                                        };
-
-                                        h_flex()
-                                            .flex_1()
-                                            .gap_1p5()
-                                            .children(used_percentage.map(|percent| {
-                                                ProgressBar::new("usage", percent, 100., cx)
-                                            }))
-                                            .child(
-                                                Label::new(match usage.limit {
-                                                    UsageLimit::Limited(limit) => {
-                                                        format!("{} / {limit}", usage.amount)
-                                                    }
-                                                    UsageLimit::Unlimited => {
-                                                        format!("{} / ∞", usage.amount)
-                                                    }
-                                                })
-                                                .size(LabelSize::Small)
-                                                .color(Color::Muted),
-                                            )
-                                            .into_any_element()
-                                    },
-                                    move |_, cx| cx.open_url(&zed_urls::account_url(cx)),
-                                )
-                                .separator()
-                        }
-
+            .menu(move |window, cx| {
+                Some(ContextMenu::build(window, cx, |mut menu, _window, _| {
+                    if let Some(usage) = usage {
                         menu = menu
-                            .header("MCP Servers")
-                            .action(
-                                "View Server Extensions",
-                                Box::new(zed_actions::Extensions {
-                                    category_filter: Some(
-                                        zed_actions::ExtensionCategoryFilter::ContextServers,
-                                    ),
-                                    id: None,
-                                }),
+                            .header_with_link("Prompt Usage", "Manage", account_url.clone())
+                            .custom_entry(
+                                move |_window, cx| {
+                                    let used_percentage = match usage.limit {
+                                        UsageLimit::Limited(limit) => {
+                                            Some((usage.amount as f32 / limit as f32) * 100.)
+                                        }
+                                        UsageLimit::Unlimited => None,
+                                    };
+
+                                    h_flex()
+                                        .flex_1()
+                                        .gap_1p5()
+                                        .children(used_percentage.map(|percent| {
+                                            ProgressBar::new("usage", percent, 100., cx)
+                                        }))
+                                        .child(
+                                            Label::new(match usage.limit {
+                                                UsageLimit::Limited(limit) => {
+                                                    format!("{} / {limit}", usage.amount)
+                                                }
+                                                UsageLimit::Unlimited => {
+                                                    format!("{} / ∞", usage.amount)
+                                                }
+                                            })
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted),
+                                        )
+                                        .into_any_element()
+                                },
+                                move |_, cx| cx.open_url(&zed_urls::account_url(cx)),
                             )
-                            .action("Add Custom Server…", Box::new(AddContextServer))
-                            .separator();
+                            .separator()
+                    }
 
-                        menu = menu
-                            .action("Rules…", Box::new(OpenRulesLibrary::default()))
-                            .action("Settings", Box::new(OpenSettings))
-                            .action(zoom_in_label, Box::new(ToggleZoom));
-                        menu
-                    }))
-                }
+                    menu = menu
+                        .header("MCP Servers")
+                        .action(
+                            "View Server Extensions",
+                            Box::new(zed_actions::Extensions {
+                                category_filter: Some(
+                                    zed_actions::ExtensionCategoryFilter::ContextServers,
+                                ),
+                                id: None,
+                            }),
+                        )
+                        .action("Add Custom Server…", Box::new(AddContextServer))
+                        .separator();
+
+                    menu = menu
+                        .action("Rules…", Box::new(OpenRulesLibrary::default()))
+                        .action("Settings", Box::new(OpenConfiguration))
+                        .action(zoom_in_label, Box::new(ToggleZoom));
+                    menu
+                }))
             });
 
         h_flex()
@@ -2482,14 +2464,14 @@ impl AgentPanel {
                                                 .icon_color(Color::Muted)
                                                 .full_width()
                                                 .key_binding(KeyBinding::for_action_in(
-                                                    &OpenSettings,
+                                                    &OpenConfiguration,
                                                     &focus_handle,
                                                     window,
                                                     cx,
                                                 ))
                                                 .on_click(|_event, window, cx| {
                                                     window.dispatch_action(
-                                                        OpenSettings.boxed_clone(),
+                                                        OpenConfiguration.boxed_clone(),
                                                         cx,
                                                     )
                                                 }),
@@ -2666,25 +2648,6 @@ impl AgentPanel {
                                                     )
                                                 },
                                             ),
-                                        )
-                                        .child(
-                                            NewThreadButton::new(
-                                                "new-codex-thread-btn",
-                                                "New Codex Thread",
-                                                IconName::AiOpenAi,
-                                            )
-                                            .on_click(
-                                                |window, cx| {
-                                                    window.dispatch_action(
-                                                        Box::new(NewExternalAgentThread {
-                                                            agent: Some(
-                                                                crate::ExternalAgent::Codex,
-                                                            ),
-                                                        }),
-                                                        cx,
-                                                    )
-                                                },
-                                            ),
                                         ),
                                 )
                             }),
@@ -2713,11 +2676,16 @@ impl AgentPanel {
                         .style(ButtonStyle::Tinted(ui::TintColor::Warning))
                         .label_size(LabelSize::Small)
                         .key_binding(
-                            KeyBinding::for_action_in(&OpenSettings, &focus_handle, window, cx)
-                                .map(|kb| kb.size(rems_from_px(12.))),
+                            KeyBinding::for_action_in(
+                                &OpenConfiguration,
+                                &focus_handle,
+                                window,
+                                cx,
+                            )
+                            .map(|kb| kb.size(rems_from_px(12.))),
                         )
                         .on_click(|_event, window, cx| {
-                            window.dispatch_action(OpenSettings.boxed_clone(), cx)
+                            window.dispatch_action(OpenConfiguration.boxed_clone(), cx)
                         }),
                 ),
             ConfigurationError::ProviderPendingTermsAcceptance(provider) => {
@@ -3221,7 +3189,7 @@ impl Render for AgentPanel {
             .on_action(cx.listener(|this, _: &OpenHistory, window, cx| {
                 this.open_history(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &OpenSettings, window, cx| {
+            .on_action(cx.listener(|this, _: &OpenConfiguration, window, cx| {
                 this.open_configuration(window, cx);
             }))
             .on_action(cx.listener(Self::open_active_thread_as_markdown))

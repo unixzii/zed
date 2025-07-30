@@ -1,4 +1,3 @@
-mod capabilities;
 pub mod extension_builder;
 mod extension_events;
 mod extension_host_proxy;
@@ -17,7 +16,6 @@ use language::LanguageName;
 use semantic_version::SemanticVersion;
 use task::{SpawnInTerminal, ZedDebugConfig};
 
-pub use crate::capabilities::*;
 pub use crate::extension_events::*;
 pub use crate::extension_host_proxy::*;
 pub use crate::extension_manifest::*;

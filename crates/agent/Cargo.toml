@@ -25,7 +25,6 @@ assistant_context.workspace = true
 assistant_tool.workspace = true
 chrono.workspace = true
 client.workspace = true
-cloud_llm_client.workspace = true
 collections.workspace = true
 component.workspace = true
 context_server.workspace = true
@@ -36,9 +35,9 @@ futures.workspace = true
 git.workspace = true
 gpui.workspace = true
 heed.workspace = true
-http_client.workspace = true
 icons.workspace = true
 indoc.workspace = true
+http_client.workspace = true
 itertools.workspace = true
 language.workspace = true
 language_model.workspace = true
@@ -64,6 +63,7 @@ time.workspace = true
 util.workspace = true
 uuid.workspace = true
 workspace-hack.workspace = true
+zed_llm_client.workspace = true
 zstd.workspace = true
 
 [dev-dependencies]

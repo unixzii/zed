@@ -3,9 +3,12 @@ use std::{io::Cursor, sync::Arc};
 use anyhow::{Context as _, Result};
 use collections::HashMap;
 use gpui::{App, AssetSource, Global};
-use rodio::{Decoder, Source, source::Buffered};
+use rodio::{
+    Decoder, Source,
+    source::{Buffered, SamplesConverter},
+};
 
-type Sound = Buffered<Decoder<Cursor<Vec<u8>>>>;
+type Sound = Buffered<SamplesConverter<Decoder<Cursor<Vec<u8>>>, f32>>;
 
 pub struct SoundRegistry {
     cache: Arc<parking_lot::Mutex<HashMap<String, Sound>>>,
@@ -45,7 +48,7 @@ impl SoundRegistry {
             .with_context(|| format!("No asset available for path {path}"))??
             .into_owned();
         let cursor = Cursor::new(bytes);
-        let source = Decoder::new(cursor)?.buffered();
+        let source = Decoder::new(cursor)?.convert_samples::<f32>().buffered();
 
         self.cache.lock().insert(name.to_string(), source.clone());
 
