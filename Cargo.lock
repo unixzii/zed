@@ -3959,6 +3959,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "crashes"
+version = "0.1.0"
+dependencies = [
+ "crash-handler",
+ "log",
+ "minidumper",
+ "paths",
+ "smol",
+ "uuid",
+ "zlog",
+]
+
+[[package]]
 name = "crc"
 version = "3.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13450,6 +13463,8 @@ dependencies = [
  "clap",
  "client",
  "clock",
+ "crash-handler",
+ "crashes",
  "dap",
  "dap_adapters",
  "debug_adapter_extension",
@@ -13473,6 +13488,7 @@ dependencies = [
  "libc",
  "log",
  "lsp",
+ "minidumper",
  "node_runtime",
  "paths",
  "project",
@@ -20388,7 +20404,7 @@ dependencies = [
  "command_palette",
  "component",
  "copilot",
- "crash-handler",
+ "crashes",
  "dap",
  "dap_adapters",
  "db",
@@ -20435,7 +20451,6 @@ dependencies = [
  "menu",
  "migrator",
  "mimalloc",
- "minidumper",
  "nc",
  "nix 0.29.0",
  "node_runtime",
